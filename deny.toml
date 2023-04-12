@@ -1,0 +1,24 @@
+[advisories]
+vulnerability = "deny"
+unmaintained = "allow"
+notice = "allow"
+unsound = "deny"
+severity-threshold = "medium"
+
+[bans]
+deny = [
+    # NOTE: `boring`, `ring` or `rustls` crates should be used instead
+    { name = "openssl" },
+    { name = "openssl-sys" },
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "allow"
+allow-git = []
+
+[licenses]
+unlicensed = "allow"
+allow-osi-fsf-free = "either"
+copyleft = "deny"
+confidence-threshold = 0.9

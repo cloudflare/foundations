@@ -1,0 +1,62 @@
+builddeps: &builddeps-common
+  ? rust
+  ? sccache
+  ? libclang-11-dev
+  ? libssl-dev
+  ? pkg-config
+  ? openssh-client
+  ? build-essential
+  ? cmake
+  ? unzip
+  ? libelf-dev
+  ? libsctp-dev
+  ? cargo-to-teamcity
+
+builddeps-macos: &builddeps-macos
+  ? libclang-11-dev
+  ? libssl-dev
+  ? pkg-config
+  ? openssh-client
+  ? build-essential
+  ? cmake
+  ? unzip
+  ? libelf-dev
+  ? clang
+  ? gcc
+  ? g++
+  ? zlib1g-dev
+  ? libmpc-dev
+  ? libmpfr-dev
+  ? libgmp-dev
+  ? patch
+  ? libxml2-dev
+  ? xz-utils
+
+default-flavor: bullseye
+
+everything: &everything
+  test:
+    builddeps:
+      <<: *builddeps-common
+    post-cache:
+      - sccache-pull oxy-bedrock && export RUSTC_WRAPPER=sccache
+      - cargo test
+      - sccache -s && sccache-push oxy-bedrock
+
+  lint:
+    builddeps:
+      <<: *builddeps-common
+      ? cargo-deny
+    post-cache:
+      - sccache-pull oxy-bedrock && export RUSTC_WRAPPER=sccache
+      - ./scripts/lint.sh
+      - sccache -s && sccache-push oxy-bedrock
+
+  build-macos:
+    builddeps:
+      <<: *builddeps-macos
+    post-cache:
+      - ./scripts/macos-osxcross-setup.sh
+      - ./scripts/macos-osxcross-build.sh
+
+bullseye: *everything

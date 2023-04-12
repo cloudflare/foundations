@@ -1,0 +1,10 @@
+[workspace]
+members = [
+    "bedrock",
+]
+resolver = "2"
+
+[profile.release]
+debug = 1
+
+[workspace.dependencies]
