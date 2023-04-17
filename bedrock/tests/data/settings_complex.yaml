@@ -1,0 +1,26 @@
+---
+# Proxy address.
+# Using the option multiple times will specify multiple addresses for the proxy.
+# Use `systemd:` prefix to specify systemd as a listen source, and
+# `fd:` prefix to specify file descriptor
+addr: []
+# Egress settings
+egress:
+  # Pipefitter settings
+  pipefitter:
+    # Path to pipefitter's unix socket, for routing origin TCP connections through Argo.
+    #
+    # *NOTE:* Pipefitter is disabled if not specified.
+    addr: ~
+# TLS interception
+tls_interception:
+  # Specifies whether TLS interception should be enabled for the endpoint.
+  enabled: false
+# Endpoints TLS
+tls:
+  # Specifies whether TLS should be enabled for the endpoint.
+  enabled: false
+  # mTLS
+  mtls:
+    # Specifies whether mTLS should be enabled for the endpoint.
+    enabled: false

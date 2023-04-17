@@ -1,0 +1,12 @@
+---
+# The documentation of NestedStruct
+# will be added to the keys of `inner`
+inner:
+  # A field, which is named the same as another field.
+  a: 0
+  # multi-line
+  # doc comment
+  b: 11
+  c: 0
+# Another important field
+x: 0

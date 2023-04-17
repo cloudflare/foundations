@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "bedrock",
+    "bedrock-macros",
 ]
 resolver = "2"
 
@@ -8,3 +9,16 @@ resolver = "2"
 debug = 1
 
 [workspace.dependencies]
+anyhow = { version = "1" }
+bedrock = { version = "1", path = "./bedrock" }
+bedrock-macros = { version = "1", path = "./bedrock-macros" }
+darling = "0.14"
+proc-macro-error = "1"
+proc-macro2 = { version = "1", default-features = false }
+rusty-hook = "0.11"
+quote = "1"
+syn = { version = "1", features = ["full", "fold", "parsing", "extra-traits"] }
+serde = { version = "1", features = ["derive", "rc"] }
+serde_yaml = "0.8"
+serde_path_to_error = "0.1"
+yaml-merge-keys = { version = "0.5", features = ["serde_yaml"] }

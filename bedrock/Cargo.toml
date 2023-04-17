@@ -1,10 +1,23 @@
 [package]
 name = "bedrock"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2021"
 
-[dependencies]
+[features]
+default = ["settings"]
+settings = ["bedrock-macros", "serde", "serde_yaml", "yaml-merge-keys", "serde_path_to_error"]
 
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[dependencies]
+anyhow = { workspace = true }
+bedrock-macros = { workspace = true, optional = true }
+serde = { workspace = true, optional = true }
+serde_path_to_error = { workspace = true, optional = true }
+serde_yaml = { workspace = true, optional = true }
+yaml-merge-keys = { workspace = true, optional = true }
 
 [dev-dependencies]
-rusty-hook = "0.11.2"
+rusty-hook = { workspace = true }

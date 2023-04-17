@@ -1,0 +1,11 @@
+---
+inner:
+  # A field, which is named the same as another field.
+  a: 0
+  # multi-line
+  # doc comment
+  b: 11
+  c: 0
+# This doc comment has the same key
+# as field 'a' from SimpleStruct
+a: 0
