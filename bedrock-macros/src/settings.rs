@@ -358,8 +358,6 @@ mod tests {
             }
         };
 
-        println!("{actual}");
-
         assert_eq!(actual, expected);
     }
 
