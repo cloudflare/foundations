@@ -4,8 +4,12 @@ version = "1.0.0"
 edition = "2021"
 
 [features]
-default = ["settings"]
+default = ["settings", "telemetry"]
+
 settings = ["bedrock-macros", "serde", "serde_yaml", "yaml-merge-keys", "serde_path_to_error"]
+telemetry = ["bedrock-macros", "telemetry-log"]
+
+telemetry-log = ["slog", "slog-async", "slog-json", "slog-term"]
 
 [package.metadata.docs.rs]
 all-features = true
@@ -17,6 +21,10 @@ bedrock-macros = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
 serde_path_to_error = { workspace = true, optional = true }
 serde_yaml = { workspace = true, optional = true }
+slog = { workspace = true, optional = true }
+slog-async = { workspace = true, optional = true }
+slog-json = { workspace = true, optional = true }
+slog-term = { workspace = true, optional = true }
 yaml-merge-keys = { workspace = true, optional = true }
 
 [dev-dependencies]

@@ -4,12 +4,21 @@ unmaintained = "allow"
 notice = "allow"
 unsound = "deny"
 severity-threshold = "medium"
+ignore = [
+    # No fix available, but only applies to Windows, hence not a problem for us.
+    "RUSTSEC-2021-0145",
+]
+
 
 [bans]
 deny = [
     # NOTE: `boring`, `ring` or `rustls` crates should be used instead
     { name = "openssl" },
     { name = "openssl-sys" },
+]
+skip = [
+    # serde uses newer syn, but will still need the old one to use darling
+    { name = "syn", version = "2" },
 ]
 
 [sources]

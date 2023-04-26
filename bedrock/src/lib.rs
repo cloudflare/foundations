@@ -20,6 +20,11 @@
 #[cfg_attr(docsrs, doc(cfg(feature = "settings")))]
 pub mod settings;
 
+/// Service telemetry.
+#[cfg(feature = "telemetry")]
+#[cfg_attr(docsrs, doc(cfg(feature = "telemetry")))]
+pub mod telemetry;
+
 /// A macro that implements the [`Settings`] trait for a structure or an enum
 /// and turns Rust doc comments into serializable documentation.
 ///
