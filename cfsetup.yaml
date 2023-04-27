@@ -35,6 +35,15 @@ builddeps-macos: &builddeps-macos
 default-flavor: bullseye
 
 everything: &everything
+  check-features:
+    builddeps:
+      <<: *builddeps-common
+      ? cargo-hack
+    post-cache:
+      - sccache-pull oxy-bedrock && export RUSTC_WRAPPER=sccache
+      - RUSTFLAGS="-D warnings" cargo hack check --feature-powerset --no-dev-deps
+      - sccache -s && sccache-push oxy-bedrock
+
   test:
     builddeps:
       <<: *builddeps-common
