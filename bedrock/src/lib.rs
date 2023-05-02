@@ -28,8 +28,9 @@ pub mod telemetry;
 /// A macro that implements the [`Settings`] trait for a structure or an enum
 /// and turns Rust doc comments into serializable documentation.
 ///
-/// The macro automatically implements [`serde::Serialize`] and [`serde::Deserialize`] traits for
-/// the type.
+/// The macro automatically implements [`serde::Serialize`], [`serde::Deserialize`], [`Clone`], 
+/// [`Default`] and [`std::fmt::Debug`] traits for the type. Certain automatic trait implementations
+/// can be disabled via macro arguments (see examples below).
 ///
 /// # Example
 /// ```
@@ -137,6 +138,26 @@ pub mod telemetry;
 ///     WonderfulVariants::default(),
 ///     WonderfulVariants::VariantWithString("Hi there".into())
 /// );
+/// ```
+/// 
+/// # Custom [`std::fmt::Debug`] implementation
+/// 
+/// One may want to have custom formatting code for a structure or enum. In this case the macro
+/// can be instructed to not automatically generate derive implementation:
+/// 
+/// ```
+/// use std::fmt;
+/// 
+/// #[bedrock::settings(impl_debug = false)]
+/// struct Hello {
+///     who: String
+/// }
+/// 
+/// impl fmt::Debug for Hello {
+///     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+///         write!(f, "Hello {}", self.who)
+///     }
+/// }
 /// ```
 ///
 /// # Renamed or reexported crate

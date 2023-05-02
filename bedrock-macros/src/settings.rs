@@ -26,12 +26,18 @@ static ERR_CONDITIONAL_FIELD_OR_VARIANT: &str =
 struct Args {
     #[darling(default = "Args::default_impl_default")]
     impl_default: bool,
+    #[darling(default = "Args::default_impl_debug")]
+    impl_debug: bool,
     #[darling(default = "Args::default_crate_path")]
     crate_path: Path,
 }
 
 impl Args {
     fn default_impl_default() -> bool {
+        true
+    }
+
+    fn default_impl_debug() -> bool {
         true
     }
 
@@ -44,6 +50,7 @@ impl Default for Args {
     fn default() -> Self {
         Args {
             impl_default: Args::default_impl_default(),
+            impl_debug: Args::default_impl_debug(),
             crate_path: Args::default_crate_path(),
         }
     }
@@ -164,10 +171,13 @@ fn add_default_attrs(args: &Args, attrs: &mut Vec<Attribute>) {
 
     attrs.push(parse_quote!(#[derive(
         Clone,
-        Debug,
         #crate_path::reexports_for_macros::serde::Serialize,
         #crate_path::reexports_for_macros::serde::Deserialize,
     )]));
+
+    if args.impl_debug {
+        attrs.push(parse_quote!(#[derive(Debug)]));
+    }
 
     attrs.push(parse_quote!(#[serde(crate = #serde_path)]));
 }
@@ -318,10 +328,10 @@ mod tests {
         let expected = code_str! {
             #[derive(
                 Clone,
-                Debug,
                 ::bedrock::reexports_for_macros::serde::Serialize,
                 ::bedrock::reexports_for_macros::serde::Deserialize,
             )]
+            #[derive(Debug)]
             #[serde(crate = ":: bedrock :: reexports_for_macros :: serde")]
             #[serde(default)]
             struct TestStruct {
@@ -386,10 +396,10 @@ mod tests {
         let expected = code_str! {
             #[derive(
                 Clone,
-                Debug,
                 ::custom::path::reexports_for_macros::serde::Serialize,
                 ::custom::path::reexports_for_macros::serde::Deserialize,
             )]
+            #[derive(Debug)]
             #[serde(crate = ":: custom :: path :: reexports_for_macros :: serde")]
             #[serde(default)]
             struct TestStruct {
@@ -454,10 +464,10 @@ mod tests {
         let expected = code_str! {
             #[derive(
                 Clone,
-                Debug,
                 ::bedrock::reexports_for_macros::serde::Serialize,
                 ::bedrock::reexports_for_macros::serde::Deserialize,
             )]
+            #[derive(Debug)]
             #[serde(crate = ":: bedrock :: reexports_for_macros :: serde")]
             #[serde(default)]
             struct TestStruct {
@@ -502,7 +512,39 @@ mod tests {
             #[derive(Default)]
             #[derive(
                 Clone,
-                Debug,
+                ::bedrock::reexports_for_macros::serde::Serialize,
+                ::bedrock::reexports_for_macros::serde::Deserialize,
+            )]
+            #[derive(Debug)]
+            #[serde(crate = ":: bedrock :: reexports_for_macros :: serde")]
+            struct TestStruct(u64);
+
+            impl ::bedrock::settings::Settings for TestStruct { }
+        };
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn expand_no_impl_debug() {
+        let src = parse_quote! {
+            struct TestStruct(u64);
+        };
+
+        let actual = expand_from_parsed(
+            Args {
+                impl_debug: false,
+                ..Default::default()
+            },
+            src,
+        )
+        .unwrap()
+        .to_string();
+
+        let expected = code_str! {
+            #[derive(Default)]
+            #[derive(
+                Clone,
                 ::bedrock::reexports_for_macros::serde::Serialize,
                 ::bedrock::reexports_for_macros::serde::Deserialize,
             )]
@@ -534,10 +576,10 @@ mod tests {
         let expected = code_str! {
             #[derive(
                 Clone,
-                Debug,
                 ::bedrock::reexports_for_macros::serde::Serialize,
                 ::bedrock::reexports_for_macros::serde::Deserialize,
             )]
+            #[derive(Debug)]
             #[serde(crate = ":: bedrock :: reexports_for_macros :: serde")]
             struct TestStruct(u64);
 
@@ -565,10 +607,10 @@ mod tests {
             #[derive(Default)]
             #[derive(
                 Clone,
-                Debug,
                 ::bedrock::reexports_for_macros::serde::Serialize,
                 ::bedrock::reexports_for_macros::serde::Deserialize,
             )]
+            #[derive(Debug)]
             #[serde(crate = ":: bedrock :: reexports_for_macros :: serde")]
             #[serde(rename_all="snake_case")]
             enum TestEnum {
@@ -605,10 +647,10 @@ mod tests {
         let expected = code_str! {
             #[derive(
                 Clone,
-                Debug,
                 ::bedrock::reexports_for_macros::serde::Serialize,
                 ::bedrock::reexports_for_macros::serde::Deserialize,
             )]
+            #[derive(Debug)]
             #[serde(crate = ":: bedrock :: reexports_for_macros :: serde")]
             #[serde(rename_all="snake_case")]
             enum TestEnum {
@@ -735,10 +777,10 @@ mod tests {
         let expected = code_str! {
             #[derive(
                 Clone,
-                Debug,
                 ::bedrock::reexports_for_macros::serde::Serialize,
                 ::bedrock::reexports_for_macros::serde::Deserialize,
             )]
+            #[derive(Debug)]
             #[serde(crate = ":: bedrock :: reexports_for_macros :: serde")]
             #[serde(default)]
             struct TestStruct {
