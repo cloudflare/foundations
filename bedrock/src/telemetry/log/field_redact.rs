@@ -6,13 +6,13 @@ use std::sync::Arc;
 /// A log filter that removes redacted keys.
 #[derive(Clone)]
 pub(super) struct FieldRedactFilterFactory {
-    redacted_keys: Arc<HashSet<Key>>,
+    redacted_keys: Arc<HashSet<String>>,
 }
 
 impl FieldRedactFilterFactory {
     pub(super) fn new(redacted_keys: Vec<String>) -> Self {
         Self {
-            redacted_keys: Arc::new(redacted_keys.into_iter().map(Key::from).collect()),
+            redacted_keys: Arc::new(redacted_keys.into_iter().collect()),
         }
     }
 }
@@ -28,13 +28,13 @@ impl FilterFactory for FieldRedactFilterFactory {
 }
 
 pub(super) struct FieldRedactFilter {
-    redacted_keys: Arc<HashSet<Key>>,
+    redacted_keys: Arc<HashSet<String>>,
 }
 
 impl Filter for FieldRedactFilter {
     #[inline]
     fn filter(&mut self, key: &Key) -> bool {
-        !self.redacted_keys.contains(key)
+        !self.redacted_keys.contains(*key)
     }
 }
 

@@ -20,7 +20,7 @@ syn = { version = "1", features = ["full", "fold", "parsing", "extra-traits"] }
 serde = { version = "1", features = ["derive", "rc"] }
 serde_yaml = "0.8"
 serde_path_to_error = "0.1"
-slog = { version = "2.4", features = ["max_level_trace", "dynamic-keys"] }
+slog = { version = "2.4", features = ["max_level_trace"] }
 slog-async = "2.3"
 slog-json = "2.3"
 slog-term = "2.4"
