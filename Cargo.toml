@@ -9,10 +9,12 @@ resolver = "2"
 debug = 1
 
 [workspace.dependencies]
-anyhow = { version = "1" }
+anyhow = { version = "1", features = ["backtrace", "std"] }
 bedrock = { version = "1", path = "./bedrock" }
 bedrock-macros = { version = "1", path = "./bedrock-macros" }
 darling = "0.14"
+once_cell = "1.5"
+parking_lot = "0.12"
 proc-macro2 = { version = "1", default-features = false }
 rusty-hook = "0.11"
 quote = "1"
@@ -24,4 +26,5 @@ slog = { version = "2.4", features = ["max_level_trace"] }
 slog-async = "2.3"
 slog-json = "2.3"
 slog-term = "2.4"
+thread_local = "1.1"
 yaml-merge-keys = { version = "0.5", features = ["serde_yaml"] }

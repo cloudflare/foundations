@@ -4,23 +4,23 @@ use slog::{
 use std::fmt::Arguments;
 use std::panic::RefUnwindSafe;
 
-pub(super) trait Filter {
+pub(crate) trait Filter {
     fn filter(&mut self, key: &Key) -> bool;
 }
 
-pub(super) trait FilterFactory: Clone {
+pub(crate) trait FilterFactory: Clone {
     type Filter: Filter;
 
     fn create_filter(&self) -> Self::Filter;
 }
 
-pub(super) struct FieldFilteringDrain<F, D> {
+pub(crate) struct FieldFilteringDrain<F, D> {
     inner: D,
     filter_factory: F,
 }
 
 impl<F, D> FieldFilteringDrain<F, D> {
-    pub(super) fn new(inner: D, filter_factory: F) -> Self {
+    pub(crate) fn new(inner: D, filter_factory: F) -> Self {
         Self {
             inner,
             filter_factory,

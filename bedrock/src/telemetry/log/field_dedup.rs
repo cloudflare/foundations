@@ -11,7 +11,7 @@ use std::collections::HashSet;
 /// record fields. Those serialized separately and the order of serialization depends
 /// on particular drain implementation.
 #[derive(Clone)]
-pub(super) struct FieldDedupFilterFactory;
+pub(crate) struct FieldDedupFilterFactory;
 
 impl FilterFactory for FieldDedupFilterFactory {
     type Filter = FieldDedupFilter;
@@ -22,7 +22,7 @@ impl FilterFactory for FieldDedupFilterFactory {
 }
 
 #[derive(Default)]
-pub(super) struct FieldDedupFilter {
+pub(crate) struct FieldDedupFilter {
     seen_keys: HashSet<Key>,
 }
 
@@ -37,28 +37,31 @@ impl Filter for FieldDedupFilter {
 mod tests {
     // NOTE: test log uses field dedup filter.
     use super::super::testing::{create_test_log, TestLogRecord};
-    use slog::{warn, Level};
+    use slog::{error, warn, Level};
 
     #[test]
     fn remove_record_field_duplicates() {
-        let (log, records) = create_test_log(Level::Warning, vec![]);
+        let (log, records) = create_test_log(vec![]);
 
         warn!(log, "Hello world1"; "key1" => 42, "key2" => "foo", "key1" => "bar", "key1" => "baz");
-        warn!(log, "Hello world2"; "key1" => "qux", "key1" => "foo");
+        error!(log, "Hello world2"; "key1" => "qux", "key1" => "foo");
         warn!(log, "Hello world3"; "key1" => "42", "key2" => "baz");
 
         assert_eq!(
             *records.read().unwrap(),
             vec![
                 TestLogRecord {
+                    level: Level::Warning,
                     message: "Hello world1".into(),
                     fields: vec![("key1".into(), "baz".into()), ("key2".into(), "foo".into())]
                 },
                 TestLogRecord {
+                    level: Level::Error,
                     message: "Hello world2".into(),
                     fields: vec![("key1".into(), "foo".into())]
                 },
                 TestLogRecord {
+                    level: Level::Warning,
                     message: "Hello world3".into(),
                     fields: vec![("key2".into(), "baz".into()), ("key1".into(), "42".into())]
                 }
@@ -68,7 +71,7 @@ mod tests {
 
     #[test]
     fn remove_context_field_duplicates() {
-        let (log, records) = create_test_log(Level::Warning, vec![]);
+        let (log, records) = create_test_log(vec![]);
 
         let log = log.new(slog::o! {
            "key1" => 42, "key2" => "foo", "key1" => "bar", "key1" => "baz", "key3" => "beep boop"
@@ -83,6 +86,7 @@ mod tests {
         assert_eq!(
             *records.read().unwrap(),
             vec![TestLogRecord {
+                level: Level::Warning,
                 message: "Hello world".into(),
                 fields: vec![
                     ("key2".into(), "baz".into()),

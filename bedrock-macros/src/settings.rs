@@ -56,7 +56,7 @@ impl Default for Args {
     }
 }
 
-pub(super) fn expand(args: TokenStream, item: TokenStream) -> TokenStream {
+pub(crate) fn expand(args: TokenStream, item: TokenStream) -> TokenStream {
     let item = parse_macro_input!(item as Item);
     let attr_args = parse_macro_input!(args as AttributeArgs);
 

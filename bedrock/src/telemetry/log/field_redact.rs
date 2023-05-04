@@ -5,12 +5,12 @@ use std::sync::Arc;
 
 /// A log filter that removes redacted keys.
 #[derive(Clone)]
-pub(super) struct FieldRedactFilterFactory {
+pub(crate) struct FieldRedactFilterFactory {
     redacted_keys: Arc<HashSet<String>>,
 }
 
 impl FieldRedactFilterFactory {
-    pub(super) fn new(redacted_keys: Vec<String>) -> Self {
+    pub(crate) fn new(redacted_keys: Vec<String>) -> Self {
         Self {
             redacted_keys: Arc::new(redacted_keys.into_iter().collect()),
         }
@@ -27,7 +27,7 @@ impl FilterFactory for FieldRedactFilterFactory {
     }
 }
 
-pub(super) struct FieldRedactFilter {
+pub(crate) struct FieldRedactFilter {
     redacted_keys: Arc<HashSet<String>>,
 }
 
@@ -46,7 +46,7 @@ mod tests {
 
     #[test]
     fn redact_record_fields() {
-        let (log, records) = create_test_log(Level::Warning, vec!["key1".into(), "key3".into()]);
+        let (log, records) = create_test_log(vec!["key1".into(), "key3".into()]);
 
         warn!(log, "Hello world1"; "key1" => 42, "key2" => "foo");
         warn!(log, "Hello world2"; "key1" => "qux", "key3" => "foo");
@@ -56,14 +56,17 @@ mod tests {
             *records.read().unwrap(),
             vec![
                 TestLogRecord {
+                    level: Level::Warning,
                     message: "Hello world1".into(),
                     fields: vec![("key2".into(), "foo".into())]
                 },
                 TestLogRecord {
+                    level: Level::Warning,
                     message: "Hello world2".into(),
                     fields: vec![]
                 },
                 TestLogRecord {
+                    level: Level::Warning,
                     message: "Hello world3".into(),
                     fields: vec![("key2".into(), "baz".into())]
                 }
@@ -73,7 +76,7 @@ mod tests {
 
     #[test]
     fn redact_context_fields() {
-        let (log, records) = create_test_log(Level::Warning, vec!["key1".into(), "key4".into()]);
+        let (log, records) = create_test_log(vec!["key1".into(), "key4".into()]);
 
         let log = log.new(slog::o! {
            "key1" => 42, "key2" => "foo", "key3" => "beep boop"
@@ -88,6 +91,7 @@ mod tests {
         assert_eq!(
             *records.read().unwrap(),
             vec![TestLogRecord {
+                level: Level::Warning,
                 message: "Hello world".into(),
                 fields: vec![
                     ("key3".into(), "beep boop".into()),

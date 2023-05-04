@@ -5,11 +5,20 @@ use slog::{Drain, Key, Level, LevelFilter, Logger, Never, OwnedKVList, Record, S
 use std::fmt::Arguments;
 use std::sync::{Arc, RwLock};
 
-pub type TestLogRecords = Arc<RwLock<Vec<TestLogRecord>>>;
+pub(crate) type TestLogRecords = Arc<RwLock<Vec<TestLogRecord>>>;
 
+/// Log record produced in the [test telemetry scope].
+///
+/// [test telemetry scope]: crate::telemetry::TelemetryContext::test
 #[derive(Debug, PartialEq, Eq)]
 pub struct TestLogRecord {
+    /// Verbosity level of the log record.
+    pub level: Level,
+
+    /// Log message.
     pub message: String,
+
+    /// Log record fields.
     pub fields: Vec<(String, String)>,
 }
 
@@ -41,6 +50,7 @@ impl Drain for TestLogDrain {
         record.kv().serialize(record, &mut serializer).unwrap();
 
         self.records.write().unwrap().push(TestLogRecord {
+            level: record.level(),
             message: format!("{}", record.msg()),
             fields: serializer.fields,
         });
@@ -49,10 +59,7 @@ impl Drain for TestLogDrain {
     }
 }
 
-pub(super) fn create_test_log(
-    level: Level,
-    redacted_keys: Vec<String>,
-) -> (Logger, TestLogRecords) {
+pub(crate) fn create_test_log(redacted_keys: Vec<String>) -> (Logger, TestLogRecords) {
     let log_records = Arc::new(RwLock::new(vec![]));
 
     let drain = TestLogDrain {
@@ -61,7 +68,7 @@ pub(super) fn create_test_log(
 
     let drain = FieldFilteringDrain::new(drain, FieldRedactFilterFactory::new(redacted_keys));
     let drain = FieldFilteringDrain::new(drain, FieldDedupFilterFactory);
-    let drain = LevelFilter::new(drain.fuse(), level);
+    let drain = LevelFilter::new(drain.fuse(), Level::Trace);
 
     let log = Logger::root(drain.fuse(), slog::o!());
 

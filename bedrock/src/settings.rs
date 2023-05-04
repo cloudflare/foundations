@@ -1,3 +1,4 @@
+//! Serializable service settings with documentation.
 use crate::BootstrapResult;
 use serde::de::DeserializeOwned;
 use serde::Serialize;

@@ -1,28 +1,37 @@
 //! Bedrock is a modular foundation for production-ready services implemented in Rust.
 //!
-//! The framework strives to eliminate boilerplate code required to set up:
+//! If you need any of those:
 //!
-//! * documented service configuration
+//! * logging
+//! * distributed tracing
+//! * metrics
+//! * [seccomp] hardening
+//! * service configuration with documentation
+//! * graceful restarts primitives
+//! * full application bootstraping that set up **any combination** of the above in a few lines of code
+//!
+//! then Bedrock is a tool of choice for you.
 //!
 //! # Features
 //! Bedrock can take of all aspects of service bootstrapping, but also can be used as a component
 //! library in a modular fashion by enabling or disabling [Cargo features]:
 //!
 //! - **default**: All features are enabled by default.
-//! - **settings**: Enables settings functionality.
+//! - **settings**: Enables serializable documented settings functionality.
+//! - **telemetry**: Enables all the telemetry-related functionality: **logging**.
+//! - **logging**: Enables logging functionality.
+//! - **testing**: Enables testing-related functionality.
 //!
 //! [Cargo features]: https://doc.rust-lang.org/stable/cargo/reference/features.html#the-features-section
+//! [seccomp]: https://en.wikipedia.org/wiki/Seccomp
 
 #![warn(missing_docs)]
+#![cfg_attr(docsrs, feature(doc_auto_cfg))]
 
-/// Serializable service settings with documentation.
 #[cfg(feature = "settings")]
-#[cfg_attr(docsrs, doc(cfg(feature = "settings")))]
 pub mod settings;
 
-/// Service telemetry.
-#[cfg(feature = "telemetry")]
-#[cfg_attr(docsrs, doc(cfg(feature = "telemetry")))]
+#[cfg(any(feature = "telemetry", feature = "logging"))]
 pub mod telemetry;
 
 /// A macro that implements the [`Settings`] trait for a structure or an enum
@@ -178,16 +187,17 @@ pub mod telemetry;
 ///
 /// [`Settings`]: crate::settings::Settings
 #[cfg(feature = "settings")]
-#[cfg_attr(docsrs, doc(cfg(feature = "settings")))]
 pub use bedrock_macros::settings;
 
 #[doc(hidden)]
 pub mod reexports_for_macros {
     #[cfg(feature = "settings")]
     pub use serde;
+    #[cfg(feature = "logging")]
+    pub use slog;
 }
 
-/// An error that can be returned on a service initialisation.
+/// Error that can be returned on a service initialisation.
 ///
 /// This is an alias for [`anyhow::Error`]. On bootstrap all errors are propagated to
 /// the `main` function and eventually terminate the process. [Sentry] logs those errors on
@@ -197,5 +207,11 @@ pub mod reexports_for_macros {
 /// [Sentry]: https://sentry.io
 pub type BootstrapError = anyhow::Error;
 
-/// A result that has [`BootstrapError`] as an error variant.
+/// Result that has [`BootstrapError`] as an error variant.
 pub type BootstrapResult<T> = anyhow::Result<T>;
+
+/// A generic operational (post-initialization) error without backtraces.
+pub type Error = Box<dyn std::error::Error + Send + Sync + 'static>;
+
+/// Operational (post-initialization) result that has [`Error`] as an error variant.
+pub type Result<T> = std::result::Result<T, Error>;
