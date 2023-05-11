@@ -105,7 +105,7 @@ where
             "module" => FnValue(|record| {
                 format!("{}:{}", record.module(), record.line())
             }),
-            "package_version" => package_version,
+            "version" => package_version,
         ),
     )
 }
