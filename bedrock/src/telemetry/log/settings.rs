@@ -5,8 +5,7 @@ use std::ops::Deref;
 use std::path::PathBuf;
 
 feature_use!(cfg(feature = "settings"), {
-    use crate::settings;
-    use crate::settings::Settings;
+    use crate::settings::{settings, Settings};
     use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
     use std::str::FromStr;
 });

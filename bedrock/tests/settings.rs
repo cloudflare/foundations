@@ -1,6 +1,6 @@
-use bedrock::settings::to_yaml_string;
+use bedrock::settings::{settings, to_yaml_string};
 
-#[bedrock::settings]
+#[settings]
 struct NestedStruct {
     /// A field, which is named the same as another field.
     a: usize,
@@ -18,7 +18,7 @@ impl NestedStruct {
     }
 }
 
-#[bedrock::settings]
+#[settings]
 struct SimpleStruct {
     /// The documentation of NestedStruct
     /// will be added to the keys of `inner`
@@ -27,7 +27,7 @@ struct SimpleStruct {
     x: u32,
 }
 
-#[bedrock::settings]
+#[settings]
 struct NestedDup {
     inner: NestedStruct,
     /// This doc comment has the same key
@@ -35,20 +35,20 @@ struct NestedDup {
     a: u32,
 }
 
-#[bedrock::settings]
+#[settings]
 enum SomeEnum {
     VariantA,
     #[default]
     VariantB,
 }
 
-#[bedrock::settings]
+#[settings]
 struct StructWithEnumField {
     /// Enum field example
     field: SomeEnum,
 }
 
-#[bedrock::settings]
+#[settings]
 struct ProxySettings {
     /// Proxy address.
     /// Using the option multiple times will specify multiple addresses for the proxy.
@@ -63,13 +63,13 @@ struct ProxySettings {
     tls: TlsSettings,
 }
 
-#[bedrock::settings]
+#[settings]
 struct EgressSettings {
     /// Pipefitter settings
     pipefitter: PipefitterSettings,
 }
 
-#[bedrock::settings]
+#[settings]
 struct PipefitterSettings {
     /// Path to pipefitter's unix socket, for routing origin TCP connections through Argo.
     ///
@@ -77,13 +77,13 @@ struct PipefitterSettings {
     addr: Option<std::net::SocketAddr>,
 }
 
-#[bedrock::settings]
+#[settings]
 struct TlsInterceptionSettings {
     /// Specifies whether TLS interception should be enabled for the endpoint.
     enabled: bool,
 }
 
-#[bedrock::settings]
+#[settings]
 struct TlsSettings {
     /// Specifies whether TLS should be enabled for the endpoint.
     enabled: bool,
@@ -91,13 +91,13 @@ struct TlsSettings {
     mtls: MtlsSettings,
 }
 
-#[bedrock::settings]
+#[settings]
 struct MtlsSettings {
     /// Specifies whether mTLS should be enabled for the endpoint.
     enabled: bool,
 }
 
-#[bedrock::settings(impl_default = false)]
+#[settings(impl_default = false)]
 struct NoDefaultStruct {
     b: bool,
 }
@@ -108,7 +108,7 @@ impl Default for NoDefaultStruct {
     }
 }
 
-#[bedrock::settings(impl_default = false)]
+#[settings(impl_default = false)]
 enum NoDefaultEnum {
     Variant1,
     Variant2,
@@ -127,7 +127,7 @@ mod bedrock_reexport {
 }
 
 // NOTE: this is basically a smoke test structure - it won't compile if `crate_path` is broken
-#[bedrock::settings(crate_path = "bedrock_reexport::nested")]
+#[settings(crate_path = "bedrock_reexport::nested")]
 struct StructWithCrateReexport {
     b: bool,
 }

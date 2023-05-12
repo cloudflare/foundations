@@ -7,7 +7,7 @@ use super::tracing::settings::TracingSettings;
 use super::log::settings::LoggingSettings;
 
 #[cfg(feature = "settings")]
-use crate::settings;
+use crate::settings::settings;
 
 /// Telemetry settings.
 #[cfg_attr(feature = "settings", settings(crate_path = "crate"))]

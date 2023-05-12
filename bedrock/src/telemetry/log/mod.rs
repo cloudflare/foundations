@@ -23,7 +23,9 @@ use slog::{Level, Logger, OwnedKV};
 #[cfg(any(test, feature = "testing"))]
 pub use self::testing::TestLogRecord;
 
-/// Sets current log's verbosity, overriding the settings used in [bedrock::telemetry::init].
+/// Sets current log's verbosity, overriding the settings used in [`init`].
+///
+/// [`init`]: crate::telemetry::init
 pub fn set_verbosity(level: Level) -> Result<()> {
     let mut settings = LogHarness::get().settings.clone();
 

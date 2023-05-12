@@ -4,8 +4,8 @@ use crate::utils::feature_use;
 use std::net::Ipv4Addr;
 
 feature_use!(cfg(feature = "settings"), {
-    use crate::settings;
     use crate::settings::net::SocketAddr;
+    use crate::settings::settings;
 });
 
 #[cfg(not(feature = "settings"))]
