@@ -18,8 +18,9 @@
 //!
 //! - **default**: All features are enabled by default.
 //! - **settings**: Enables serializable documented settings functionality.
-//! - **telemetry**: Enables all the telemetry-related functionality: **logging**.
+//! - **telemetry**: Enables all the telemetry-related features (**logging**, **tracing**).
 //! - **logging**: Enables logging functionality.
+//! - **tracing**: Enables distributed tracing functionality.
 //! - **testing**: Enables testing-related functionality.
 //!
 //! [Cargo features]: https://doc.rust-lang.org/stable/cargo/reference/features.html#the-features-section
@@ -28,10 +29,12 @@
 #![warn(missing_docs)]
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 
+mod utils;
+
 #[cfg(feature = "settings")]
 pub mod settings;
 
-#[cfg(any(feature = "telemetry", feature = "logging"))]
+#[cfg(any(feature = "logging", feature = "tracing"))]
 pub mod telemetry;
 
 /// A macro that implements the [`Settings`] trait for a structure or an enum
@@ -191,6 +194,8 @@ pub use bedrock_macros::settings;
 
 #[doc(hidden)]
 pub mod reexports_for_macros {
+    #[cfg(feature = "tracing")]
+    pub use rustracing;
     #[cfg(feature = "settings")]
     pub use serde;
     #[cfg(feature = "logging")]
@@ -215,3 +220,28 @@ pub type Error = Box<dyn std::error::Error + Send + Sync + 'static>;
 
 /// Operational (post-initialization) result that has [`Error`] as an error variant.
 pub type Result<T> = std::result::Result<T, Error>;
+
+/// Basic service information.
+#[derive(Copy, Clone, Debug, Default)]
+pub struct ServiceInfo {
+    /// The name of the service.
+    pub name: &'static str,
+
+    /// The version of the service.
+    pub version: &'static str,
+
+    /// The description of the service.
+    pub description: &'static str,
+}
+
+/// Creates [`ServiceInfo`] from the information in `Cargo.toml` manifest of the service.
+#[macro_export]
+macro_rules! service_info {
+    () => {
+        $crate::ServiceInfo {
+            name: env!("CARGO_PKG_NAME"),
+            version: env!("CARGO_PKG_VERSION"),
+            description: env!("CARGO_PKG_DESCRIPTION"),
+        }
+    };
+}

@@ -4,13 +4,51 @@ version = "1.0.0"
 edition = "2021"
 
 [features]
-default = ["settings", "telemetry", "testing"]
-
-settings = ["bedrock-macros", "serde", "serde_yaml", "yaml-merge-keys", "serde_path_to_error"]
-telemetry = ["bedrock-macros", "logging"]
-logging = [
-    "slog", "slog-async", "slog-json", "slog-term", "thread_local", "parking_lot", "once_cell"
+# All features are enabled by default.
+default = [
+    "settings", 
+    "telemetry", 
+    "testing"
 ]
+
+# Enables serializable documented settings functionality.
+settings = [
+    "bedrock-macros", 
+    "serde", 
+    "serde_yaml", 
+    "yaml-merge-keys", 
+    "serde_path_to_error"
+]
+
+# Enables all the telemetry-related features ("logging", "tracing").
+telemetry = [
+    "logging", 
+    "tracing", 
+    "bedrock-macros"
+]
+
+# Enables logging functionality.
+logging = [
+    "slog", 
+    "slog-async", 
+    "slog-json", 
+    "slog-term", 
+    "thread_local", 
+    "parking_lot", 
+    "once_cell"
+]
+
+# Enables distributed tracing functionality.
+tracing = [
+    "crossbeam-channel", 
+    "rustracing", 
+    "rustracing_jaeger", 
+    "thread_local", 
+    "parking_lot", 
+    "once_cell"
+]
+
+# Enables testing-related functionality.
 testing = []
 
 [package.metadata.docs.rs]
@@ -20,8 +58,11 @@ rustdoc-args = ["--cfg", "docsrs"]
 [dependencies]
 anyhow = { workspace = true }
 bedrock-macros = { workspace = true, optional = true }
+crossbeam-channel = { workspace = true, optional = true }
 parking_lot = { workspace = true, optional = true }
 once_cell = { workspace = true, optional = true }
+rustracing = { workspace = true, optional = true }
+rustracing_jaeger = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
 serde_path_to_error = { workspace = true, optional = true }
 serde_yaml = { workspace = true, optional = true }

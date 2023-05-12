@@ -4,7 +4,7 @@ use proc_macro::TokenStream;
 use quote::{quote, quote_spanned, TokenStreamExt};
 use syn::spanned::Spanned;
 use syn::{
-    parse_macro_input, parse_quote, Attribute, AttributeArgs, Field, Fields, Item, ItemEnum,
+    parse_macro_input, parse_quote, Attribute, AttributeArgs, Field, Fields, Ident, Item, ItemEnum,
     ItemStruct, Lit, LitStr, Meta, MetaNameValue, NestedMeta, Path,
 };
 
@@ -16,11 +16,6 @@ static ERR_NON_UNIT_OR_NEW_TYPE_VARIANT: &str =
 
 static ERR_TUPLE_STRUCT: &str =
     "Settings with unnamed fields can only be new type structures (e.g. `struct Millimeters(u8)`).";
-
-static ERR_CONDITIONAL_FIELD_OR_VARIANT: &str =
-    "Settings shouldn't have conditionally compiled fields or enum variant (`#[cfg(...)]`) and \
-    should be uniform on all platforms. Instead, error on startup if certain options \
-    are not supported on the current platform.";
 
 #[derive(FromMeta)]
 struct Args {
@@ -87,12 +82,6 @@ fn expand_enum(args: Args, item: &mut ItemEnum) -> Result<proc_macro2::TokenStre
 
         if is_struct || is_tuple(&variant.fields) {
             return error(&variant, ERR_NON_UNIT_OR_NEW_TYPE_VARIANT);
-        }
-
-        for attr in &variant.attrs {
-            if attr.path.is_ident("cfg") {
-                return error(&attr.path, ERR_CONDITIONAL_FIELD_OR_VARIANT);
-            }
         }
     }
 
@@ -190,24 +179,9 @@ fn impl_settings_trait(args: &Args, item: &ItemStruct) -> Result<proc_macro2::To
 
     for field in &item.fields {
         if let Some(name) = &field.ident {
-            let span = field.ty.span();
-            let name_str = name.to_string();
+            let impl_for_field = impl_settings_trait_for_field(args, field, name);
 
-            doc_comments_impl.append_all(quote_spanned! { span=>
-                let mut key = parent_key.to_vec();
-
-                key.push(#name_str.into());
-
-                #crate_path::settings::Settings::add_docs(&self.#name, &key, docs);
-            });
-
-            let docs = extract_doc_comments(&field.attrs)?;
-
-            if !docs.is_empty() {
-                doc_comments_impl.append_all(quote! {
-                    docs.insert(key, &[#(#docs,)*][..]);
-                });
-            }
+            doc_comments_impl.append_all(impl_for_field);
         }
     }
 
@@ -224,14 +198,53 @@ fn impl_settings_trait(args: &Args, item: &ItemStruct) -> Result<proc_macro2::To
     })
 }
 
-fn extract_doc_comments(attrs: &[Attribute]) -> Result<Vec<LitStr>> {
+fn impl_settings_trait_for_field(
+    args: &Args,
+    field: &Field,
+    name: &Ident,
+) -> proc_macro2::TokenStream {
+    let crate_path = &args.crate_path;
+    let span = field.ty.span();
+    let name_str = name.to_string();
+    let docs = extract_doc_comments(&field.attrs);
+    let mut impl_for_field = quote! {};
+
+    let cfg_attrs = field
+        .attrs
+        .iter()
+        .filter(|a| a.path.is_ident("cfg"))
+        .collect::<Vec<_>>();
+
+    impl_for_field.append_all(quote_spanned! { span=>
+        let mut key = parent_key.to_vec();
+
+        key.push(#name_str.into());
+
+        #crate_path::settings::Settings::add_docs(&self.#name, &key, docs);
+    });
+
+    if !docs.is_empty() {
+        impl_for_field.append_all(quote! {
+            docs.insert(key, &[#(#docs,)*][..]);
+        });
+    }
+
+    if !cfg_attrs.is_empty() {
+        impl_for_field = quote! {
+            #(#cfg_attrs)*
+            {
+                #impl_for_field
+            }
+        }
+    }
+
+    impl_for_field
+}
+
+fn extract_doc_comments(attrs: &[Attribute]) -> Vec<LitStr> {
     let mut comments = vec![];
 
     for attr in attrs {
-        if attr.path.is_ident("cfg") {
-            return error(&attr.path, ERR_CONDITIONAL_FIELD_OR_VARIANT);
-        }
-
         if !attr.path.is_ident("doc") {
             continue;
         }
@@ -245,7 +258,7 @@ fn extract_doc_comments(attrs: &[Attribute]) -> Result<Vec<LitStr>> {
         }
     }
 
-    Ok(comments)
+    comments
 }
 
 fn impl_serde_aware_default(item: &ItemStruct) -> proc_macro2::TokenStream {
@@ -362,6 +375,84 @@ mod tests {
                 fn default() -> Self {
                     Self {
                         boolean: Default::default(),
+                        integer: Default::default(),
+                    }
+                }
+            }
+        };
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn expand_structure_with_cfg_attrs() {
+        let src = parse_quote! {
+            struct TestStruct {
+                /// A boolean value.
+                #[cfg(feature = "foobar")]
+                boolean: bool,
+
+                /// An integer value.
+                #[cfg(test)]
+                #[cfg(target_os = "linux")]
+                integer: i32,
+            }
+        };
+
+        let actual = expand_from_parsed(Default::default(), src)
+            .unwrap()
+            .to_string();
+
+        let expected = code_str! {
+            #[derive(
+                Clone,
+                ::bedrock::reexports_for_macros::serde::Serialize,
+                ::bedrock::reexports_for_macros::serde::Deserialize,
+            )]
+            #[derive(Debug)]
+            #[serde(crate = ":: bedrock :: reexports_for_macros :: serde")]
+            #[serde(default)]
+            struct TestStruct {
+                #[doc = r" A boolean value."]
+                #[cfg(feature = "foobar")]
+                boolean: bool,
+                #[doc = r" An integer value."]
+                #[cfg(test)]
+                #[cfg(target_os = "linux")]
+                integer: i32,
+            }
+
+            impl ::bedrock::settings::Settings for TestStruct {
+                fn add_docs(
+                    &self,
+                    parent_key: &[String],
+                    docs: &mut ::std::collections::HashMap<Vec<String>, &'static [&'static str]>
+                ) {
+                    #[cfg(feature = "foobar")]
+                    {
+                        let mut key = parent_key.to_vec();
+                        key.push("boolean".into());
+                        ::bedrock::settings::Settings::add_docs(&self.boolean, &key, docs);
+                        docs.insert(key, &[r" A boolean value.",][..]);
+                    }
+                    #[cfg(test)]
+                    #[cfg(target_os = "linux")]
+                    {
+                        let mut key = parent_key.to_vec();
+                        key.push("integer".into());
+                        ::bedrock::settings::Settings::add_docs(&self.integer, &key, docs);
+                        docs.insert(key, &[r" An integer value.",][..]);
+                    }
+                }
+            }
+
+            impl Default for TestStruct {
+                fn default() -> Self {
+                    Self {
+                        #[cfg(feature = "foobar")]
+                        boolean: Default::default(),
+                        #[cfg(test)]
+                        #[cfg(target_os = "linux")]
                         integer: Default::default(),
                     }
                 }
@@ -707,40 +798,6 @@ mod tests {
             .to_string();
 
         assert_eq!(err, ERR_NON_UNIT_OR_NEW_TYPE_VARIANT);
-    }
-
-    #[test]
-    fn expand_struct_with_conditional_field() {
-        let src = parse_quote! {
-            struct TestStruct {
-               #[cfg(test)]
-               field1: u64,
-               field2: String
-            }
-        };
-
-        let err = expand_from_parsed(Default::default(), src)
-            .unwrap_err()
-            .to_string();
-
-        assert_eq!(err, ERR_CONDITIONAL_FIELD_OR_VARIANT);
-    }
-
-    #[test]
-    fn expand_struct_with_conditional_variant() {
-        let src = parse_quote! {
-            enum TestEnum {
-               #[cfg(test)]
-               Variant1,
-               Variant2
-            }
-        };
-
-        let err = expand_from_parsed(Default::default(), src)
-            .unwrap_err()
-            .to_string();
-
-        assert_eq!(err, ERR_CONDITIONAL_FIELD_OR_VARIANT);
     }
 
     #[test]

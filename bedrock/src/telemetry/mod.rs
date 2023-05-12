@@ -1,30 +1,43 @@
 //! Service telemetry.
 
-#[cfg(feature = "logging")]
-mod context_stack;
+#[cfg(any(feature = "logging", feature = "tracing"))]
+mod scope;
 
-/// Logging-related functionality.
+#[cfg(feature = "testing")]
+mod testing;
+
 #[cfg(feature = "logging")]
 pub mod log;
 
-use slog::Logger;
+#[cfg(feature = "tracing")]
+pub mod tracing;
+
+pub mod settings;
+
+use self::settings::TelemetrySettings;
+use crate::utils::feature_use;
+use crate::{BootstrapResult, ServiceInfo};
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::Arc;
 use std::task::{Context, Poll};
 
-#[cfg(feature = "logging")]
-use self::log::internal::{LogScope, SharedLog};
+#[cfg(feature = "testing")]
+pub use self::testing::TestTelemetryScope;
 
-#[cfg(all(feature = "logging", feature = "testing"))]
-mod logging_testing_imports {
-    pub(super) use super::log::init::LogHarness;
-    pub(super) use super::log::testing::{TestLogRecord, TestLogRecords};
-    pub(super) use std::sync::RwLockReadGuard;
-}
+feature_use!(cfg(feature = "logging"), {
+    use self::log::internal::{current_log, fork_log, LogScope, SharedLog};
+    use slog::Logger;
+    use std::sync::Arc;
+});
 
-#[cfg(all(feature = "logging", feature = "testing"))]
-use self::logging_testing_imports::*;
+feature_use!(cfg(feature = "tracing"), {
+    use self::tracing::internal::{create_span, current_span, SharedSpan, Span, SpanScope};
+
+    feature_use!(cfg(feature = "testing"), {
+        use self::tracing::internal::Tracer;
+        use self::tracing::testing::{current_test_tracer, TestTracerScope};
+    });
+});
 
 /// Wrapper for a future that provides it with [`TelemetryContext`].
 pub struct WithTelemetryContext<'f, T> {
@@ -45,98 +58,72 @@ impl<'f, T> Future for WithTelemetryContext<'f, T> {
     }
 }
 
-/// TODO document when <https://jira.cfdata.org/browse/ROCK-9> is implemented,
-/// so we can provide comprehensive code examples.
+/// [`TODO ROCK-13`]
 #[must_use]
 pub struct TelemetryScope {
     #[cfg(feature = "logging")]
     _log_scope: LogScope,
+
+    #[cfg(feature = "tracing")]
+    _span_scope: Option<SpanScope>,
+
+    // NOTE: certain tracing APIs start a new trace, so we need to scope the test tracer
+    // for them to use the tracer from the test scope instead of production tracer in
+    // the harness.
+    #[cfg(all(feature = "tracing", feature = "testing"))]
+    _test_tracer_scope: Option<TestTracerScope>,
 }
 
-/// TODO document when <https://jira.cfdata.org/browse/ROCK-9> is implemented,
-/// so we can provide comprehensive code examples.
-#[cfg(feature = "testing")]
-#[must_use]
-pub struct TestTelemetryScope {
-    _inner: TelemetryScope,
-    #[cfg(feature = "logging")]
-    log_records: TestLogRecords,
-}
-
-#[cfg(feature = "testing")]
-impl TestTelemetryScope {
-    /// TODO document when <https://jira.cfdata.org/browse/ROCK-9> is implemented,
-    /// so we can provide comprehensive code examples.
-    #[cfg(feature = "logging")]
-    pub fn log_records(&self) -> RwLockReadGuard<Vec<TestLogRecord>> {
-        self.log_records.read().unwrap()
-    }
-}
-
-/// Telemetry context captures current log and tracing span and allows them to be used in scopes
-/// with indirect control flow (e.g. in closures passed to 3rd-party libraries) or applied to a
-/// future.
+/// [`TODO ROCK-13`]
 #[derive(Debug, Clone)]
 pub struct TelemetryContext {
     #[cfg(feature = "logging")]
     log: SharedLog,
+
+    // NOTE: we might not have tracing root at this point
+    #[cfg(feature = "tracing")]
+    span: Option<SharedSpan>,
+
+    #[cfg(all(feature = "tracing", feature = "testing"))]
+    test_tracer: Option<Tracer>,
 }
 
 impl TelemetryContext {
-    /// TODO document when <https://jira.cfdata.org/browse/ROCK-9> is implemented,
-    /// so we can provide comprehensive code examples.
+    /// [`TODO ROCK-13`]
     pub fn current() -> Self {
         Self {
             #[cfg(feature = "logging")]
-            log: log::internal::current_log(),
+            log: current_log(),
+
+            #[cfg(feature = "tracing")]
+            span: current_span(),
+
+            #[cfg(all(feature = "tracing", feature = "testing"))]
+            test_tracer: current_test_tracer(),
         }
     }
 
-    /// TODO document when <https://jira.cfdata.org/browse/ROCK-9> is implemented,
-    /// so we can provide comprehensive code examples.
+    /// [`TODO ROCK-13`]
     pub fn scope(&self) -> TelemetryScope {
         TelemetryScope {
             #[cfg(feature = "logging")]
             _log_scope: LogScope::new(Arc::clone(&self.log)),
+
+            #[cfg(feature = "tracing")]
+            _span_scope: self.span.as_ref().cloned().map(SpanScope::new),
+
+            #[cfg(all(feature = "tracing", feature = "testing"))]
+            _test_tracer_scope: self.test_tracer.as_ref().cloned().map(TestTracerScope::new),
         }
     }
 
-    /// TODO document when <https://jira.cfdata.org/browse/ROCK-9> is implemented,
-    /// so we can provide comprehensive code examples.
+    /// [`TODO ROCK-13`]
     #[cfg(feature = "testing")]
     pub fn test() -> TestTelemetryScope {
-        let settings = &LogHarness::get().settings;
-        let (log, log_records) = log::testing::create_test_log(settings.redact_keys.clone());
-
-        let log_scope = LogScope::new(Arc::new(parking_lot::RwLock::new(log)));
-        let telemetry_scope = TelemetryScope {
-            _log_scope: log_scope,
-        };
-
-        TestTelemetryScope {
-            _inner: telemetry_scope,
-            log_records,
-        }
+        TestTelemetryScope::new()
     }
 
-    /// TODO document when <https://jira.cfdata.org/browse/ROCK-9> is implemented,
-    /// so we can provide comprehensive code examples.
-    #[cfg(feature = "logging")]
-    pub fn with_forked_log(&self) -> Self {
-        Self {
-            log: log::internal::fork(),
-        }
-    }
-
-    /// TODO document when <https://jira.cfdata.org/browse/ROCK-9> is implemented,
-    /// so we can provide comprehensive code examples.
-    #[cfg(feature = "logging")]
-    pub fn slog_logger(&self) -> parking_lot::RwLockReadGuard<Logger> {
-        self.log.read()
-    }
-
-    /// TODO document when <https://jira.cfdata.org/browse/ROCK-9> is implemented,
-    /// so we can provide comprehensive code examples.
+    /// [`TODO ROCK-13`]
     pub fn apply<'f, F>(self, fut: F) -> WithTelemetryContext<'f, F::Output>
     where
         F: Future + Send + 'f,
@@ -146,4 +133,59 @@ impl TelemetryContext {
             ctx: self,
         }
     }
+}
+
+#[cfg(feature = "tracing")]
+impl TelemetryContext {
+    /// [`TODO ROCK-13`]
+    pub fn rustracing_span(&self) -> Option<parking_lot::RwLockReadGuard<Span>> {
+        self.span.as_ref().map(|span| span.inner.read())
+    }
+
+    /// [`TODO ROCK-13`]
+    pub fn apply_with_tracing_span<'f, F>(
+        mut self,
+        span_name: &'static str,
+        fut: F,
+    ) -> WithTelemetryContext<'f, F::Output>
+    where
+        F: Future + Send + 'f,
+    {
+        let _scope = self.span.as_ref().cloned().map(SpanScope::new);
+        self.span = Some(create_span(span_name));
+
+        self.apply(fut)
+    }
+}
+
+#[cfg(feature = "logging")]
+impl TelemetryContext {
+    /// [`TODO ROCK-13`]
+    pub fn with_forked_log(&self) -> Self {
+        Self {
+            log: fork_log(),
+
+            #[cfg(feature = "tracing")]
+            span: self.span.clone(),
+
+            #[cfg(all(feature = "tracing", feature = "testing"))]
+            test_tracer: self.test_tracer.clone(),
+        }
+    }
+
+    /// [`TODO ROCK-13`]
+    pub fn slog_logger(&self) -> parking_lot::RwLockReadGuard<Logger> {
+        self.log.read()
+    }
+}
+
+/// [`TODO ROCK-13`]
+pub fn init(service_info: ServiceInfo, settings: &TelemetrySettings) -> BootstrapResult<()> {
+    #[cfg(feature = "logging")]
+    self::log::init::init(service_info, &settings.logging)?;
+
+    #[cfg(feature = "tracing")]
+    self::tracing::init::init(service_info, &settings.tracing)?;
+
+    Ok(())
 }

@@ -3,8 +3,8 @@ use super::field_filtering::FieldFilteringDrain;
 use super::field_redact::FieldRedactFilterFactory;
 use super::internal::SharedLog;
 use super::settings::{LogFormat, LogOutput, LoggingSettings};
-use crate::telemetry::context_stack::ContextStack;
-use crate::BootstrapResult;
+use crate::telemetry::scope::ScopeStack;
+use crate::{BootstrapResult, ServiceInfo};
 use once_cell::sync::{Lazy, OnceCell};
 use slog::{Discard, Drain, FnValue, Logger, Never};
 use slog_async::Async as AsyncDrain;
@@ -22,14 +22,14 @@ static NOOP_HARNESS: Lazy<LogHarness> = Lazy::new(|| {
     LogHarness {
         root_log: Arc::new(parking_lot::RwLock::new(noop_log)),
         settings: Default::default(),
-        log_ctx_stack: Default::default(),
+        log_scope_stack: Default::default(),
     }
 });
 
 pub(crate) struct LogHarness {
     pub(crate) root_log: SharedLog,
     pub(crate) settings: LoggingSettings,
-    pub(crate) log_ctx_stack: ContextStack<SharedLog>,
+    pub(crate) log_scope_stack: ScopeStack<SharedLog>,
 }
 
 impl LogHarness {
@@ -39,15 +39,13 @@ impl LogHarness {
 }
 
 // NOTE: Does nothing if logging has already been initialized in this process.
-// TODO rename and use in telemetry initializer when <https://jira.cfdata.org/browse/ROCK-9>
-// is implemented
-pub(crate) fn _init(settings: &LoggingSettings, package_version: String) -> BootstrapResult<()> {
-    let root_log = build_log(settings, package_version)?;
+pub(crate) fn init(service_info: ServiceInfo, settings: &LoggingSettings) -> BootstrapResult<()> {
+    let root_log = build_log(service_info, settings)?;
 
     let harness = LogHarness {
         root_log: Arc::new(parking_lot::RwLock::new(root_log)),
         settings: settings.clone(),
-        log_ctx_stack: Default::default(),
+        log_scope_stack: Default::default(),
     };
 
     let _ = HARNESS.set(harness);
@@ -56,30 +54,34 @@ pub(crate) fn _init(settings: &LoggingSettings, package_version: String) -> Boot
 }
 
 pub(crate) fn build_log(
+    service_info: ServiceInfo,
     settings: &LoggingSettings,
-    package_version: String,
 ) -> BootstrapResult<Logger> {
     Ok(match (&settings.output, settings.format) {
         (LogOutput::Terminal, LogFormat::Text) => build_text_log(
+            service_info,
             settings,
-            package_version,
             TermDecorator::new().stdout().build(),
         ),
         (LogOutput::Terminal, LogFormat::Json) => {
-            build_json_log(settings, package_version, io::stdout())
+            build_json_log(service_info, settings, io::stdout())
         }
         (LogOutput::File(file), LogFormat::Text) => build_text_log(
+            service_info,
             settings,
-            package_version,
             PlainDecorator::new(File::create(file)?),
         ),
         (LogOutput::File(file), LogFormat::Json) => {
-            build_json_log(settings, package_version, File::create(file)?)
+            build_json_log(service_info, settings, File::create(file)?)
         }
     })
 }
 
-fn build_log_with_drain<D>(settings: &LoggingSettings, package_version: String, drain: D) -> Logger
+fn build_log_with_drain<D>(
+    service_info: ServiceInfo,
+    settings: &LoggingSettings,
+    drain: D,
+) -> Logger
 where
     D: Drain<Ok = (), Err = Never> + Send + 'static,
 {
@@ -105,21 +107,21 @@ where
             "module" => FnValue(|record| {
                 format!("{}:{}", record.module(), record.line())
             }),
-            "version" => package_version,
+            "version" => service_info.version,
         ),
     )
 }
 
-fn build_text_log<D>(settings: &LoggingSettings, package_version: String, decorator: D) -> Logger
+fn build_text_log<D>(service_info: ServiceInfo, settings: &LoggingSettings, decorator: D) -> Logger
 where
     D: Decorator + Send + 'static,
 {
     let drain = TextDrain::new(decorator).build().fuse();
 
-    build_log_with_drain(settings, package_version, drain)
+    build_log_with_drain(service_info, settings, drain)
 }
 
-fn build_json_log<O>(settings: &LoggingSettings, package_version: String, output: O) -> Logger
+fn build_json_log<O>(service_info: ServiceInfo, settings: &LoggingSettings, output: O) -> Logger
 where
     O: io::Write + Send + 'static,
 {
@@ -129,5 +131,5 @@ where
         .build()
         .fuse();
 
-    build_log_with_drain(settings, package_version, drain)
+    build_log_with_drain(service_info, settings, drain)
 }

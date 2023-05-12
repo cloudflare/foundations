@@ -1,6 +1,6 @@
 # bedrock
 
-A Rust edge service foundation framework.
+A Rust service foundation framework.
 
 ## Documentation
 Checkout the repo and then:

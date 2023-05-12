@@ -12,11 +12,14 @@ debug = 1
 anyhow = { version = "1", features = ["backtrace", "std"] }
 bedrock = { version = "1", path = "./bedrock" }
 bedrock-macros = { version = "1", path = "./bedrock-macros" }
+crossbeam-channel = "0.5"
 darling = "0.14"
 once_cell = "1.5"
 parking_lot = "0.12"
 proc-macro2 = { version = "1", default-features = false }
 rusty-hook = "0.11"
+rustracing = "0.6"
+rustracing_jaeger = "0.9"
 quote = "1"
 syn = { version = "1", features = ["full", "fold", "parsing", "extra-traits"] }
 serde = { version = "1", features = ["derive", "rc"] }

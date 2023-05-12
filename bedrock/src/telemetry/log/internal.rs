@@ -1,5 +1,5 @@
 use super::init::LogHarness;
-use crate::telemetry::context_stack::CurrentContextHandle;
+use crate::telemetry::scope::Scope;
 use slog::{Logger, OwnedKV, SendSyncRefUnwindSafeKV};
 use std::sync::Arc;
 
@@ -8,19 +8,15 @@ use std::sync::Arc;
 pub(crate) type SharedLog = Arc<parking_lot::RwLock<Logger>>;
 
 #[must_use]
-pub(crate) struct LogScope(CurrentContextHandle<SharedLog>);
+pub(crate) struct LogScope(Scope<SharedLog>);
 
 impl LogScope {
     #[inline]
     pub(crate) fn new(log: SharedLog) -> Self {
-        Self(CurrentContextHandle::new(
-            &LogHarness::get().log_ctx_stack,
-            log,
-        ))
+        Self(Scope::new(&LogHarness::get().log_scope_stack, log))
     }
 }
 
-#[doc(hidden)]
 pub fn add_log_fields<T>(fields: OwnedKV<T>)
 where
     T: SendSyncRefUnwindSafeKV + 'static,
@@ -31,15 +27,14 @@ where
     *log_lock = log_lock.new(fields);
 }
 
-#[doc(hidden)]
 pub fn current_log() -> SharedLog {
     let harness = LogHarness::get();
-    let log = harness.log_ctx_stack.current();
+    let log = harness.log_scope_stack.current();
 
     log.unwrap_or_else(|| Arc::clone(&harness.root_log))
 }
 
-pub(crate) fn fork() -> SharedLog {
+pub(crate) fn fork_log() -> SharedLog {
     let parent = current_log();
     let log = parent.read().new(slog::o!());
 

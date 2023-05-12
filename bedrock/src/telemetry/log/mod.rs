@@ -1,3 +1,5 @@
+//! Logging-related functionality.
+
 mod field_dedup;
 mod field_filtering;
 mod field_redact;
@@ -29,9 +31,9 @@ pub fn set_verbosity(level: Level) -> Result<()> {
 
     let kv = OwnedKV(current_log().read().list().clone());
 
-    // NOTE: it's ok to pass an empty string as a version here, log key
+    // NOTE: it's ok to pass default for service info here, log keys
     // for it will be copied over from the current log.
-    let drain = build_log(&settings, "".into())?;
+    let drain = build_log(Default::default(), &settings)?;
 
     *current_log().write() = Logger::root(drain, kv);
 

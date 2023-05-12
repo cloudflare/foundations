@@ -1,18 +1,15 @@
 //! Logging settings.
 
+use crate::utils::feature_use;
 use std::ops::Deref;
 use std::path::PathBuf;
 
-#[cfg(feature = "settings")]
-mod settings_imports {
-    pub(super) use crate::settings;
-    pub(super) use crate::settings::Settings;
-    pub(super) use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
-    pub(super) use std::str::FromStr;
-}
-
-#[cfg(feature = "settings")]
-use self::settings_imports::*;
+feature_use!(cfg(feature = "settings"), {
+    use crate::settings;
+    use crate::settings::Settings;
+    use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
+    use std::str::FromStr;
+});
 
 pub use slog::Level;
 
@@ -20,7 +17,7 @@ pub use slog::Level;
 #[cfg_attr(feature = "settings", settings(crate_path = "crate"))]
 #[cfg_attr(not(feature = "settings"), derive(Clone, Default, Debug))]
 pub struct LoggingSettings {
-    /// Specifies log output
+    /// Specifies log output.
     pub output: LogOutput,
 
     /// The format to use for log messages.
