@@ -23,8 +23,7 @@ settings = [
 # Enables all the telemetry-related features ("logging", "tracing").
 telemetry = [
     "logging", 
-    "tracing", 
-    "bedrock-macros"
+    "tracing"
 ]
 
 # Enables logging functionality.
@@ -45,7 +44,8 @@ tracing = [
     "rustracing_jaeger", 
     "thread_local", 
     "parking_lot", 
-    "once_cell"
+    "once_cell",
+    "bedrock-macros"
 ]
 
 # Enables testing-related functionality.

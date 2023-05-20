@@ -8,26 +8,26 @@ use syn::{
     ItemStruct, Lit, LitStr, Meta, MetaNameValue, NestedMeta, Path,
 };
 
-static ERR_NOT_STRUCT_OR_ENUM: &str = "Settings should be either structure or enum.";
+const ERR_NOT_STRUCT_OR_ENUM: &str = "Settings should be either structure or enum.";
 
-static ERR_NON_UNIT_OR_NEW_TYPE_VARIANT: &str =
+const ERR_NON_UNIT_OR_NEW_TYPE_VARIANT: &str =
     "Settings enum variant should either be a unit variant (e.g. `Enum::Foo`) \
     or a new type variant (e.g. `Enum::Foo(Bar)`).";
 
-static ERR_TUPLE_STRUCT: &str =
+const ERR_TUPLE_STRUCT: &str =
     "Settings with unnamed fields can only be new type structures (e.g. `struct Millimeters(u8)`).";
 
 #[derive(FromMeta)]
-struct Args {
-    #[darling(default = "Args::default_impl_default")]
+struct Options {
+    #[darling(default = "Options::default_impl_default")]
     impl_default: bool,
-    #[darling(default = "Args::default_impl_debug")]
+    #[darling(default = "Options::default_impl_debug")]
     impl_debug: bool,
-    #[darling(default = "Args::default_crate_path")]
+    #[darling(default = "Options::default_crate_path")]
     crate_path: Path,
 }
 
-impl Args {
+impl Options {
     fn default_impl_default() -> bool {
         true
     }
@@ -41,12 +41,12 @@ impl Args {
     }
 }
 
-impl Default for Args {
+impl Default for Options {
     fn default() -> Self {
-        Args {
-            impl_default: Args::default_impl_default(),
-            impl_debug: Args::default_impl_debug(),
-            crate_path: Args::default_crate_path(),
+        Options {
+            impl_default: Options::default_impl_default(),
+            impl_debug: Options::default_impl_debug(),
+            crate_path: Options::default_crate_path(),
         }
     }
 }
@@ -55,28 +55,28 @@ pub(crate) fn expand(args: TokenStream, item: TokenStream) -> TokenStream {
     let item = parse_macro_input!(item as Item);
     let attr_args = parse_macro_input!(args as AttributeArgs);
 
-    let args = match Args::from_list(&attr_args) {
-        Ok(args) => args,
+    let options = match Options::from_list(&attr_args) {
+        Ok(options) => options,
         Err(e) => return e.write_errors().into(),
     };
 
-    expand_from_parsed(args, item)
+    expand_from_parsed(options, item)
         .unwrap_or_else(|e| e.to_compile_error())
         .into()
 }
 
-fn expand_from_parsed(args: Args, mut item: Item) -> Result<proc_macro2::TokenStream> {
+fn expand_from_parsed(options: Options, mut item: Item) -> Result<proc_macro2::TokenStream> {
     match item {
-        Item::Enum(ref mut item) => expand_enum(args, item),
+        Item::Enum(ref mut item) => expand_enum(options, item),
         Item::Struct(ref mut item) if matches!(item.fields, Fields::Unnamed(_)) => {
-            expand_unnamed_field_struct(args, item)
+            expand_unnamed_field_struct(options, item)
         }
-        Item::Struct(ref mut item) => expand_struct(args, item),
+        Item::Struct(ref mut item) => expand_struct(options, item),
         _ => error(&item, ERR_NOT_STRUCT_OR_ENUM),
     }
 }
 
-fn expand_enum(args: Args, item: &mut ItemEnum) -> Result<proc_macro2::TokenStream> {
+fn expand_enum(options: Options, item: &mut ItemEnum) -> Result<proc_macro2::TokenStream> {
     for variant in &item.variants {
         let is_struct = matches!(variant.fields, Fields::Named(_));
 
@@ -85,17 +85,17 @@ fn expand_enum(args: Args, item: &mut ItemEnum) -> Result<proc_macro2::TokenStre
         }
     }
 
-    if args.impl_default {
+    if options.impl_default {
         item.attrs.push(parse_quote!(#[derive(Default)]));
     }
 
-    add_default_attrs(&args, &mut item.attrs);
+    add_default_attrs(&options, &mut item.attrs);
 
     item.attrs
         .push(parse_quote!(#[serde(rename_all = "snake_case")]));
 
     let ident = item.ident.clone();
-    let crate_path = args.crate_path;
+    let crate_path = options.crate_path;
 
     Ok(quote! {
         #item
@@ -105,21 +105,21 @@ fn expand_enum(args: Args, item: &mut ItemEnum) -> Result<proc_macro2::TokenStre
 }
 
 fn expand_unnamed_field_struct(
-    args: Args,
+    options: Options,
     item: &mut ItemStruct,
 ) -> Result<proc_macro2::TokenStream> {
     if is_tuple(&item.fields) {
         return error(&item, ERR_TUPLE_STRUCT);
     }
 
-    if args.impl_default {
+    if options.impl_default {
         item.attrs.push(parse_quote!(#[derive(Default)]));
     }
 
-    add_default_attrs(&args, &mut item.attrs);
+    add_default_attrs(&options, &mut item.attrs);
 
     let ident = item.ident.clone();
-    let crate_path = args.crate_path;
+    let crate_path = options.crate_path;
 
     Ok(quote! {
         #item
@@ -128,15 +128,15 @@ fn expand_unnamed_field_struct(
     })
 }
 
-fn expand_struct(args: Args, item: &mut ItemStruct) -> Result<proc_macro2::TokenStream> {
-    add_default_attrs(&args, &mut item.attrs);
+fn expand_struct(options: Options, item: &mut ItemStruct) -> Result<proc_macro2::TokenStream> {
+    add_default_attrs(&options, &mut item.attrs);
 
     // Make every field optional.
     item.attrs.push(parse_quote!(#[serde(default)]));
 
-    let impl_settings = impl_settings_trait(&args, item)?;
+    let impl_settings = impl_settings_trait(&options, item)?;
 
-    let impl_default = if args.impl_default {
+    let impl_default = if options.impl_default {
         impl_serde_aware_default(item)
     } else {
         quote!()
@@ -154,8 +154,8 @@ fn is_tuple(fields: &Fields) -> bool {
     matches!(fields, Fields::Unnamed(f) if f.unnamed.len() > 1)
 }
 
-fn add_default_attrs(args: &Args, attrs: &mut Vec<Attribute>) {
-    let crate_path = &args.crate_path;
+fn add_default_attrs(options: &Options, attrs: &mut Vec<Attribute>) {
+    let crate_path = &options.crate_path;
     let serde_path = quote!(#crate_path::reexports_for_macros::serde).to_string();
 
     attrs.push(parse_quote!(#[derive(
@@ -164,22 +164,22 @@ fn add_default_attrs(args: &Args, attrs: &mut Vec<Attribute>) {
         #crate_path::reexports_for_macros::serde::Deserialize,
     )]));
 
-    if args.impl_debug {
+    if options.impl_debug {
         attrs.push(parse_quote!(#[derive(Debug)]));
     }
 
     attrs.push(parse_quote!(#[serde(crate = #serde_path)]));
 }
 
-fn impl_settings_trait(args: &Args, item: &ItemStruct) -> Result<proc_macro2::TokenStream> {
+fn impl_settings_trait(options: &Options, item: &ItemStruct) -> Result<proc_macro2::TokenStream> {
     let ident = item.ident.clone();
-    let crate_path = &args.crate_path;
+    let crate_path = &options.crate_path;
     let (impl_generics, ty_generics, where_clause) = item.generics.split_for_impl();
     let mut doc_comments_impl = quote! {};
 
     for field in &item.fields {
         if let Some(name) = &field.ident {
-            let impl_for_field = impl_settings_trait_for_field(args, field, name);
+            let impl_for_field = impl_settings_trait_for_field(options, field, name);
 
             doc_comments_impl.append_all(impl_for_field);
         }
@@ -199,11 +199,11 @@ fn impl_settings_trait(args: &Args, item: &ItemStruct) -> Result<proc_macro2::To
 }
 
 fn impl_settings_trait_for_field(
-    args: &Args,
+    options: &Options,
     field: &Field,
     name: &Ident,
 ) -> proc_macro2::TokenStream {
-    let crate_path = &args.crate_path;
+    let crate_path = &options.crate_path;
     let span = field.ty.span();
     let name_str = name.to_string();
     let docs = extract_doc_comments(&field.attrs);
@@ -475,7 +475,7 @@ mod tests {
         };
 
         let actual = expand_from_parsed(
-            Args {
+            Options {
                 crate_path: parse_quote!(::custom::path),
                 ..Default::default()
             },
@@ -543,7 +543,7 @@ mod tests {
         };
 
         let actual = expand_from_parsed(
-            Args {
+            Options {
                 impl_default: false,
                 ..Default::default()
             },
@@ -623,7 +623,7 @@ mod tests {
         };
 
         let actual = expand_from_parsed(
-            Args {
+            Options {
                 impl_debug: false,
                 ..Default::default()
             },
@@ -655,7 +655,7 @@ mod tests {
         };
 
         let actual = expand_from_parsed(
-            Args {
+            Options {
                 impl_default: false,
                 ..Default::default()
             },
@@ -726,7 +726,7 @@ mod tests {
         };
 
         let actual = expand_from_parsed(
-            Args {
+            Options {
                 impl_default: false,
                 ..Default::default()
             },

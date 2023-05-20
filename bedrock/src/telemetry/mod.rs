@@ -1,4 +1,5 @@
 //! Service telemetry.
+//! [TODO] ROCK-13
 
 #[cfg(any(feature = "logging", feature = "tracing"))]
 mod scope;
@@ -31,7 +32,10 @@ feature_use!(cfg(feature = "logging"), {
 });
 
 feature_use!(cfg(feature = "tracing"), {
-    use self::tracing::internal::{create_span, current_span, SharedSpan, Span, SpanScope};
+    use self::tracing::internal::{
+        create_span, current_span, fork_trace, SharedSpan, Span, SpanScope,
+    };
+    use std::borrow::Cow;
 
     feature_use!(cfg(feature = "testing"), {
         use self::tracing::internal::Tracer;
@@ -58,8 +62,8 @@ impl<'f, T> Future for WithTelemetryContext<'f, T> {
     }
 }
 
-/// [`TODO ROCK-13`]
-#[must_use]
+/// [TODO] ROCK-13
+#[must_use = "Telemetry context is not applied when scope is dropped."]
 pub struct TelemetryScope {
     #[cfg(feature = "logging")]
     _log_scope: LogScope,
@@ -74,7 +78,7 @@ pub struct TelemetryScope {
     _test_tracer_scope: Option<TestTracerScope>,
 }
 
-/// [`TODO ROCK-13`]
+/// [TODO] ROCK-13
 #[derive(Debug, Clone)]
 pub struct TelemetryContext {
     #[cfg(feature = "logging")]
@@ -89,7 +93,7 @@ pub struct TelemetryContext {
 }
 
 impl TelemetryContext {
-    /// [`TODO ROCK-13`]
+    /// [TODO] ROCK-13
     pub fn current() -> Self {
         Self {
             #[cfg(feature = "logging")]
@@ -103,7 +107,7 @@ impl TelemetryContext {
         }
     }
 
-    /// [`TODO ROCK-13`]
+    /// [TODO] ROCK-13
     pub fn scope(&self) -> TelemetryScope {
         TelemetryScope {
             #[cfg(feature = "logging")]
@@ -117,13 +121,13 @@ impl TelemetryContext {
         }
     }
 
-    /// [`TODO ROCK-13`]
+    /// [TODO] ROCK-13
     #[cfg(feature = "testing")]
     pub fn test() -> TestTelemetryScope {
         TestTelemetryScope::new()
     }
 
-    /// [`TODO ROCK-13`]
+    /// [TODO] ROCK-13
     pub fn apply<'f, F>(self, fut: F) -> WithTelemetryContext<'f, F::Output>
     where
         F: Future + Send + 'f,
@@ -137,19 +141,33 @@ impl TelemetryContext {
 
 #[cfg(feature = "tracing")]
 impl TelemetryContext {
-    /// [`TODO ROCK-13`]
+    /// [TODO] ROCK-13
     pub fn rustracing_span(&self) -> Option<parking_lot::RwLockReadGuard<Span>> {
         self.span.as_ref().map(|span| span.inner.read())
     }
 
-    /// [`TODO ROCK-13`]
-    pub fn apply_with_tracing_span<'f, F>(
+    /// [`TODO`]
+    pub fn with_forked_trace(&self, fork_name: impl Into<Cow<'static, str>>) -> Self {
+        Self {
+            #[cfg(feature = "logging")]
+            log: Arc::clone(&self.log),
+
+            span: Some(fork_trace(fork_name)),
+
+            #[cfg(feature = "testing")]
+            test_tracer: self.test_tracer.clone(),
+        }
+    }
+
+    /// [TODO] ROCK-13
+    pub fn apply_with_tracing_span<'f, F, N>(
         mut self,
-        span_name: &'static str,
+        span_name: N,
         fut: F,
     ) -> WithTelemetryContext<'f, F::Output>
     where
         F: Future + Send + 'f,
+        N: Into<Cow<'static, str>>,
     {
         let _scope = self.span.as_ref().cloned().map(SpanScope::new);
         self.span = Some(create_span(span_name));
@@ -160,7 +178,7 @@ impl TelemetryContext {
 
 #[cfg(feature = "logging")]
 impl TelemetryContext {
-    /// [`TODO ROCK-13`]
+    /// [TODO] ROCK-13
     pub fn with_forked_log(&self) -> Self {
         Self {
             log: fork_log(),
@@ -173,13 +191,13 @@ impl TelemetryContext {
         }
     }
 
-    /// [`TODO ROCK-13`]
+    /// [TODO] ROCK-13
     pub fn slog_logger(&self) -> parking_lot::RwLockReadGuard<Logger> {
         self.log.read()
     }
 }
 
-/// [`TODO ROCK-13`]
+/// [TODO] ROCK-13
 pub fn init(service_info: ServiceInfo, settings: &TelemetrySettings) -> BootstrapResult<()> {
     #[cfg(feature = "logging")]
     self::log::init::init(service_info, &settings.logging)?;

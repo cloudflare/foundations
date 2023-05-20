@@ -14,9 +14,9 @@ use super::tracing::testing::{
     create_test_tracer, TestTrace, TestTraceOptions, TestTracerScope, TestTracesSink,
 };
 
-/// [`TODO ROCK-13`]
+/// [TODO] ROCK-13
 #[cfg(feature = "testing")]
-#[must_use]
+#[must_use = "Test telemetry collection stops when scope is dropped."]
 pub struct TestTelemetryScope {
     _inner: TelemetryScope,
 
@@ -60,13 +60,13 @@ impl TestTelemetryScope {
         }
     }
 
-    /// [`TODO ROCK-13`]
+    /// [TODO] ROCK-13
     #[cfg(feature = "logging")]
     pub fn log_records(&self) -> RwLockReadGuard<Vec<TestLogRecord>> {
         self.log_records.read().unwrap()
     }
 
-    /// [`TODO ROCK-13`]
+    /// [TODO] ROCK-13
     #[cfg(feature = "tracing")]
     pub fn traces(&self, options: TestTraceOptions) -> Vec<TestTrace> {
         self.traces_sink.traces(options)

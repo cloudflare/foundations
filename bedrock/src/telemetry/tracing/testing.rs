@@ -7,6 +7,7 @@ use rustracing::tag::TagValue;
 use std::collections::HashMap;
 use std::iter::{FusedIterator, Iterator};
 use std::sync::Mutex;
+use std::time::SystemTime;
 
 type ParentId = Option<u64>;
 
@@ -20,7 +21,46 @@ type ParentId = Option<u64>;
 pub struct TestTrace(pub TestSpan);
 
 impl TestTrace {
-    /// [`TODO ROCK-13`]
+    /// Creates a [depth-first] iterator over trace's spans.
+    ///
+    /// Can be used to check call order of traced functions or to check whether
+    /// certain method was called.
+    ///
+    /// # Examples
+    /// ```
+    /// use bedrock::telemetry::tracing::{self, test_trace};
+    /// use bedrock::telemetry::{TelemetryContext, TestTelemetryScope};
+    ///
+    /// #[tracing::span_fn("foo")]
+    /// fn foo() {
+    ///     println!("Hello");
+    /// }
+    ///
+    /// #[tracing::span_fn("bar")]
+    /// fn bar(call_foo: bool) {
+    ///     if call_foo {
+    ///         foo();
+    ///     }
+    /// }
+    ///
+    /// fn is_foo_called(scope: TestTelemetryScope) -> bool {
+    ///     scope
+    ///         .traces(Default::default())[0]
+    ///         .iter()
+    ///         .find(|t| t.name == "foo")
+    ///         .is_some()
+    /// }
+    ///
+    /// let scope = TelemetryContext::test();
+    /// bar(true);
+    /// assert!(is_foo_called(scope));
+    ///
+    /// let scope = TelemetryContext::test();
+    /// bar(true);
+    /// assert!(is_foo_called(scope));
+    /// ```
+    ///
+    /// [depth-first]: https://en.wikipedia.org/wiki/Depth-first_search
     pub fn iter(&self) -> TestTraceIterator {
         TestTraceIterator {
             stack: vec![&self.0],
@@ -28,7 +68,7 @@ impl TestTrace {
     }
 }
 
-/// A [depth-first] iterator over [`TestTrace`] spans.
+/// A [depth-first] iterator over [`TestTrace`] spans created with the [`TestTrace::iter`] method.
 ///
 /// [depth-first]: https://en.wikipedia.org/wiki/Depth-first_search
 pub struct TestTraceIterator<'s> {
@@ -55,6 +95,9 @@ impl<'s> FusedIterator for TestTraceIterator<'s> {}
 ///
 /// [`test_trace`] macro provides a convenient way to construct test spans and traces for assertions.
 ///
+/// Note that span field values for collected test spans depend on specified [`TestTraceOptions`] -
+/// certain fields can have default values if disabled.
+///
 /// [test telemetry scope]: crate::telemetry::TelemetryContext::test
 /// [`test_trace`]: super::test_trace
 #[derive(Debug, PartialEq)]
@@ -70,6 +113,12 @@ pub struct TestSpan {
 
     /// Span's tags.
     pub tags: Vec<(String, TagValue)>,
+
+    /// Start time of the span.
+    pub start_time: SystemTime,
+
+    /// End time of the span.
+    pub finish_time: SystemTime,
 }
 
 /// Options for test traces construction.
@@ -77,6 +126,8 @@ pub struct TestSpan {
 /// Sometimes it's desirable to omit populating certain fields of test spans for the sake of test
 /// assertions simplicity. These options provide toggles to disable population of some such span
 /// fields.
+///
+/// When disabled fields have default values.
 #[derive(Default, Copy, Clone)]
 pub struct TestTraceOptions {
     /// Includes log records in constructed test spans.
@@ -84,6 +135,12 @@ pub struct TestTraceOptions {
 
     /// Includes tags in constructed test spans.
     pub include_tags: bool,
+
+    /// Includes start time in constructed test spans.
+    pub include_start_time: bool,
+
+    /// Includes finish time in constructed test spans.
+    pub include_finish_time: bool,
 }
 
 #[must_use]
@@ -160,6 +217,16 @@ fn create_test_span(
             span_tags(raw_span)
         } else {
             vec![]
+        },
+        start_time: if options.include_start_time {
+            raw_span.start_time()
+        } else {
+            SystemTime::UNIX_EPOCH
+        },
+        finish_time: if options.include_finish_time {
+            raw_span.finish_time()
+        } else {
+            SystemTime::UNIX_EPOCH
         },
     }
 }
