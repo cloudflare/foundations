@@ -3,7 +3,12 @@
 A Rust service foundation framework.
 
 ## Documentation
-Checkout the repo and then:
+You would need Nightly Rust, to install it run:
 ```
-cargo doc --open --no-deps
+rustup install nightly
+```
+
+And then checkout the repo and run:
+```
+cargo +nightly rustdoc --lib -p bedrock --open --  --cfg docsrs
 ```

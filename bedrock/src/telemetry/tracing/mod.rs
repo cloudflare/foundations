@@ -11,15 +11,14 @@ pub(crate) mod testing;
 pub(crate) mod init;
 
 use self::internal::{create_span, current_span, span_trace_id};
-use rustracing_jaeger::span::SpanContextState as SerializableTraceState;
 use std::borrow::Cow;
 
 #[cfg(any(test, feature = "testing"))]
 pub use self::testing::{TestSpan, TestTrace, TestTraceIterator, TestTraceOptions};
 
 pub use self::internal::SpanScope;
-
 pub use bedrock_macros::span_fn;
+pub use rustracing_jaeger::span::SpanContextState as SerializableTraceState;
 
 /// Returns a trace ID of the current span.
 ///
