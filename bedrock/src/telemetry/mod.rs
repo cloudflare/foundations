@@ -146,11 +146,14 @@ impl TelemetryContext {
         self.span.as_ref().map(|span| span.inner.read())
     }
 
-    /// Forks the current trace, creating a linked child trace.
+    /// Creates a new telemetry context, that includes a forked trace, creating a
+    /// linked child trace.
     ///
     /// If the current trace is sampled, the new child trace also will be sampled.
-    /// If the current trace isn't sampled, no new child trace is created.
-    /// This feature is useful to avoid a single trace from ballooning in size
+    /// If the current trace isn't sampled, no new child trace is created (but a
+    /// new log context is still created).
+    ///
+    /// This function is useful to avoid a single trace from ballooning in size
     /// while still keeping navigability from the source trace to the child
     /// traces and vice-versa.
     ///
@@ -161,6 +164,7 @@ impl TelemetryContext {
     ///
     /// // Test scope is used for demonstration purposes to show the resulting log records.
     /// let scope = TelemetryContext::test();
+    ///
     /// {
     ///     let _root = tracing::span("root");
     ///
@@ -168,10 +172,9 @@ impl TelemetryContext {
     ///         let _span1 = tracing::span("span1");
     ///     }
     ///
-    ///     let ctx = TelemetryContext::current();
-    ///     let ctx = ctx.with_forked_trace("new fork");
-    ///     let _scope = ctx.scope();
-    ///
+    ///     let _scope = TelemetryContext::current()
+    ///         .with_forked_trace("new fork")
+    ///         .scope();
     ///     {
     ///         let _span2 = tracing::span("span2");
     ///     }
