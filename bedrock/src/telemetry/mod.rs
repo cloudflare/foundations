@@ -146,7 +146,7 @@ impl TelemetryContext {
         self.span.as_ref().map(|span| span.inner.read())
     }
 
-    /// [`TODO`]
+    /// [TODO]
     pub fn with_forked_trace(&self, fork_name: impl Into<Cow<'static, str>>) -> Self {
         Self {
             #[cfg(feature = "logging")]

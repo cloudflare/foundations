@@ -1,5 +1,7 @@
 use super::init::TracingHarness;
+use super::StartTraceOptions;
 use crate::telemetry::scope::Scope;
+use rand::{self, Rng};
 use rustracing::sampler::ProbabilisticSampler;
 use rustracing::tag::Tag;
 use rustracing_jaeger::span::{SpanContext, SpanContextState};
@@ -50,14 +52,11 @@ pub fn write_current_span(write_fn: impl FnOnce(&mut Span)) {
 }
 
 pub(crate) fn create_span(name: impl Into<Cow<'static, str>>) -> SharedSpan {
-    let harness = TracingHarness::get();
-
-    let span = match current_span() {
+    match current_span() {
         Some(parent) => parent.inner.read().child(name, |o| o.start()),
-        None => harness.tracer().span(name).start(),
-    };
-
-    span.into()
+        None => start_trace(name, Default::default()),
+    }
+    .into()
 }
 
 pub(crate) fn current_span() -> Option<SharedSpan> {
@@ -68,20 +67,27 @@ pub(crate) fn span_trace_id(span: &Span) -> Option<String> {
     span.context().map(|c| c.state().trace_id().to_string())
 }
 
-pub(crate) fn force_start_trace(
+pub(crate) fn start_trace(
     root_span_name: impl Into<Cow<'static, str>>,
-    stitch_with_trace: Option<SpanContextState>,
+    options: StartTraceOptions,
 ) -> Span {
     let tracer = TracingHarness::get().tracer();
     let mut span_builder = tracer.span(root_span_name);
 
-    if let Some(trace) = stitch_with_trace {
-        let ctx = SpanContext::new(trace, vec![]);
+    if let Some(state) = options.stitch_with_trace {
+        let ctx = SpanContext::new(state, vec![]);
 
         span_builder = span_builder.child_of(&ctx);
     }
 
-    span_builder.tag(Tag::new("sampling.priority", 1)).start()
+    if let Some(ratio) = options.override_sampling_ratio {
+        span_builder = span_builder.tag(Tag::new(
+            "sampling.priority",
+            if should_sample(ratio) { 1 } else { 0 },
+        ));
+    }
+
+    span_builder.start()
 }
 
 pub(crate) fn fork_trace(fork_name: impl Into<Cow<'static, str>>) -> SharedSpan {
@@ -119,13 +125,32 @@ fn create_fork_ref_span(
     current_span_lock.child(fork_ref_span_name, |o| o.start())
 }
 
+fn should_sample(sampling_ratio: f64) -> bool {
+    // NOTE: quick paths first, without rng involved
+    if sampling_ratio == 0.0 {
+        return false;
+    }
+
+    if sampling_ratio == 1.0 {
+        return true;
+    }
+
+    rand::thread_rng().gen_range(0.0..1.0) < sampling_ratio
+}
+
 fn create_fork_root_span(
     fork_name: Cow<'static, str>,
     current_span_lock: parking_lot::RwLockReadGuard<Span>,
     fork_ref_span: &Span,
 ) -> Span {
     // NOTE: If the current span is sampled, then forked trace is also forcibly sampled
-    let mut fork_root_span = force_start_trace(fork_name, None);
+    let mut fork_root_span = start_trace(
+        fork_name,
+        StartTraceOptions {
+            override_sampling_ratio: Some(1.0),
+            ..Default::default()
+        },
+    );
 
     if let Some(trace_id) = span_trace_id(&current_span_lock) {
         fork_root_span.set_tag(|| Tag::new("trace_id", trace_id));

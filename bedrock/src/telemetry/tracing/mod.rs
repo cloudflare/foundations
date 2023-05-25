@@ -20,6 +20,16 @@ pub use self::internal::SpanScope;
 pub use bedrock_macros::span_fn;
 pub use rustracing_jaeger::span::SpanContextState as SerializableTraceState;
 
+/// [TODO] ROCK-13
+#[derive(Default, Debug)]
+pub struct StartTraceOptions {
+    /// [TODO] ROCK-13
+    pub stitch_with_trace: Option<SerializableTraceState>,
+
+    /// [TODO] ROCK-13
+    pub override_sampling_ratio: Option<f64>,
+}
+
 /// Returns a trace ID of the current span.
 ///
 /// Returns `None` if the span is not sampled and don't have associated trace.
@@ -87,12 +97,12 @@ pub fn span(name: impl Into<Cow<'static, str>>) -> SpanScope {
     SpanScope::new(create_span(name))
 }
 
-/// [`TODO`]
-pub fn force_start_trace(
+/// [TODO]
+pub fn start_trace(
     root_span_name: impl Into<Cow<'static, str>>,
-    stitch_with_trace: Option<SerializableTraceState>,
+    options: StartTraceOptions,
 ) -> SpanScope {
-    SpanScope::new(internal::force_start_trace(root_span_name, stitch_with_trace).into())
+    SpanScope::new(internal::start_trace(root_span_name, options).into())
 }
 
 // NOTE: `#[doc(hidden)]` + `#[doc(inline)]` for `pub use` trick is used to prevent these macros

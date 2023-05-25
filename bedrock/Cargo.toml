@@ -13,11 +13,11 @@ default = [
 
 # Enables serializable documented settings functionality.
 settings = [
-    "bedrock-macros", 
-    "serde", 
-    "serde_yaml", 
-    "yaml-merge-keys", 
-    "serde_path_to_error"
+    "dep:bedrock-macros", 
+    "dep:serde", 
+    "dep:serde_yaml", 
+    "dep:yaml-merge-keys", 
+    "dep:serde_path_to_error"
 ]
 
 # Enables all the telemetry-related features ("logging", "tracing").
@@ -28,24 +28,25 @@ telemetry = [
 
 # Enables logging functionality.
 logging = [
-    "slog", 
-    "slog-async", 
-    "slog-json", 
-    "slog-term", 
-    "thread_local", 
-    "parking_lot", 
-    "once_cell"
+    "dep:slog", 
+    "dep:slog-async", 
+    "dep:slog-json", 
+    "dep:slog-term", 
+    "dep:thread_local", 
+    "dep:parking_lot", 
+    "dep:once_cell"
 ]
 
 # Enables distributed tracing functionality.
 tracing = [
-    "crossbeam-channel", 
-    "rustracing", 
-    "rustracing_jaeger", 
-    "thread_local", 
-    "parking_lot", 
-    "once_cell",
-    "bedrock-macros"
+    "dep:crossbeam-channel", 
+    "dep:rustracing", 
+    "dep:rustracing_jaeger", 
+    "dep:thread_local", 
+    "dep:parking_lot", 
+    "dep:once_cell",
+    "dep:rand",
+    "dep:bedrock-macros"
 ]
 
 # Enables testing-related functionality.
@@ -61,6 +62,7 @@ bedrock-macros = { workspace = true, optional = true }
 crossbeam-channel = { workspace = true, optional = true }
 parking_lot = { workspace = true, optional = true }
 once_cell = { workspace = true, optional = true }
+rand = { workspace = true, optional = true }
 rustracing = { workspace = true, optional = true }
 rustracing_jaeger = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
