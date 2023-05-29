@@ -97,7 +97,50 @@ pub fn span(name: impl Into<Cow<'static, str>>) -> SpanScope {
     SpanScope::new(create_span(name))
 }
 
-/// [TODO]
+/// Starts a new root trace. Ends the current one if there is one.
+///
+/// # Examples
+/// ```
+/// use bedrock::telemetry::TelemetryContext;
+/// use bedrock::telemetry::tracing::{self, test_trace, StartTraceOptions, TestTraceOptions};
+///
+/// let scope = TelemetryContext::test();
+///
+/// {
+///     let _root = tracing::span("root");
+///
+///     {
+///         let _span1 = tracing::span("span1");
+///     }
+///
+///     let _scope = tracing::start_trace(
+///         "new root",
+///         StartTraceOptions {
+///             stitch_with_trace: None,
+///             override_sampling_ratio: None,
+///         },
+///     );
+///
+///     {
+///         let _span2 = tracing::span("span2");
+///     }
+/// }
+///
+/// assert_eq!(
+///     scope.traces(Default::default()),
+///     vec![
+///         test_trace! {
+///             "root" => {
+///                 "span1"
+///             }
+///         },
+///         test_trace! {
+///             "new root" => {
+///                 "span2"
+///             }
+///         }
+///     ]
+/// );
 pub fn start_trace(
     root_span_name: impl Into<Cow<'static, str>>,
     options: StartTraceOptions,
