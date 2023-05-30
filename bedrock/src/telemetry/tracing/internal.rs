@@ -72,7 +72,8 @@ pub(crate) fn start_trace(
     options: StartTraceOptions,
 ) -> Span {
     let tracer = TracingHarness::get().tracer();
-    let mut span_builder = tracer.span(root_span_name);
+    let root_span_name = root_span_name.into();
+    let mut span_builder = tracer.span(root_span_name.clone());
 
     if let Some(state) = options.stitch_with_trace {
         let ctx = SpanContext::new(state, vec![]);
@@ -86,32 +87,68 @@ pub(crate) fn start_trace(
             if should_sample(ratio) { 1 } else { 0 },
         ));
     }
-
-    span_builder.start()
-}
-
-pub(crate) fn fork_trace(fork_name: impl Into<Cow<'static, str>>) -> SharedSpan {
-    let current_span = match current_span() {
-        Some(span) if span.is_sampled => span,
-        _ => return Span::inactive().into(),
+    let mut current_span = match current_span() {
+        Some(current_span) if current_span.is_sampled => current_span,
+        _ => return span_builder.start(),
     };
 
-    let fork_name = fork_name.into();
-    let current_span_lock = current_span.inner.read();
-    let mut fork_ref_span = create_fork_ref_span(&fork_name, &current_span_lock);
-    let fork_root_span = create_fork_root_span(fork_name, current_span_lock, &fork_ref_span);
+    // if a prior trace was ongoing (e.g. during stitching, forking), we want to
+    // link the new trace with the existing one
+    let mut new_trace_root_span = span_builder.start();
 
-    // Link the newly created trace in the fork ref span
-    if let Some(trace_id) = span_trace_id(&fork_root_span) {
-        fork_ref_span.set_tag(|| {
+    link_new_trace_with_current(&mut current_span, &root_span_name, &mut new_trace_root_span);
+
+    new_trace_root_span
+}
+
+// Link a newly created trace in the current span's ref span and vice-versa
+fn link_new_trace_with_current(
+    current_span: &mut SharedSpan,
+    root_span_name: &str,
+    new_trace_root_span: &mut Span,
+) {
+    let current_span_lock = current_span.inner.read();
+    let mut new_trace_ref_span = create_fork_ref_span(root_span_name, &current_span_lock);
+    if let Some(trace_id) = span_trace_id(&*new_trace_root_span) {
+        new_trace_ref_span.set_tag(|| {
             Tag::new(
                 "note",
                 "current trace was forked at this point, see the `trace_id` field to obtain the forked trace",
             )
         });
 
-        fork_ref_span.set_tag(|| Tag::new("trace_id", trace_id));
+        new_trace_ref_span.set_tag(|| Tag::new("trace_id", trace_id));
     }
+
+    let current_span_lock = current_span.inner.read();
+
+    if let Some(trace_id) = span_trace_id(&current_span_lock) {
+        new_trace_root_span.set_tag(|| Tag::new("trace_id", trace_id));
+    }
+
+    if let Some(new_trace_ref_ctx) = new_trace_ref_span.context() {
+        let new_trace_ref_span_id = format!("{:32x}", new_trace_ref_ctx.state().span_id());
+
+        new_trace_root_span.set_tag(|| Tag::new("fork_of_span_id", new_trace_ref_span_id));
+    }
+}
+
+pub(crate) fn fork_trace(fork_name: impl Into<Cow<'static, str>>) -> SharedSpan {
+    match current_span() {
+        Some(span) if span.is_sampled => span,
+        _ => return Span::inactive().into(),
+    };
+
+    let fork_name = fork_name.into();
+
+    // NOTE: If the current span is sampled, then forked trace is also forcibly sampled
+    let fork_root_span = start_trace(
+        fork_name,
+        StartTraceOptions {
+            override_sampling_ratio: Some(1.0),
+            ..Default::default()
+        },
+    );
 
     fork_root_span.into()
 }
@@ -136,31 +173,4 @@ fn should_sample(sampling_ratio: f64) -> bool {
     }
 
     rand::thread_rng().gen_range(0.0..1.0) < sampling_ratio
-}
-
-fn create_fork_root_span(
-    fork_name: Cow<'static, str>,
-    current_span_lock: parking_lot::RwLockReadGuard<Span>,
-    fork_ref_span: &Span,
-) -> Span {
-    // NOTE: If the current span is sampled, then forked trace is also forcibly sampled
-    let mut fork_root_span = start_trace(
-        fork_name,
-        StartTraceOptions {
-            override_sampling_ratio: Some(1.0),
-            ..Default::default()
-        },
-    );
-
-    if let Some(trace_id) = span_trace_id(&current_span_lock) {
-        fork_root_span.set_tag(|| Tag::new("trace_id", trace_id));
-    }
-
-    if let Some(fork_ref_ctx) = fork_ref_span.context() {
-        let fork_ref_span_id = format!("{:32x}", fork_ref_ctx.state().span_id());
-
-        fork_root_span.set_tag(|| Tag::new("fork_of_span_id", fork_ref_span_id));
-    }
-
-    fork_root_span
 }

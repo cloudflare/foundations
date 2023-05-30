@@ -40,7 +40,7 @@ pub fn trace_id() -> Option<String> {
 /// Returns tracing state for the current span that can be serialized and passed to other services
 /// to stitch it with their traces, so traces can cover the whole service pipeline.
 ///
-/// The serialized trace then can be passed to [`force_start_trace`] by other service to continue
+/// The serialized trace then can be passed to [`start_trace`] by other service to continue
 /// the trace.
 ///
 /// Returns `None` if the current span is not sampled and don't have associated trace.
@@ -97,7 +97,52 @@ pub fn span(name: impl Into<Cow<'static, str>>) -> SpanScope {
     SpanScope::new(create_span(name))
 }
 
-/// [TODO]
+/// Starts a new root trace. Ends the current one if there is one.
+///
+/// Can also be used to stitch traces with the context received from
+/// other services, and can force enable or disable tracing of
+/// certain code parts by overriding the sampling ratio.
+///
+/// # Examples
+/// ```
+/// use bedrock::telemetry::TelemetryContext;
+/// use bedrock::telemetry::tracing::{self, test_trace, StartTraceOptions, TestTraceOptions};
+///
+/// let scope = TelemetryContext::test();
+///
+/// {
+///     let _root = tracing::span("root");
+///
+///     {
+///         let _span1 = tracing::span("span1");
+///     }
+///
+///     let _scope = tracing::start_trace(
+///         "new root",
+///         Default::default(),
+///     );
+///
+///     {
+///         let _span2 = tracing::span("span2");
+///     }
+/// }
+///
+/// assert_eq!(
+///     scope.traces(Default::default()),
+///     vec![
+///         test_trace! {
+///             "root" => {
+///                 "span1",
+///                 "[new root ref]"
+///             }
+///         },
+///         test_trace! {
+///             "new root" => {
+///                 "span2"
+///             }
+///         }
+///     ]
+/// );
 pub fn start_trace(
     root_span_name: impl Into<Cow<'static, str>>,
     options: StartTraceOptions,
