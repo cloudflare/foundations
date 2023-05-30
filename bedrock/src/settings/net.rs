@@ -19,7 +19,6 @@ macro_rules! wrap {
         pub struct $Ty(std::net::$Ty);
 
         impl Default for $Ty {
-            #[inline]
             fn default() -> Self {
                 Self($default)
             }
@@ -34,6 +33,12 @@ macro_rules! wrap {
         impl From<$Ty> for std::net::$Ty {
             fn from(addr: $Ty) -> Self {
                 addr.0
+            }
+        }
+
+        impl PartialEq<std::net::$Ty> for $Ty {
+            fn eq(&self, other: &std::net::$Ty) -> bool {
+                self.0 == *other
             }
         }
 
