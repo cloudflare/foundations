@@ -7,6 +7,7 @@ use once_cell::sync::{Lazy, OnceCell};
 use rustracing::sampler::ProbabilisticSampler;
 use rustracing::tag::Tag;
 use rustracing_jaeger::reporter::JaegerCompactReporter;
+use std::net::Ipv6Addr;
 use std::thread;
 use std::time::Duration;
 
@@ -107,6 +108,12 @@ fn start_reporter(
 
     reporter.add_service_tag(Tag::new("app.version", service_info.version));
     reporter.set_agent_addr(settings.jaeger_tracing_server_addr.into());
+
+    // caused by https://github.com/sile/rustracing_jaeger/blob/bc7d03f2f6ac6bc0269542089c8907279706ecb7/src/reporter.rs#L34,
+    // we need to also set the reporter to an ipv6 when agent is ipv6
+    if settings.jaeger_tracing_server_addr.is_ipv6() {
+        reporter.set_reporter_addr((Ipv6Addr::LOCALHOST, 0).into())?;
+    }
 
     thread::spawn(move || {
         while let Ok(span) = span_rx.recv() {
