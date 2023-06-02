@@ -1,7 +1,7 @@
 # Make Codeowners not comment on PRs whenever a PR is created
 CODEOWNERS.toplevel.create_pull_request_comment disable
 
-@@@oxy          @cbranch @inikulin @andrew @aramine @alessandro @lucas @shih-chiang @lohith @nkennedy @nuno @thibault-ml @fisher @quang
+@@@oxy          @cbranch @inikulin @andrew @aramine @alessandro @lucas @shih-chiang @lohith @nkennedy @nuno @thibault-ml @fisher
 @@@oer          @lvalentine @moswalt @arazmjou
 @@@ztconn       @areg @chungting @igor @jnorwood @joel @joliveirinha @nuno
 

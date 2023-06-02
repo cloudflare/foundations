@@ -10,23 +10,125 @@ pub(crate) mod testing;
 
 pub(crate) mod init;
 
-use self::internal::{create_span, current_span, span_trace_id};
+use self::internal::{create_span, current_span, span_trace_id, Span};
 use std::borrow::Cow;
+use std::sync::Arc;
 
 #[cfg(any(test, feature = "testing"))]
 pub use self::testing::{TestSpan, TestTrace, TestTraceIterator, TestTraceOptions};
 
 pub use self::internal::SpanScope;
-pub use bedrock_macros::span_fn;
 pub use rustracing_jaeger::span::SpanContextState as SerializableTraceState;
 
-/// [TODO] ROCK-13
+/// A macro that wraps function body with a tracing span that is active as long as the function
+/// call lasts.
+///
+/// The macro works both for sync and async methods and also for the [async_trait] method
+/// implementations.
+///
+/// # Example
+/// ```
+/// use bedrock::telemetry::TelemetryContext;
+/// use bedrock::telemetry::tracing::{self, test_trace};
+///
+/// #[tracing::span_fn("foo")]
+/// fn foo() {
+///     // Does something...
+/// }
+///
+/// // Test scope is used for demonstration purposes to show the resulting traces.
+/// let scope = TelemetryContext::test();
+///
+/// foo();
+///
+/// assert_eq!(
+///     scope.traces(Default::default()),
+///     vec![
+///         test_trace! {
+///             "foo"
+///         },
+///     ]
+/// );
+/// ```
+///
+/// # Using constants for span names
+/// ```
+/// use bedrock::telemetry::TelemetryContext;
+/// use bedrock::telemetry::tracing::{self, test_trace};
+///
+/// const FOO: &str = "foo";
+///
+/// #[tracing::span_fn(FOO)]
+/// fn foo() {
+///     // Does something...
+/// }
+///
+/// // Test scope is used for demonstration purposes to show the resulting traces.
+/// let scope = TelemetryContext::test();
+///
+/// foo();
+///
+/// assert_eq!(
+///     scope.traces(Default::default()),
+///     vec![
+///         test_trace! {
+///             "foo"
+///         },
+///     ]
+/// );
+/// ```
+///
+/// # Renamed or reexported crate
+///
+/// The macro will fail to compile if `bedrock` crate is reexported. However, the crate path
+/// can be explicitly specified for the macro to workaround that:
+///
+/// ```
+/// mod reexport {
+///     pub use bedrock::*;
+/// }
+///
+/// use reexport::telemetry::TelemetryContext;
+/// use reexport::telemetry::tracing::{self, test_trace};
+///
+/// #[tracing::span_fn("foo", crate_path = "reexport")]
+/// fn foo() {
+///     // Does something...
+/// }
+///
+/// // Test scope is used for demonstration purposes to show the resulting traces.
+/// let scope = TelemetryContext::test();
+///
+/// foo();
+///
+/// assert_eq!(
+///     scope.traces(Default::default()),
+///     vec![
+///         test_trace! {
+///             "foo"
+///         },
+///     ]
+/// );
+/// ```
+///
+/// [async_trait]: https://crates.io/crates/async-trait
+pub use bedrock_macros::span_fn;
+
+/// Options for a new trace.
 #[derive(Default, Debug)]
 pub struct StartTraceOptions {
-    /// [TODO] ROCK-13
+    /// Links the new trace with the existing one whose state is provided in the serialized form.
+    ///
+    /// Usually used to stitch traces between multiple services. The serialized state can be
+    /// obtained by using [`state_for_trace_stitching`] function.
     pub stitch_with_trace: Option<SerializableTraceState>,
 
-    /// [TODO] ROCK-13
+    /// Overrides the [sampling ratio] specified on [tracing initializaion].
+    ///
+    /// Can be used to enforce trace sampling by providing `Some(1.0)` value.
+    ///
+    /// [sampling ratio]: self::settings::TracingSettings::sampling_ratio
+    /// [tracing initializaion]: crate::telemetry::init
     pub override_sampling_ratio: Option<f64>,
 }
 
@@ -44,6 +146,44 @@ pub fn trace_id() -> Option<String> {
 /// the trace.
 ///
 /// Returns `None` if the current span is not sampled and don't have associated trace.
+///
+/// # Examples
+/// ```
+/// use bedrock::telemetry::TelemetryContext;
+/// use bedrock::telemetry::tracing::{self, test_trace, SerializableTraceState, StartTraceOptions};
+///
+/// // Test scope is used for demonstration purposes to show the resulting traces.
+/// let scope = TelemetryContext::test();
+///
+/// fn service1() -> String {
+///     let _span = tracing::span("service1_span");
+///
+///     tracing::state_for_trace_stitching().unwrap().to_string()
+/// }
+///
+/// fn service2(trace_state: String) {
+///     let _span = tracing::start_trace(
+///         "service2_span",
+///         StartTraceOptions {
+///             stitch_with_trace: Some(trace_state.parse().unwrap()),
+///             ..Default::default()
+///         }
+///     );
+/// }
+///
+/// let trace_state = service1();
+///
+/// service2(trace_state);
+///
+/// assert_eq!(
+///     scope.traces(Default::default()),
+///     vec![test_trace! {
+///         "service1_span" => {
+///             "service2_span"
+///         }
+///     }]
+/// );
+/// ```
 pub fn state_for_trace_stitching() -> Option<SerializableTraceState> {
     current_span()?
         .inner
@@ -97,17 +237,17 @@ pub fn span(name: impl Into<Cow<'static, str>>) -> SpanScope {
     SpanScope::new(create_span(name))
 }
 
-/// Starts a new root trace. Ends the current one if there is one.
+/// Starts a new trace. Ends the current one if it is available and links the new one with it.
 ///
-/// Can also be used to stitch traces with the context received from
-/// other services, and can force enable or disable tracing of
-/// certain code parts by overriding the sampling ratio.
+/// Can also be used to stitch traces with the context received from other services, and can force
+/// enable or disable tracing of certain code parts by overriding the sampling ratio.
 ///
 /// # Examples
 /// ```
 /// use bedrock::telemetry::TelemetryContext;
-/// use bedrock::telemetry::tracing::{self, test_trace, StartTraceOptions, TestTraceOptions};
+/// use bedrock::telemetry::tracing::{self, test_trace, StartTraceOptions};
 ///
+/// // Test scope is used for demonstration purposes to show the resulting traces.
 /// let scope = TelemetryContext::test();
 ///
 /// {
@@ -117,14 +257,12 @@ pub fn span(name: impl Into<Cow<'static, str>>) -> SpanScope {
 ///         let _span1 = tracing::span("span1");
 ///     }
 ///
-///     let _scope = tracing::start_trace(
+///     let _new_root_span = tracing::start_trace(
 ///         "new root",
 ///         Default::default(),
 ///     );
 ///
-///     {
-///         let _span2 = tracing::span("span2");
-///     }
+///     let _span2 = tracing::span("span2");
 /// }
 ///
 /// assert_eq!(
@@ -143,11 +281,22 @@ pub fn span(name: impl Into<Cow<'static, str>>) -> SpanScope {
 ///         }
 ///     ]
 /// );
+/// ```
 pub fn start_trace(
     root_span_name: impl Into<Cow<'static, str>>,
     options: StartTraceOptions,
 ) -> SpanScope {
     SpanScope::new(internal::start_trace(root_span_name, options).into())
+}
+
+/// Returns the current span as a raw [rustracing] crate's `Span` that is used by Bedrock internally.
+///
+/// Can be used to propagate the tracing context to libraries that don't use Bedrock's
+/// telemetry.
+///
+/// [rustracing]: https://crates.io/crates/rustracing
+pub fn rustracing_span() -> Option<Arc<parking_lot::RwLock<Span>>> {
+    current_span().map(|span| span.inner)
 }
 
 // NOTE: `#[doc(hidden)]` + `#[doc(inline)]` for `pub use` trick is used to prevent these macros

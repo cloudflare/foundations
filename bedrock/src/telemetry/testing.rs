@@ -14,7 +14,21 @@ use super::tracing::testing::{
     create_test_tracer, TestTrace, TestTraceOptions, TestTracerScope, TestTracesSink,
 };
 
-/// [TODO] ROCK-13
+/// A handle for the scope in which telemetry testing is enabled.
+///
+/// Scope ends when the handle is dropped.
+///
+/// The scope is created with the [`TelemetryContext::test`] function and exposes API to
+/// obtain collected telemetry for test assertions.
+///
+/// The scope can be propagated using standard [`TelemetryContext::current`] and
+/// [`TelemetryContext::apply`] methods. So, if `TestTelemetryScope` is a root scope all the
+/// production code telemetry will be collected by it, allowing testing without any changes to
+/// the production code.
+///
+/// [`TelemetryContext::test`]: super::TelemetryContext::test
+/// [`TelemetryContext::current`]: super::TelemetryContext::current
+/// [`TelemetryContext::apply`]: super::TelemetryContext::apply
 #[cfg(feature = "testing")]
 #[must_use = "Test telemetry collection stops when scope is dropped."]
 pub struct TestTelemetryScope {
@@ -60,13 +74,13 @@ impl TestTelemetryScope {
         }
     }
 
-    /// [TODO] ROCK-13
+    /// Returns all the log records produced in the test scope.
     #[cfg(feature = "logging")]
     pub fn log_records(&self) -> RwLockReadGuard<Vec<TestLogRecord>> {
         self.log_records.read().unwrap()
     }
 
-    /// [TODO] ROCK-13
+    /// Returns all the traces produced in the test scope.
     #[cfg(feature = "tracing")]
     pub fn traces(&self, options: TestTraceOptions) -> Vec<TestTrace> {
         self.traces_sink.traces(options)

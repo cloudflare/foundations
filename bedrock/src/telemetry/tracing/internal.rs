@@ -141,16 +141,15 @@ pub(crate) fn fork_trace(fork_name: impl Into<Cow<'static, str>>) -> SharedSpan 
 
     let fork_name = fork_name.into();
 
-    // NOTE: If the current span is sampled, then forked trace is also forcibly sampled
-    let fork_root_span = start_trace(
+    start_trace(
         fork_name,
         StartTraceOptions {
+            // NOTE: If the current span is sampled, then forked trace is also forcibly sampled
             override_sampling_ratio: Some(1.0),
             ..Default::default()
         },
-    );
-
-    fork_root_span.into()
+    )
+    .into()
 }
 
 fn create_fork_ref_span(

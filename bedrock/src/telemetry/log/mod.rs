@@ -19,6 +19,7 @@ use self::internal::current_log;
 use self::settings::LogVerbosity;
 use crate::Result;
 use slog::{Level, Logger, OwnedKV};
+use std::sync::Arc;
 
 #[cfg(any(test, feature = "testing"))]
 pub use self::testing::TestLogRecord;
@@ -40,6 +41,16 @@ pub fn set_verbosity(level: Level) -> Result<()> {
     *current_log().write() = Logger::root(drain, kv);
 
     Ok(())
+}
+
+/// Returns current log as a raw [slog] crate's `Logger` used by Bedrock internally.
+///
+/// Can be used to propagate the logging context to libraries that don't use Bedrock's
+/// telemetry.
+///
+/// [slog]: https://crates.io/crates/slog
+pub fn slog_logger() -> Arc<parking_lot::RwLock<Logger>> {
+    current_log()
 }
 
 // NOTE: `#[doc(hidden)]` + `#[doc(inline)]` for `pub use` trick is used to prevent these macros

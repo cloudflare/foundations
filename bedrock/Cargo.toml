@@ -77,5 +77,6 @@ yaml-merge-keys = { workspace = true, optional = true }
 
 [dev-dependencies]
 rusty-hook = { workspace = true }
+tokio = { workspace = true }
 
 

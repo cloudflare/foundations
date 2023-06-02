@@ -10,5 +10,5 @@ rustup install nightly
 
 And then checkout the repo and run:
 ```
-cargo +nightly rustdoc --lib -p bedrock --open --  --cfg docsrs
+rustup run nightly cargo rustdoc --lib -p bedrock --open --  --cfg docsrs
 ```
