@@ -11,11 +11,11 @@ use std::time::SystemTime;
 
 type ParentId = Option<u64>;
 
-/// Trace produced in the [test telemetry scope].
+/// Trace produced in the [test telemetry context].
 ///
 /// [`test_trace`] macro provides a convenient way to construct this structure in tests for assertions.
 ///
-/// [test telemetry scope]: crate::telemetry::TelemetryContext::test
+/// [test telemetry context]: crate::telemetry::TelemetryContext::test
 /// [`test_trace`]: super::test_trace
 #[derive(Debug, PartialEq)]
 pub struct TestTrace(pub TestSpan);
@@ -29,7 +29,7 @@ impl TestTrace {
     /// # Examples
     /// ```
     /// use bedrock::telemetry::tracing::{self, test_trace};
-    /// use bedrock::telemetry::{TelemetryContext, TestTelemetryScope};
+    /// use bedrock::telemetry::{TelemetryContext, TestTelemetryContext};
     ///
     /// #[tracing::span_fn("foo")]
     /// fn foo() {
@@ -43,21 +43,23 @@ impl TestTrace {
     ///     }
     /// }
     ///
-    /// fn is_foo_called(scope: TestTelemetryScope) -> bool {
-    ///     scope
+    /// fn is_foo_called(ctx: TestTelemetryContext) -> bool {
+    ///     ctx
     ///         .traces(Default::default())[0]
     ///         .iter()
     ///         .find(|t| t.name == "foo")
     ///         .is_some()
     /// }
     ///
-    /// let scope = TelemetryContext::test();
+    /// let ctx = TelemetryContext::test();
+    /// let scope = ctx.scope();
     /// bar(true);
-    /// assert!(is_foo_called(scope));
+    /// assert!(is_foo_called(ctx));
     ///
-    /// let scope = TelemetryContext::test();
+    /// let ctx = TelemetryContext::test();
+    /// let scope = ctx.scope();
     /// bar(true);
-    /// assert!(is_foo_called(scope));
+    /// assert!(is_foo_called(ctx));
     /// ```
     ///
     /// [depth-first]: https://en.wikipedia.org/wiki/Depth-first_search
@@ -91,14 +93,14 @@ impl<'s> Iterator for TestTraceIterator<'s> {
 
 impl<'s> FusedIterator for TestTraceIterator<'s> {}
 
-/// Trace span produced in the [test telemetry scope].
+/// Trace span produced in the [test telemetry context].
 ///
 /// [`test_trace`] macro provides a convenient way to construct test spans and traces for assertions.
 ///
 /// Note that span field values for collected test spans depend on specified [`TestTraceOptions`] -
 /// certain fields can have default values if disabled.
 ///
-/// [test telemetry scope]: crate::telemetry::TelemetryContext::test
+/// [test telemetry context]: crate::telemetry::TelemetryContext::test
 /// [`test_trace`]: super::test_trace
 #[derive(Debug, PartialEq)]
 pub struct TestSpan {

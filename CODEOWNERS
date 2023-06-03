@@ -3,6 +3,6 @@ CODEOWNERS.toplevel.create_pull_request_comment disable
 
 @@@oxy          @cbranch @inikulin @andrew @aramine @alessandro @lucas @shih-chiang @lohith @nkennedy @nuno @thibault-ml @fisher
 @@@oer          @lvalentine @moswalt @arazmjou
-@@@ztconn       @areg @chungting @igor @jnorwood @joel @joliveirinha @nuno
+@@@ztconn       @chungting @igor @jnorwood @joel @joliveirinha @nuno
 
 *   @@oxy @@oer @@ztconn

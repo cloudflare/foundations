@@ -69,8 +69,9 @@ pub fn slog_logger() -> Arc<parking_lot::RwLock<Logger>> {
 /// use bedrock::telemetry::log::{self, TestLogRecord};
 /// use bedrock::telemetry::log::settings::Level;
 ///
-/// // Test scope is used for demonstration purposes to show the resulting log records.
-/// let scope = TelemetryContext::test();
+/// // Test context is used for demonstration purposes to show the resulting log records.
+/// let ctx = TelemetryContext::test();
+/// let _scope = ctx.scope();
 ///
 /// log::warn!("Hello with one field"; "foo" => "bar");
 ///
@@ -83,7 +84,7 @@ pub fn slog_logger() -> Arc<parking_lot::RwLock<Logger>> {
 ///
 /// log::warn!("One more with context fields");
 ///
-/// assert_eq!(*scope.log_records(), &[
+/// assert_eq!(*ctx.log_records(), &[
 ///     TestLogRecord {
 ///         level: Level::Warning,
 ///         message: "Hello with one field".into(),
@@ -134,8 +135,9 @@ macro_rules! __add_fields {
 /// use bedrock::telemetry::log::{self, TestLogRecord};
 /// use bedrock::telemetry::log::settings::Level;
 ///
-/// // Test scope is used for demonstration purposes to show the resulting log records.
-/// let scope = TelemetryContext::test();
+/// // Test context is used for demonstration purposes to show the resulting log records.
+/// let ctx = TelemetryContext::test();
+/// let _scope = ctx.scope();
 ///
 /// // Simple log message
 /// log::error!("Hello world!");
@@ -147,7 +149,7 @@ macro_rules! __add_fields {
 /// // and fields by `;`.
 /// log::error!("Answer: {}", 42; "foo" => "bar", "baz" => 1337);
 ///
-/// assert_eq!(*scope.log_records(), &[
+/// assert_eq!(*ctx.log_records(), &[
 ///     TestLogRecord {
 ///         level: Level::Error,
 ///         message: "Hello world!".into(),
@@ -195,8 +197,9 @@ macro_rules! __error {
 /// use bedrock::telemetry::log::{self, TestLogRecord};
 /// use bedrock::telemetry::log::settings::Level;
 ///
-/// // Test scope is used for demonstration purposes to show the resulting log records.
-/// let scope = TelemetryContext::test();
+/// // Test context is used for demonstration purposes to show the resulting log records.
+/// let ctx = TelemetryContext::test();
+/// let _scope = ctx.scope();
 ///
 /// // Simple log message
 /// log::warn!("Hello world!");
@@ -208,7 +211,7 @@ macro_rules! __error {
 /// // and fields by `;`.
 /// log::warn!("Answer: {}", 42; "foo" => "bar", "baz" => 1337);
 ///
-/// assert_eq!(*scope.log_records(), &[
+/// assert_eq!(*ctx.log_records(), &[
 ///     TestLogRecord {
 ///         level: Level::Warning,
 ///         message: "Hello world!".into(),
@@ -256,8 +259,9 @@ macro_rules! __warn {
 /// use bedrock::telemetry::log::{self, TestLogRecord};
 /// use bedrock::telemetry::log::settings::Level;
 ///
-/// // Test scope is used for demonstration purposes to show the resulting log records.
-/// let scope = TelemetryContext::test();
+/// // Test context is used for demonstration purposes to show the resulting log records.
+/// let ctx = TelemetryContext::test();
+/// let _scope = ctx.scope();
 ///
 /// // Simple log message
 /// log::debug!("Hello world!");
@@ -269,7 +273,7 @@ macro_rules! __warn {
 /// // and fields by `;`.
 /// log::debug!("Answer: {}", 42; "foo" => "bar", "baz" => 1337);
 ///
-/// assert_eq!(*scope.log_records(), &[
+/// assert_eq!(*ctx.log_records(), &[
 ///     TestLogRecord {
 ///         level: Level::Debug,
 ///         message: "Hello world!".into(),
@@ -317,8 +321,9 @@ macro_rules! __debug {
 /// use bedrock::telemetry::log::{self, TestLogRecord};
 /// use bedrock::telemetry::log::settings::Level;
 ///
-/// // Test scope is used for demonstration purposes to show the resulting log records.
-/// let scope = TelemetryContext::test();
+/// // Test context is used for demonstration purposes to show the resulting log records.
+/// let ctx = TelemetryContext::test();
+/// let _scope = ctx.scope();
 ///
 /// // Simple log message
 /// log::info!("Hello world!");
@@ -330,7 +335,7 @@ macro_rules! __debug {
 /// // and fields by `;`.
 /// log::info!("Answer: {}", 42; "foo" => "bar", "baz" => 1337);
 ///
-/// assert_eq!(*scope.log_records(), &[
+/// assert_eq!(*ctx.log_records(), &[
 ///     TestLogRecord {
 ///         level: Level::Info,
 ///         message: "Hello world!".into(),
@@ -378,8 +383,9 @@ macro_rules! __info {
 /// use bedrock::telemetry::log::{self, TestLogRecord};
 /// use bedrock::telemetry::log::settings::Level;
 ///
-/// // Test scope is used for demonstration purposes to show the resulting log records.
-/// let scope = TelemetryContext::test();
+/// // Test context is used for demonstration purposes to show the resulting log records.
+/// let ctx = TelemetryContext::test();
+/// let _scope = ctx.scope();
 ///
 /// // Simple log message
 /// log::trace!("Hello world!");
@@ -391,7 +397,7 @@ macro_rules! __info {
 /// // and fields by `;`.
 /// log::trace!("Answer: {}", 42; "foo" => "bar", "baz" => 1337);
 ///
-/// assert_eq!(*scope.log_records(), &[
+/// assert_eq!(*ctx.log_records(), &[
 ///     TestLogRecord {
 ///         level: Level::Trace,
 ///         message: "Hello world!".into(),

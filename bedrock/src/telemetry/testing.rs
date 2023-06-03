@@ -1,38 +1,32 @@
-use super::TelemetryScope;
+use super::TelemetryContext;
 use crate::utils::feature_use;
+use std::ops::Deref;
 
 feature_use!(cfg(feature = "logging"), {
     use super::log::init::LogHarness;
-    use super::log::internal::LogScope;
     use super::log::testing::{create_test_log, TestLogRecord, TestLogRecords};
     use std::sync::Arc;
     use std::sync::RwLockReadGuard;
 });
 
 #[cfg(feature = "tracing")]
-use super::tracing::testing::{
-    create_test_tracer, TestTrace, TestTraceOptions, TestTracerScope, TestTracesSink,
-};
+use super::tracing::testing::{create_test_tracer, TestTrace, TestTraceOptions, TestTracesSink};
 
-/// A handle for the scope in which telemetry testing is enabled.
+/// A test telemetry context.
 ///
-/// Scope ends when the handle is dropped.
+/// The context can be enabled for the code block by obtaining its [scope] or [wrapping a future]
+/// with it.
 ///
-/// The scope is created with the [`TelemetryContext::test`] function and exposes API to
-/// obtain collected telemetry for test assertions.
+/// The context is created with the [`TelemetryContext::test`] function and exposes API to
+/// obtain collected telemetry for test assertions in addition to standard API of
+/// [`TelemetryContext`].
 ///
-/// The scope can be propagated using standard [`TelemetryContext::current`] and
-/// [`TelemetryContext::apply`] methods. So, if `TestTelemetryScope` is a root scope all the
-/// production code telemetry will be collected by it, allowing testing without any changes to
-/// the production code.
-///
+/// [scope]: super::TelemetryContext::scope
+/// [wrapping a future]: super::TelemetryContext::apply
+/// [`TelemetryContext`]: super::TelemetryContext
 /// [`TelemetryContext::test`]: super::TelemetryContext::test
-/// [`TelemetryContext::current`]: super::TelemetryContext::current
-/// [`TelemetryContext::apply`]: super::TelemetryContext::apply
-#[cfg(feature = "testing")]
-#[must_use = "Test telemetry collection stops when scope is dropped."]
-pub struct TestTelemetryScope {
-    _inner: TelemetryScope,
+pub struct TestTelemetryContext {
+    inner: TelemetryContext,
 
     #[cfg(feature = "tracing")]
     traces_sink: TestTracesSink,
@@ -41,8 +35,7 @@ pub struct TestTelemetryScope {
     log_records: TestLogRecords,
 }
 
-#[cfg(feature = "testing")]
-impl TestTelemetryScope {
+impl TestTelemetryContext {
     pub(crate) fn new() -> Self {
         #[cfg(feature = "logging")]
         let (log, log_records) = {
@@ -54,16 +47,16 @@ impl TestTelemetryScope {
         #[cfg(feature = "tracing")]
         let (tracer, traces_sink) = create_test_tracer();
 
-        TestTelemetryScope {
-            _inner: TelemetryScope {
+        TestTelemetryContext {
+            inner: TelemetryContext {
                 #[cfg(feature = "logging")]
-                _log_scope: LogScope::new(Arc::new(parking_lot::RwLock::new(log))),
+                log: Arc::new(parking_lot::RwLock::new(log)),
 
                 #[cfg(feature = "tracing")]
-                _span_scope: None,
+                span: None,
 
                 #[cfg(feature = "tracing")]
-                _test_tracer_scope: Some(TestTracerScope::new(tracer)),
+                test_tracer: Some(tracer),
             },
 
             #[cfg(feature = "tracing")]
@@ -74,15 +67,23 @@ impl TestTelemetryScope {
         }
     }
 
-    /// Returns all the log records produced in the test scope.
+    /// Returns all the log records produced in the test context.
     #[cfg(feature = "logging")]
     pub fn log_records(&self) -> RwLockReadGuard<Vec<TestLogRecord>> {
         self.log_records.read().unwrap()
     }
 
-    /// Returns all the traces produced in the test scope.
+    /// Returns all the traces produced in the test context.
     #[cfg(feature = "tracing")]
     pub fn traces(&self, options: TestTraceOptions) -> Vec<TestTrace> {
         self.traces_sink.traces(options)
+    }
+}
+
+impl Deref for TestTelemetryContext {
+    type Target = TelemetryContext;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
     }
 }

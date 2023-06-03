@@ -7,9 +7,9 @@ use std::sync::{Arc, RwLock};
 
 pub(crate) type TestLogRecords = Arc<RwLock<Vec<TestLogRecord>>>;
 
-/// Log record produced in the [test telemetry scope].
+/// Log record produced in the [test telemetry context].
 ///
-/// [test telemetry scope]: crate::telemetry::TelemetryContext::test
+/// [test telemetry context]: crate::telemetry::TelemetryContext::test
 #[derive(Debug, PartialEq, Eq)]
 pub struct TestLogRecord {
     /// Verbosity level of the log record.

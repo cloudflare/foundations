@@ -36,13 +36,14 @@ pub use rustracing_jaeger::span::SpanContextState as SerializableTraceState;
 ///     // Does something...
 /// }
 ///
-/// // Test scope is used for demonstration purposes to show the resulting traces.
-/// let scope = TelemetryContext::test();
+/// // Test context is used for demonstration purposes to show the resulting traces.
+/// let ctx = TelemetryContext::test();
+/// let _scope = ctx.scope();
 ///
 /// foo();
 ///
 /// assert_eq!(
-///     scope.traces(Default::default()),
+///     ctx.traces(Default::default()),
 ///     vec![
 ///         test_trace! {
 ///             "foo"
@@ -63,13 +64,14 @@ pub use rustracing_jaeger::span::SpanContextState as SerializableTraceState;
 ///     // Does something...
 /// }
 ///
-/// // Test scope is used for demonstration purposes to show the resulting traces.
-/// let scope = TelemetryContext::test();
+/// // Test context is used for demonstration purposes to show the resulting traces.
+/// let ctx = TelemetryContext::test();
+/// let _scope = ctx.scope();
 ///
 /// foo();
 ///
 /// assert_eq!(
-///     scope.traces(Default::default()),
+///     ctx.traces(Default::default()),
 ///     vec![
 ///         test_trace! {
 ///             "foo"
@@ -96,13 +98,14 @@ pub use rustracing_jaeger::span::SpanContextState as SerializableTraceState;
 ///     // Does something...
 /// }
 ///
-/// // Test scope is used for demonstration purposes to show the resulting traces.
-/// let scope = TelemetryContext::test();
+/// // Test context is used for demonstration purposes to show the resulting traces.
+/// let ctx = TelemetryContext::test();
+/// let _scope = ctx.scope();
 ///
 /// foo();
 ///
 /// assert_eq!(
-///     scope.traces(Default::default()),
+///     ctx.traces(Default::default()),
 ///     vec![
 ///         test_trace! {
 ///             "foo"
@@ -152,8 +155,9 @@ pub fn trace_id() -> Option<String> {
 /// use bedrock::telemetry::TelemetryContext;
 /// use bedrock::telemetry::tracing::{self, test_trace, SerializableTraceState, StartTraceOptions};
 ///
-/// // Test scope is used for demonstration purposes to show the resulting traces.
-/// let scope = TelemetryContext::test();
+/// // Test context is used for demonstration purposes to show the resulting traces.
+/// let ctx = TelemetryContext::test();
+/// let _scope = ctx.scope();
 ///
 /// fn service1() -> String {
 ///     let _span = tracing::span("service1_span");
@@ -176,7 +180,7 @@ pub fn trace_id() -> Option<String> {
 /// service2(trace_state);
 ///
 /// assert_eq!(
-///     scope.traces(Default::default()),
+///     ctx.traces(Default::default()),
 ///     vec![test_trace! {
 ///         "service1_span" => {
 ///             "service2_span"
@@ -207,10 +211,11 @@ pub fn state_for_trace_stitching() -> Option<SerializableTraceState> {
 /// use bedrock::telemetry::TelemetryContext;
 /// use bedrock::telemetry::tracing::{self, test_trace};
 ///
-/// // Test scope is used for demonstration purposes to show the resulting traces.
-/// let scope = TelemetryContext::test();
+/// // Test context is used for demonstration purposes to show the resulting traces.
+/// let ctx = TelemetryContext::test();
 ///
 /// {
+///     let _scope = ctx.scope();
 ///     let _root = tracing::span("root");
 ///     
 ///     {
@@ -222,7 +227,7 @@ pub fn state_for_trace_stitching() -> Option<SerializableTraceState> {
 /// }
 ///
 /// assert_eq!(
-///     scope.traces(Default::default()),
+///     ctx.traces(Default::default()),
 ///     vec![test_trace! {
 ///         "root" => {
 ///             "span1",
@@ -247,8 +252,9 @@ pub fn span(name: impl Into<Cow<'static, str>>) -> SpanScope {
 /// use bedrock::telemetry::TelemetryContext;
 /// use bedrock::telemetry::tracing::{self, test_trace, StartTraceOptions};
 ///
-/// // Test scope is used for demonstration purposes to show the resulting traces.
-/// let scope = TelemetryContext::test();
+/// // Test context is used for demonstration purposes to show the resulting traces.
+/// let ctx = TelemetryContext::test();
+/// let _scope = ctx.scope();
 ///
 /// {
 ///     let _root = tracing::span("root");
@@ -266,7 +272,7 @@ pub fn span(name: impl Into<Cow<'static, str>>) -> SpanScope {
 /// }
 ///
 /// assert_eq!(
-///     scope.traces(Default::default()),
+///     ctx.traces(Default::default()),
 ///     vec![
 ///         test_trace! {
 ///             "root" => {
@@ -315,10 +321,11 @@ pub fn rustracing_span() -> Option<Arc<parking_lot::RwLock<Span>>> {
 /// use bedrock::telemetry::TelemetryContext;
 /// use bedrock::telemetry::tracing::{self, test_trace, TestTraceOptions};
 ///
-/// // Test scope is used for demonstration purposes to show the resulting traces.
-/// let scope = TelemetryContext::test();
+/// // Test context is used for demonstration purposes to show the resulting traces.
+/// let ctx = TelemetryContext::test();
 ///
 /// {
+///     let _scope = ctx.scope();
 ///     let _root = tracing::span("root");
 ///
 ///     tracing::add_span_tags!(
@@ -335,7 +342,7 @@ pub fn rustracing_span() -> Option<Arc<parking_lot::RwLock<Span>>> {
 ///     ]);
 /// }
 ///
-/// let traces = scope.traces(TestTraceOptions {
+/// let traces = ctx.traces(TestTraceOptions {
 ///     include_tags: true,
 ///     ..Default::default()
 /// });
@@ -397,10 +404,11 @@ macro_rules! __add_span_tags {
 /// use bedrock::telemetry::TelemetryContext;
 /// use bedrock::telemetry::tracing::{self, test_trace, TestTraceOptions};
 ///
-/// // Test scope is used for demonstration purposes to show the resulting traces.
-/// let scope = TelemetryContext::test();
+/// // Test context is used for demonstration purposes to show the resulting traces.
+/// let ctx = TelemetryContext::test();
 ///
 /// {
+///     let _scope = ctx.scope();
 ///     let _root = tracing::span("root");
 ///
 ///     tracing::add_span_log_fields!(
@@ -416,7 +424,7 @@ macro_rules! __add_span_tags {
 ///     );
 /// }
 ///
-/// let traces = scope.traces(TestTraceOptions {
+/// let traces = ctx.traces(TestTraceOptions {
 ///     include_logs: true,
 ///     ..Default::default()
 /// });
@@ -462,17 +470,18 @@ macro_rules! __add_span_log_fields {
 /// use bedrock::telemetry::tracing::{self, test_trace, TestTraceOptions};
 /// use std::time::SystemTime;
 ///
-/// // Test scope is used for demonstration purposes to show the resulting traces.
-/// let scope = TelemetryContext::test();
+/// // Test context is used for demonstration purposes to show the resulting traces.
+/// let ctx = TelemetryContext::test();
 /// let start_time = SystemTime::now();
 ///
 /// {
+///     let _scope = ctx.scope();
 ///     let _span = tracing::span("test span");
 ///
 ///     tracing::set_span_start_time!(start_time);
 /// }
 ///
-/// let traces = scope.traces(TestTraceOptions {
+/// let traces = ctx.traces(TestTraceOptions {
 ///     include_start_time: true,
 ///     ..Default::default()
 /// });
@@ -499,17 +508,18 @@ macro_rules! __set_span_start_time {
 /// use bedrock::telemetry::tracing::{self, test_trace, TestTraceOptions};
 /// use std::time::SystemTime;
 ///
-/// // Test scope is used for demonstration purposes to show the resulting traces.
-/// let scope = TelemetryContext::test();
+/// // Test context is used for demonstration purposes to show the resulting traces.
+/// let ctx = TelemetryContext::test();
 /// let finish_time = SystemTime::now();
 ///
 /// {
+///     let _scope = ctx.scope();
 ///     let _span = tracing::span("test span");
 ///
 ///     tracing::set_span_finish_time!(finish_time);
 /// }
 ///
-/// let traces = scope.traces(TestTraceOptions {
+/// let traces = ctx.traces(TestTraceOptions {
 ///     include_finish_time: true,
 ///     ..Default::default()
 /// });

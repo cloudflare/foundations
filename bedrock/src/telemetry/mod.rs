@@ -34,8 +34,8 @@
 //!
 //! # Testing
 //! Telemetry is an important part of the functionality for any production-grade services and
-//! Bedrock provides API for telemetry testing: special testing scope (and backing context) can
-//! be created with [`TelemetryContext::test`] method.
+//! Bedrock provides API for telemetry testing: special testing context can be created with
+//! [`TelemetryContext::test`] method.
 //!
 //! [Jaeger]: https://www.jaegertracing.io/
 //! [Prometheus]: https://prometheus.io/
@@ -62,7 +62,7 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 
 #[cfg(feature = "testing")]
-pub use self::testing::TestTelemetryScope;
+pub use self::testing::TestTelemetryContext;
 
 feature_use!(cfg(feature = "logging"), {
     use self::log::internal::{current_log, fork_log, LogScope, SharedLog};
@@ -173,10 +173,11 @@ impl TelemetryContext {
     /// use bedrock::telemetry::TelemetryContext;
     /// use bedrock::telemetry::tracing::{self, test_trace};
     ///
-    /// // Test scope is used for demonstration purposes to show the resulting traces.
-    /// let scope = TelemetryContext::test();
+    /// // Test context is used for demonstration purposes to show the resulting traces.
+    /// let ctx = TelemetryContext::test();
     ///
     /// {
+    ///     let _scope = ctx.scope();
     ///     let _root = tracing::span("root");
     ///     let telemetry_ctx = TelemetryContext::current();
     ///
@@ -189,7 +190,7 @@ impl TelemetryContext {
     /// }
     ///
     /// assert_eq!(
-    ///     scope.traces(Default::default()),
+    ///     ctx.traces(Default::default()),
     ///     vec![
     ///         test_trace! {
     ///             "root" => {
@@ -212,11 +213,10 @@ impl TelemetryContext {
         }
     }
 
-    /// Creates a test telemetry context and returns a scope handle for it.
+    /// Creates a test telemetry context.
     ///
-    /// Returned scope handle works the same way as the handle returned by
-    /// [`TelemetryContext::scope`], but also exposes API to obtain the telemetry collected in
-    /// the scope.
+    /// Returned context has the same API as standard context, but also exposes API to obtain the
+    /// telemetry collected in it.
     ///
     /// # Examples
     /// ```
@@ -237,9 +237,10 @@ impl TelemetryContext {
     ///
     /// #[tokio::main]
     /// async fn main() {
-    ///     let scope = TelemetryContext::test();
-    ///
+    ///     let ctx = TelemetryContext::test();
+    ///     
     ///     {
+    ///         let _scope = ctx.scope();
     ///         let _root = tracing::span("root");
     ///
     ///         let handle = tokio::spawn(TelemetryContext::current().apply(async {
@@ -251,7 +252,7 @@ impl TelemetryContext {
     ///         some_sync_production_fn_that_we_test();
     ///     }
     ///
-    ///     assert_eq!(*scope.log_records(), &[
+    ///     assert_eq!(*ctx.log_records(), &[
     ///         TestLogRecord {
     ///             level: Level::Warning,
     ///             message: "Async hello!".into(),
@@ -265,7 +266,7 @@ impl TelemetryContext {
     ///     ]);  
     ///
     ///     assert_eq!(
-    ///         scope.traces(Default::default()),
+    ///         ctx.traces(Default::default()),
     ///         vec![
     ///             test_trace! {
     ///                 "root" => {
@@ -278,8 +279,8 @@ impl TelemetryContext {
     /// }
     /// ```
     #[cfg(feature = "testing")]
-    pub fn test() -> TestTelemetryScope {
-        TestTelemetryScope::new()
+    pub fn test() -> TestTelemetryContext {
+        TestTelemetryContext::new()
     }
 
     /// Wraps a future with the telemetry context.
@@ -298,21 +299,24 @@ impl TelemetryContext {
     ///
     /// #[tokio::main]
     /// async fn main() {
-    ///     // Test scope is used for demonstration purposes to show the resulting traces.
-    ///     let scope = TelemetryContext::test();
+    ///     // Test context is used for demonstration purposes to show the resulting traces.
+    ///     let ctx = TelemetryContext::test();
     ///
     ///     {
+    ///         let _scope = ctx.scope();
     ///         let _root = tracing::span("root");
     ///
-    ///         let handle = tokio::spawn(TelemetryContext::current().apply(async {
-    ///             let _child = tracing::span("child");
-    ///         }));
+    ///         let handle = tokio::spawn(
+    ///             TelemetryContext::current().apply(async {
+    ///                 let _child = tracing::span("child");
+    ///             })
+    ///         );
     ///
     ///         handle.await;
     ///     }
     ///
     ///     assert_eq!(
-    ///         scope.traces(Default::default()),
+    ///         ctx.traces(Default::default()),
     ///         vec![
     ///             test_trace! {
     ///                 "root" => {
@@ -323,13 +327,13 @@ impl TelemetryContext {
     ///     );
     /// }
     /// ```
-    pub fn apply<'f, F>(self, fut: F) -> WithTelemetryContext<'f, F::Output>
+    pub fn apply<'f, F>(&self, fut: F) -> WithTelemetryContext<'f, F::Output>
     where
         F: Future + Send + 'f,
     {
         WithTelemetryContext {
             inner: Box::pin(fut),
-            ctx: self,
+            ctx: self.clone(),
         }
     }
 }
@@ -351,10 +355,11 @@ impl TelemetryContext {
     /// use bedrock::telemetry::TelemetryContext;
     /// use bedrock::telemetry::tracing::{self, test_trace};
     ///
-    /// // Test scope is used for demonstration purposes to show the resulting traces.
-    /// let scope = TelemetryContext::test();
+    /// // Test context is used for demonstration purposes to show the resulting traces.
+    /// let ctx = TelemetryContext::test();
     ///
     /// {
+    ///     let _scope = ctx.scope();
     ///     let _root = tracing::span("root");
     ///
     ///     {
@@ -369,7 +374,7 @@ impl TelemetryContext {
     /// }
     ///
     /// assert_eq!(
-    ///     scope.traces(Default::default()),
+    ///     ctx.traces(Default::default()),
     ///     vec![
     ///         test_trace! {
     ///             "root" => {
@@ -406,10 +411,11 @@ impl TelemetryContext {
     ///
     /// #[tokio::main]
     /// async fn main() {
-    ///     // Test scope is used for demonstration purposes to show the resulting traces.
-    ///     let scope = TelemetryContext::test();
+    ///     // Test context is used for demonstration purposes to show the resulting traces.
+    ///     let ctx = TelemetryContext::test();
     ///
     ///     {
+    ///         let _scope = ctx.scope();
     ///         let _root = tracing::span("root");
     ///
     ///         let handle = tokio::spawn(
@@ -422,7 +428,7 @@ impl TelemetryContext {
     ///     }
     ///
     ///     assert_eq!(
-    ///         scope.traces(Default::default()),
+    ///         ctx.traces(Default::default()),
     ///         vec![
     ///             test_trace! {
     ///                 "root" => {
@@ -436,7 +442,7 @@ impl TelemetryContext {
     /// }
     /// ```
     pub fn apply_with_tracing_span<'f, F, N>(
-        mut self,
+        &self,
         span_name: N,
         fut: F,
     ) -> WithTelemetryContext<'f, F::Output>
@@ -444,10 +450,15 @@ impl TelemetryContext {
         F: Future + Send + 'f,
         N: Into<Cow<'static, str>>,
     {
-        let _scope = self.span.as_ref().cloned().map(SpanScope::new);
-        self.span = Some(create_span(span_name));
+        let mut ctx = self.clone();
+        let _scope = ctx.span.as_ref().cloned().map(SpanScope::new);
 
-        self.apply(fut)
+        ctx.span = Some(create_span(span_name));
+
+        WithTelemetryContext {
+            inner: Box::pin(fut),
+            ctx,
+        }
     }
 }
 
@@ -465,8 +476,9 @@ impl TelemetryContext {
     /// use bedrock::telemetry::log::{self, TestLogRecord};
     /// use bedrock::telemetry::log::settings::Level;
     ///
-    /// // Test scope is used for demonstration purposes to show the resulting log records.
-    /// let scope = TelemetryContext::test();
+    /// // Test context is used for demonstration purposes to show the resulting log records.
+    /// let ctx = TelemetryContext::test();
+    /// let _scope = ctx.scope();
     ///
     /// log::add_fields!("conn_field" => 42);
     ///
@@ -486,7 +498,7 @@ impl TelemetryContext {
     ///
     /// log::warn!("Hello from connection");
     ///
-    /// assert_eq!(*scope.log_records(), &[
+    /// assert_eq!(*ctx.log_records(), &[
     ///     TestLogRecord {
     ///         level: Level::Warning,
     ///         message: "Hello from request 1".into(),
@@ -529,7 +541,7 @@ impl TelemetryContext {
 ///
 /// The function sets up telemetry collection endpoints and other relevant settings. The function
 /// doesn't need to be called in tests and any specified settings will be ignored in test
-/// environments. Instead, all the telemetry will be collected by the [`TestTelemetryScope`].
+/// environments. Instead, all the telemetry will be collected in the [`TestTelemetryContext`].
 ///
 /// The function should be called once on service initialization. Consequent calls to the function
 /// don't have any effect.
