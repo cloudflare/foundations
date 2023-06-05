@@ -1,11 +1,12 @@
-use crate::common::{error, Result};
+use crate::common::{error, parse_meta_list, Result};
 use darling::FromMeta;
 use proc_macro::TokenStream;
 use quote::{quote, quote_spanned, TokenStreamExt};
+use syn::parse::{Parse, ParseStream};
 use syn::spanned::Spanned;
 use syn::{
-    parse_macro_input, parse_quote, Attribute, AttributeArgs, Field, Fields, Ident, Item, ItemEnum,
-    ItemStruct, Lit, LitStr, Meta, MetaNameValue, NestedMeta, Path,
+    parse_macro_input, parse_quote, Attribute, Field, Fields, Ident, Item, ItemEnum, ItemStruct,
+    Lit, LitStr, Meta, MetaNameValue, NestedMeta, Path,
 };
 
 const ERR_NOT_STRUCT_OR_ENUM: &str = "Settings should be either structure or enum.";
@@ -51,14 +52,22 @@ impl Default for Options {
     }
 }
 
-pub(crate) fn expand(args: TokenStream, item: TokenStream) -> TokenStream {
-    let item = parse_macro_input!(item as Item);
-    let attr_args = parse_macro_input!(args as AttributeArgs);
+impl Parse for Options {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        let options = if input.is_empty() {
+            Default::default()
+        } else {
+            let meta_list = parse_meta_list(&input)?;
+            Self::from_list(&meta_list)?
+        };
 
-    let options = match Options::from_list(&attr_args) {
-        Ok(options) => options,
-        Err(e) => return e.write_errors().into(),
-    };
+        Ok(options)
+    }
+}
+
+pub(crate) fn expand(args: TokenStream, item: TokenStream) -> TokenStream {
+    let options = parse_macro_input!(args as Options);
+    let item = parse_macro_input!(item as Item);
 
     expand_from_parsed(options, item)
         .unwrap_or_else(|e| e.to_compile_error())
@@ -319,11 +328,15 @@ fn get_field_default_fn(field: &Field) -> Option<proc_macro2::TokenStream> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::common::test_utils::code_str;
+    use crate::common::test_utils::{code_str, parse_attr};
     use syn::parse_quote;
 
     #[test]
     fn expand_structure() {
+        let options = parse_attr! {
+            #[settings]
+        };
+
         let src = parse_quote! {
             struct TestStruct {
                 /// A boolean value.
@@ -334,9 +347,7 @@ mod tests {
             }
         };
 
-        let actual = expand_from_parsed(Default::default(), src)
-            .unwrap()
-            .to_string();
+        let actual = expand_from_parsed(options, src).unwrap().to_string();
 
         let expected = code_str! {
             #[derive(
@@ -386,6 +397,10 @@ mod tests {
 
     #[test]
     fn expand_structure_with_cfg_attrs() {
+        let options = parse_attr! {
+            #[settings]
+        };
+
         let src = parse_quote! {
             struct TestStruct {
                 /// A boolean value.
@@ -399,9 +414,7 @@ mod tests {
             }
         };
 
-        let actual = expand_from_parsed(Default::default(), src)
-            .unwrap()
-            .to_string();
+        let actual = expand_from_parsed(options, src).unwrap().to_string();
 
         let expected = code_str! {
             #[derive(
@@ -464,6 +477,10 @@ mod tests {
 
     #[test]
     fn expand_structure_with_crate_path() {
+        let options = parse_attr! {
+            #[settings(crate_path = "::custom::path")]
+        };
+
         let src = parse_quote! {
             struct TestStruct {
                 /// A boolean value.
@@ -474,15 +491,7 @@ mod tests {
             }
         };
 
-        let actual = expand_from_parsed(
-            Options {
-                crate_path: parse_quote!(::custom::path),
-                ..Default::default()
-            },
-            src,
-        )
-        .unwrap()
-        .to_string();
+        let actual = expand_from_parsed(options, src).unwrap().to_string();
 
         let expected = code_str! {
             #[derive(
@@ -532,6 +541,10 @@ mod tests {
 
     #[test]
     fn expand_structure_no_impl_default() {
+        let options = parse_attr! {
+            #[settings(impl_default = false)]
+        };
+
         let src = parse_quote! {
             struct TestStruct {
                 /// A boolean value.
@@ -542,15 +555,7 @@ mod tests {
             }
         };
 
-        let actual = expand_from_parsed(
-            Options {
-                impl_default: false,
-                ..Default::default()
-            },
-            src,
-        )
-        .unwrap()
-        .to_string();
+        let actual = expand_from_parsed(options, src).unwrap().to_string();
 
         let expected = code_str! {
             #[derive(
@@ -591,13 +596,15 @@ mod tests {
 
     #[test]
     fn expand_newtype_struct() {
+        let options = parse_attr! {
+            #[settings]
+        };
+
         let src = parse_quote! {
             struct TestStruct(u64);
         };
 
-        let actual = expand_from_parsed(Default::default(), src)
-            .unwrap()
-            .to_string();
+        let actual = expand_from_parsed(options, src).unwrap().to_string();
 
         let expected = code_str! {
             #[derive(Default)]
@@ -618,19 +625,15 @@ mod tests {
 
     #[test]
     fn expand_no_impl_debug() {
+        let options = parse_attr! {
+            #[settings(impl_debug = false)]
+        };
+
         let src = parse_quote! {
             struct TestStruct(u64);
         };
 
-        let actual = expand_from_parsed(
-            Options {
-                impl_debug: false,
-                ..Default::default()
-            },
-            src,
-        )
-        .unwrap()
-        .to_string();
+        let actual = expand_from_parsed(options, src).unwrap().to_string();
 
         let expected = code_str! {
             #[derive(Default)]
@@ -650,19 +653,15 @@ mod tests {
 
     #[test]
     fn expand_newtype_struct_no_impl_default() {
+        let options = parse_attr! {
+            #[settings(impl_default = false)]
+        };
+
         let src = parse_quote! {
             struct TestStruct(u64);
         };
 
-        let actual = expand_from_parsed(
-            Options {
-                impl_default: false,
-                ..Default::default()
-            },
-            src,
-        )
-        .unwrap()
-        .to_string();
+        let actual = expand_from_parsed(options, src).unwrap().to_string();
 
         let expected = code_str! {
             #[derive(
@@ -682,6 +681,10 @@ mod tests {
 
     #[test]
     fn expand_enum() {
+        let options = parse_attr! {
+            #[settings]
+        };
+
         let src = parse_quote! {
             enum TestEnum {
                 #[default]
@@ -690,9 +693,7 @@ mod tests {
             }
         };
 
-        let actual = expand_from_parsed(Default::default(), src)
-            .unwrap()
-            .to_string();
+        let actual = expand_from_parsed(options, src).unwrap().to_string();
 
         let expected = code_str! {
             #[derive(Default)]
@@ -718,6 +719,10 @@ mod tests {
 
     #[test]
     fn expand_enum_no_impl_default() {
+        let options = parse_attr! {
+            #[settings(impl_default = false)]
+        };
+
         let src = parse_quote! {
             enum TestEnum {
                 UnitVariant,
@@ -725,15 +730,7 @@ mod tests {
             }
         };
 
-        let actual = expand_from_parsed(
-            Options {
-                impl_default: false,
-                ..Default::default()
-            },
-            src,
-        )
-        .unwrap()
-        .to_string();
+        let actual = expand_from_parsed(options, src).unwrap().to_string();
 
         let expected = code_str! {
             #[derive(
@@ -757,19 +754,25 @@ mod tests {
 
     #[test]
     fn expand_tuple_struct() {
+        let options = parse_attr! {
+            #[settings]
+        };
+
         let src = parse_quote! {
             struct TestStruct(u64, String);
         };
 
-        let err = expand_from_parsed(Default::default(), src)
-            .unwrap_err()
-            .to_string();
+        let err = expand_from_parsed(options, src).unwrap_err().to_string();
 
         assert_eq!(err, ERR_TUPLE_STRUCT);
     }
 
     #[test]
     fn expand_enum_with_struct_variant() {
+        let options = parse_attr! {
+            #[settings]
+        };
+
         let src = parse_quote! {
             enum TestEnum {
                 Variant {
@@ -778,45 +781,51 @@ mod tests {
             }
         };
 
-        let err = expand_from_parsed(Default::default(), src)
-            .unwrap_err()
-            .to_string();
+        let err = expand_from_parsed(options, src).unwrap_err().to_string();
 
         assert_eq!(err, ERR_NON_UNIT_OR_NEW_TYPE_VARIANT);
     }
 
     #[test]
     fn expand_enum_with_tuple_variant() {
+        let options = parse_attr! {
+            #[settings]
+        };
+
         let src = parse_quote! {
             enum TestEnum {
                Tuple(u64, String)
             }
         };
 
-        let err = expand_from_parsed(Default::default(), src)
-            .unwrap_err()
-            .to_string();
+        let err = expand_from_parsed(options, src).unwrap_err().to_string();
 
         assert_eq!(err, ERR_NON_UNIT_OR_NEW_TYPE_VARIANT);
     }
 
     #[test]
     fn expand_non_struct_or_enum() {
+        let options = parse_attr! {
+            #[settings]
+        };
+
         let src = parse_quote! {
             mod foo {
                 const BAR: &str = "baz";
             }
         };
 
-        let err = expand_from_parsed(Default::default(), src)
-            .unwrap_err()
-            .to_string();
+        let err = expand_from_parsed(options, src).unwrap_err().to_string();
 
         assert_eq!(err, ERR_NOT_STRUCT_OR_ENUM);
     }
 
     #[test]
     fn expand_with_serde_defaults() {
+        let options = parse_attr! {
+            #[settings]
+        };
+
         let src = parse_quote! {
             struct TestStruct {
                 #[serde(default = "TestStruct::default_boolean")]
@@ -827,9 +836,7 @@ mod tests {
             }
         };
 
-        let actual = expand_from_parsed(Default::default(), src)
-            .unwrap()
-            .to_string();
+        let actual = expand_from_parsed(options, src).unwrap().to_string();
 
         let expected = code_str! {
             #[derive(

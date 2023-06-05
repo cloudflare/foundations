@@ -14,6 +14,9 @@ use super::tracing::testing::{create_test_tracer, TestTrace, TestTraceOptions, T
 
 /// A test telemetry context.
 ///
+/// [`with_test_telemetry`] macro can automatically create test context for `#[test]` and
+/// `#[tokio::test]`.
+///
 /// The context can be enabled for the code block by obtaining its [scope] or [wrapping a future]
 /// with it.
 ///
@@ -21,6 +24,7 @@ use super::tracing::testing::{create_test_tracer, TestTrace, TestTraceOptions, T
 /// obtain collected telemetry for test assertions in addition to standard API of
 /// [`TelemetryContext`].
 ///
+/// [`with_test_telemetry`]: super::with_test_telemetry
 /// [scope]: super::TelemetryContext::scope
 /// [wrapping a future]: super::TelemetryContext::apply
 /// [`TelemetryContext`]: super::TelemetryContext

@@ -35,7 +35,8 @@
 //! # Testing
 //! Telemetry is an important part of the functionality for any production-grade services and
 //! Bedrock provides API for telemetry testing: special testing context can be created with
-//! [`TelemetryContext::test`] method.
+//! [`TelemetryContext::test`] method and framework provides a special [`with_test_telemetry`] macro
+//! to enable telemetry testing in `#[test]` and `#[tokio::test]`.
 //!
 //! [Jaeger]: https://www.jaegertracing.io/
 //! [Prometheus]: https://prometheus.io/
@@ -61,9 +62,6 @@ use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-#[cfg(feature = "testing")]
-pub use self::testing::TestTelemetryContext;
-
 feature_use!(cfg(feature = "logging"), {
     use self::log::internal::{current_log, fork_log, LogScope, SharedLog};
     use std::sync::Arc;
@@ -78,6 +76,92 @@ feature_use!(cfg(feature = "tracing"), {
         use self::tracing::testing::{current_test_tracer, TestTracerScope};
     });
 });
+
+#[cfg(feature = "testing")]
+pub use self::testing::TestTelemetryContext;
+
+/// A macro that enables telemetry testing in `#[test]` and `#[tokio::test]`.
+///
+/// # Wrapping `#[test]`
+/// ```
+/// use bedrock::telemetry::tracing::{self, test_trace};
+/// use bedrock::telemetry::{with_test_telemetry, TestTelemetryContext};
+///
+/// #[with_test_telemetry(test)]
+/// fn sync_rust_test(ctx: TestTelemetryContext) {
+///     {
+///         let _span = tracing::span("root");
+///     }
+///
+///     assert_eq!(
+///         ctx.traces(Default::default()),
+///         vec![test_trace! {
+///             "root"
+///         }]
+///     );
+/// }
+/// ```
+///
+/// # Wrapping `#[tokio::test]`
+/// ```
+/// use bedrock::telemetry::tracing::{self, test_trace};
+/// use bedrock::telemetry::{with_test_telemetry, TestTelemetryContext};
+///
+/// #[with_test_telemetry(tokio::test)]
+/// async fn wrap_tokio_test(ctx: TestTelemetryContext) {
+///     {
+///         let _span = tracing::span("span1");
+///     }
+///
+///     tokio::task::yield_now().await;
+///
+///     {
+///         let _span = tracing::span("span2");
+///     }
+///
+///     assert_eq!(
+///         ctx.traces(Default::default()),
+///         vec![
+///             test_trace! {
+///                 "span1"
+///             },
+///             test_trace! {
+///                 "span2"
+///             }
+///         ]
+///     );
+/// }
+/// ```
+///
+/// # Renamed or reexported crate
+///
+/// The macro will fail to compile if `bedrock` crate is reexported. However, the crate path
+/// can be explicitly specified for the macro to workaround that:
+///
+/// ```
+/// mod reexport {
+///     pub use bedrock::*;
+/// }
+///
+/// use reexport::telemetry::tracing::{self, test_trace};
+/// use reexport::telemetry::{with_test_telemetry, TestTelemetryContext};
+///
+/// #[with_test_telemetry(test, crate_path = "reexport")]
+/// fn sync_rust_test(ctx: TestTelemetryContext) {
+///     {
+///         let _span = tracing::span("root");
+///     }
+///
+///     assert_eq!(
+///         ctx.traces(Default::default()),
+///         vec![test_trace! {
+///             "root"
+///         }]
+///     );
+/// }
+/// ```
+#[cfg(feature = "testing")]
+pub use bedrock_macros::with_test_telemetry;
 
 /// Wrapper for a future that provides it with [`TelemetryContext`].
 pub struct WithTelemetryContext<'f, T> {

@@ -50,7 +50,9 @@ tracing = [
 ]
 
 # Enables testing-related functionality.
-testing = []
+testing = [
+    "dep:bedrock-macros"
+]
 
 [package.metadata.docs.rs]
 all-features = true

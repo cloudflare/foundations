@@ -52,12 +52,12 @@ impl TestTrace {
     /// }
     ///
     /// let ctx = TelemetryContext::test();
-    /// let scope = ctx.scope();
+    /// let _scope = ctx.scope();
     /// bar(true);
     /// assert!(is_foo_called(ctx));
     ///
     /// let ctx = TelemetryContext::test();
-    /// let scope = ctx.scope();
+    /// let _scope = ctx.scope();
     /// bar(true);
     /// assert!(is_foo_called(ctx));
     /// ```
@@ -270,13 +270,30 @@ pub(crate) fn create_test_tracer() -> (Tracer, TestTracesSink) {
 mod tests {
     use super::*;
     use crate::telemetry::tracing::test_trace;
+    use std::thread;
+    use std::time::Duration;
 
     fn make_test_spans(tracer: &Tracer) {
         let root1 = tracer.span("root1").start();
+
         let root1_child1 = root1.child("root1_child1", |o| o.start());
-        let _root1_child1_1 = root1_child1.child("root1_child1_1", |o| o.start());
-        let _root1_child1_2 = root1_child1.child("root1_child1_2", |o| o.start());
-        let _root1_child2 = root1.child("root1_child2", |o| o.start());
+
+        let root1_child1_1 = root1_child1.child("root1_child1_1", |o| o.start());
+        let root1_child1_2 = root1_child1.child("root1_child1_2", |o| o.start());
+
+        // NOTE: `SystemTime` time resolution might not be sufficient to capture the time difference
+        // between the drops, leading to changed order of those spans. So, we manually delay drops
+        // here.
+        drop(root1_child1_1);
+        thread::sleep(Duration::from_millis(10));
+        drop(root1_child1_2);
+
+        let root1_child2 = root1.child("root1_child2", |o| o.start());
+
+        drop(root1_child1);
+        thread::sleep(Duration::from_millis(10));
+        drop(root1_child2);
+
         let root2 = tracer.span("root2").start();
         let _root2_child1 = root2.child("root2_child1", |o| o.start());
     }

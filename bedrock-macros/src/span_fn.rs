@@ -1,12 +1,10 @@
+use crate::common::parse_optional_trailing_meta_list;
 use darling::FromMeta;
 use proc_macro::TokenStream;
 use proc_macro2::{Span, TokenStream as TokenStream2};
 use quote::{quote, ToTokens};
 use syn::parse::{Parse, ParseStream};
-use syn::punctuated::Punctuated;
-use syn::{
-    parse_quote, Block, Expr, ExprCall, ItemFn, LitStr, NestedMeta, Path, Signature, Stmt, Token,
-};
+use syn::{parse_quote, Block, Expr, ExprCall, ItemFn, LitStr, Path, Signature, Stmt};
 
 const ERR_APPLIED_TO_NON_FN: &str = "`span_fn` macro can only be used on functions";
 
@@ -51,14 +49,6 @@ impl Options {
     }
 }
 
-impl Default for Options {
-    fn default() -> Self {
-        Options {
-            crate_path: Options::default_crate_path(),
-        }
-    }
-}
-
 struct Args {
     span_name: SpanName,
     options: Options,
@@ -67,18 +57,8 @@ struct Args {
 impl Parse for Args {
     fn parse(input: ParseStream) -> syn::Result<Self> {
         let span_name = input.parse::<SpanName>()?;
-
-        let options = if input.peek(Token![,]) {
-            input.parse::<Token![,]>()?;
-
-            let meta_list = Punctuated::<NestedMeta, Token![,]>::parse_terminated(input)?
-                .into_iter()
-                .collect::<Vec<_>>();
-
-            Options::from_list(&meta_list)?
-        } else {
-            Default::default()
-        };
+        let meta_list = parse_optional_trailing_meta_list(&input)?;
+        let options = Options::from_list(&meta_list)?;
 
         Ok(Self { span_name, options })
     }
@@ -200,16 +180,8 @@ fn try_async_trait_fn_rewrite(args: &Args, body: &Block) -> Option<TokenStream2>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::common::test_utils::code_str;
-    use syn::{parse_quote, Attribute};
-
-    macro_rules! parse_attr {
-        ( $($t:tt)* ) => {{
-            let attr: Attribute = parse_quote! { $($t)* };
-
-            attr.parse_args::<Args>().unwrap()
-        }};
-    }
+    use crate::common::test_utils::{code_str, parse_attr};
+    use syn::parse_quote;
 
     #[test]
     fn expand_sync_fn() {
