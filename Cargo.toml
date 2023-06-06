@@ -2,6 +2,7 @@
 members = [
     "bedrock",
     "bedrock-macros",
+    "tools/gen-syscall-enum"
 ]
 resolver = "2"
 
@@ -22,6 +23,7 @@ rusty-hook = "0.11"
 rustracing = "0.6"
 rustracing_jaeger = "0.9"
 quote = "1"
+regex = "1.8"
 syn = { version = "1", features = ["full", "fold", "parsing", "extra-traits"] }
 serde = { version = "1", features = ["derive", "rc"] }
 serde_yaml = "0.8"

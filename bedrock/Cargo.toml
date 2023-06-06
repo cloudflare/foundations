@@ -7,6 +7,7 @@ edition = "2021"
 # All features are enabled by default.
 default = [
     "settings", 
+    "seccomp",
     "telemetry", 
     "testing"
 ]
@@ -49,10 +50,13 @@ tracing = [
     "dep:bedrock-macros"
 ]
 
+seccomp = []
+
 # Enables testing-related functionality.
 testing = [
     "dep:bedrock-macros"
 ]
+
 
 [package.metadata.docs.rs]
 all-features = true

@@ -22,6 +22,7 @@
 //! - **logging**: Enables logging functionality.
 //! - **tracing**: Enables distributed tracing functionality.
 //! - **testing**: Enables testing-related functionality.
+//! - **testing**: Enables [seccomp] hardening functionality.
 //!
 //! [Cargo features]: https://doc.rust-lang.org/stable/cargo/reference/features.html#the-features-section
 //! [seccomp]: https://en.wikipedia.org/wiki/Seccomp
@@ -36,6 +37,13 @@ pub mod settings;
 
 #[cfg(any(feature = "logging", feature = "tracing"))]
 pub mod telemetry;
+
+#[cfg(all(
+    feature = "seccomp",
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
+pub mod seccomp;
 
 #[doc(hidden)]
 pub mod reexports_for_macros {
