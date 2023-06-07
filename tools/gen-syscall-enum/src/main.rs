@@ -87,7 +87,7 @@ fn gen_rs_file(out_rs: PathBuf, syscall_list: Vec<(String, String)>) {
     for (syscall, id) in syscall_list {
         writeln!(
             out,
-            "    /// [https://man7.org/linux/man-pages/man2/{syscall}.2.html]"
+            "    /// <https://man7.org/linux/man-pages/man2/{syscall}.2.html>"
         )
         .unwrap();
 
