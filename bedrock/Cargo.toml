@@ -4,10 +4,15 @@ version = "1.0.0"
 edition = "2021"
 
 [features]
-# All features are enabled by default.
+# Default set of features.
 default = [
+    "platform-common-default", 
+    "seccomp"
+]
+
+# All non platform-specific features
+platform-common-default = [
     "settings", 
-    "seccomp",
     "telemetry", 
     "testing"
 ]
@@ -50,13 +55,15 @@ tracing = [
     "dep:bedrock-macros"
 ]
 
-seccomp = []
+seccomp = [
+    "dep:bindgen",
+    "dep:once_cell"
+]
 
 # Enables testing-related functionality.
 testing = [
     "dep:bedrock-macros"
 ]
-
 
 [package.metadata.docs.rs]
 all-features = true
@@ -85,4 +92,6 @@ yaml-merge-keys = { workspace = true, optional = true }
 rusty-hook = { workspace = true }
 tokio = { workspace = true }
 
+[target.'cfg(all(target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64")))'.build-dependencies]
+bindgen = { workspace = true, optional = true }
 
