@@ -13,6 +13,8 @@ debug = 1
 anyhow = { version = "1", features = ["backtrace", "std"] }
 bedrock = { version = "1", path = "./bedrock" }
 bedrock-macros = { version = "1", path = "./bedrock-macros" }
+bindgen = "0.65"
+cc = "1.0"
 crossbeam-channel = "0.5"
 darling = "0.14"
 once_cell = "1.5"

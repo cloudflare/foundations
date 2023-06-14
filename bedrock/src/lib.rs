@@ -17,12 +17,14 @@
 //! library in a modular fashion by enabling or disabling [Cargo features]:
 //!
 //! - **default**: All features are enabled by default.
+//! - **platform-common-default**: The same as **default**, but excludes platform-specific features,
+//! such as **seccomp**.
 //! - **settings**: Enables serializable documented settings functionality.
 //! - **telemetry**: Enables all the telemetry-related features (**logging**, **tracing**).
 //! - **logging**: Enables logging functionality.
 //! - **tracing**: Enables distributed tracing functionality.
 //! - **testing**: Enables testing-related functionality.
-//! - **testing**: Enables [seccomp] hardening functionality.
+//! - **seccomp**: Enables [seccomp] hardening functionality. Available only on Linux (x86_64, aarch64).
 //!
 //! [Cargo features]: https://doc.rust-lang.org/stable/cargo/reference/features.html#the-features-section
 //! [seccomp]: https://en.wikipedia.org/wiki/Seccomp
@@ -49,10 +51,15 @@ pub mod seccomp;
 pub mod reexports_for_macros {
     #[cfg(feature = "tracing")]
     pub use rustracing;
+
     #[cfg(feature = "settings")]
     pub use serde;
+
     #[cfg(feature = "logging")]
     pub use slog;
+
+    #[cfg(feature = "seccomp")]
+    pub use once_cell;
 }
 
 /// Error that can be returned on a service initialisation.

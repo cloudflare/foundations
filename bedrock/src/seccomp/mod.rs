@@ -1,5 +1,556 @@
-//! [TODO]
+//! [seccomp] is a Linux kernel's syscall sandboxing feature. It allows to set up hooks for the
+//! syscalls that application is using and perform certain actions on it, such as blocking or
+//! logging. As an effect, providing an additional fence from attacks like [arbitrary code execution].
+//!
+//! seccomp filtering is applied to a thread in which [`enable`] was called and all the threads
+//! spawned by this thread. Therefore, enabling seccomp early in the `main` function enables it
+//! for the whole proccess.
+//!
+//! All the syscalls are considered to be a security violation by default, with [`ViolationAction`]
+//! being performed when syscall is encountered. Application need to provide a list of exception
+//! [`Rule`]s to [`enable`] function for syscalls that it considers safe to use.
+//!
+//! The crate provides a few [`common_allow_lists`] for syscalls to simplify configuration.
+//!
+//! bedrock compiles and statically links with [libseccomp], so it doesn't require the lib to be
+//! installed.
+//!
+//! [seccomp]: https://man7.org/linux/man-pages/man2/seccomp.2.html
+//! [arbitrary code execution]: https://en.wikipedia.org/wiki/Arbitrary_code_execution
+//! [libseccomp]: https://github.com/seccomp/libseccomp
 
+pub mod common_allow_lists;
+mod internal;
 mod syscalls;
 
+#[allow(
+    non_camel_case_types,
+    non_upper_case_globals,
+    non_snake_case,
+    dead_code,
+    unreachable_pub
+)]
+mod sys {
+    include!(concat!(env!("OUT_DIR"), "/seccomp_sys.rs"));
+}
+
+use self::internal::RawRule;
+use crate::BootstrapResult;
+use anyhow::bail;
+
 pub use self::syscalls::Syscall;
+
+/// A raw OS error code to be returned by [`Rule::ReturnError`].
+pub type RawOsErrorNum = u16;
+
+/// An action to be taken on seccomp sandbox violation.
+#[derive(Copy, Clone, Debug, PartialEq)]
+#[repr(u32)]
+pub enum ViolationAction {
+    /// Kill the process.
+    ///
+    /// Note that even though seccomp API allows to kill individual threads, bedrock doesn't
+    /// expose this action as killing threads without unwinding [can cause UB in Rust].
+    ///
+    /// [can cause UB in Rust]: https://github.com/rust-lang/unsafe-code-guidelines/issues/211
+    KillProcess = sys::SCMP_ACT_KILL_PROCESS,
+
+    /// Allow the syscalls, but also log them in [sysctl] logs.
+    ///
+    /// The logs can be examined by running:
+    /// ```sh
+    /// sysctl -n kernel.seccomp.actions_logged
+    /// ```
+    ///
+    /// [sysctl]: https://man7.org/linux/man-pages/man8/sysctl.8.html
+    AllowAndLog = sys::SCMP_ACT_LOG,
+}
+
+/// A value to compare syscall arguments with in [comparators].
+///
+/// The value can be either a numeric or a reference `'static` value.
+///
+/// [comparators]: ArgCmp
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub struct ArgCmpValue(u64);
+
+impl ArgCmpValue {
+    /// Constructs a value from a given static reference.
+    pub fn from_static<T>(val: &'static T) -> Self {
+        Self(val as *const T as u64)
+    }
+}
+
+impl<T: Into<u64>> From<T> for ArgCmpValue {
+    fn from(val: T) -> Self {
+        Self(val.into())
+    }
+}
+
+/// Syscall argument comparators to be used in [`Rule`].
+///
+/// Argument comparators add additional filtering layer to rules allowing to compare syscall's
+/// argument with the provided value and apply the exception rule only if the comparisson is
+/// successful.
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum ArgCmp {
+    /// Checks that argument is not equal to the provided value.
+    NotEqual {
+        /// The index of the argument.
+        arg_idx: u32,
+
+        /// Value to compare the argument with (can be a raw pointer).
+        value: ArgCmpValue,
+    },
+
+    /// Checks that argument is less than the provided value.
+    LessThan {
+        /// The index of the argument.
+        arg_idx: u32,
+
+        /// Value to compare the argument with (can be a raw pointer).
+        value: ArgCmpValue,
+    },
+
+    /// Checks that argument is less than or equal to the provided value.
+    LessThanOrEqual {
+        /// The index of the argument.
+        arg_idx: u32,
+
+        /// Value to compare the argument with (can be a raw pointer).
+        value: ArgCmpValue,
+    },
+
+    /// Checks that argument is equal to the provided value.
+    Equal {
+        /// The index of the argument.
+        arg_idx: u32,
+
+        /// Value to compare the argument with (can be a raw pointer).
+        value: ArgCmpValue,
+    },
+
+    /// Checks that argument is greater than or equal to the provided value.
+    GreaterThanOrEqual {
+        /// The index of the argument.
+        arg_idx: u32,
+
+        /// Value to compare the argument with (can be a raw pointer).
+        value: ArgCmpValue,
+    },
+
+    /// Checks that argument is greater than the provided value.
+    GreaterThan {
+        /// The index of the argument.
+        arg_idx: u32,
+
+        /// Value to compare the argument with (can be a raw pointer).
+        value: ArgCmpValue,
+    },
+
+    /// Checks that argument is equal to the provided value after application of the provided
+    /// bitmask.
+    EqualMasked {
+        /// The index of the argument.
+        arg_idx: u32,
+
+        /// The bitmask to be applied to the argument before comparison.
+        mask: u64,
+
+        /// Value to compare the masked argument with.
+        value: ArgCmpValue,
+    },
+}
+
+/// A syscall exception rule to be provided to [`enable`].
+#[derive(Clone, Debug, PartialEq)]
+pub enum Rule {
+    /// Allows a syscall.
+    ///
+    /// [`allow_list`] macros provides a convenient way of constructing allow rules.
+    ///
+    /// # Examples
+    ///
+    /// Allow syscalls, required for [`std::process::exit`] to work, but allow only `0` status code,
+    /// so this fails:
+    /// ```should_panic
+    /// use bedrock::seccomp::{self, ArgCmp, ViolationAction, Rule, Syscall, allow_list};
+    /// use bedrock::seccomp::common_allow_lists::RUST_BASICS;
+    /// use std::panic;
+    /// use std::thread;
+    /// use std::process;
+    ///
+    /// // Allows process exit only if the status code is 0.
+    /// allow_list! {
+    ///     static PROCESS_EXIT_ALLOWED = [
+    ///         ..RUST_BASICS,
+    ///         munmap,
+    ///         exit_group
+    ///     ]
+    /// }
+    ///
+    /// // NOTE: `Rule::Allow` is used directly here only for the demonstration purposes,
+    /// // in most cases it's more convenient to use the `allow_list!` macros as above.
+    /// let mut rules = vec![
+    ///     Rule::Allow(
+    ///         Syscall::exit,
+    ///         vec![ArgCmp::Equal { arg_idx: 0, value: 0u64.into() }]
+    ///     )
+    /// ];
+    ///
+    /// rules.extend_from_slice(&PROCESS_EXIT_ALLOWED);
+    ///
+    /// seccomp::enable(ViolationAction::KillProcess, &rules).unwrap();
+    ///
+    /// process::exit(1);
+    /// ```
+    ///
+    /// Same as the above but this time exit with `0` status code, so this works:
+    /// ```
+    /// use bedrock::seccomp::{self, ArgCmp, ViolationAction, Rule, Syscall, allow_list};
+    /// use bedrock::seccomp::common_allow_lists::RUST_BASICS;
+    /// use std::panic;
+    /// use std::thread;
+    /// use std::process;
+    ///
+    /// // Allows process exit only if the status code is 0.
+    /// allow_list! {
+    ///     static PROCESS_EXIT_ALLOWED = [
+    ///         ..RUST_BASICS,
+    ///         munmap,
+    ///         exit_group
+    ///     ]
+    /// }
+    ///
+    /// // NOTE: `Rule::Allow` is used directly here only for the demonstration purposes,
+    /// // in most cases it's more convenient to use the `allow_list!` macros as above.
+    /// let mut rules = vec![
+    ///     Rule::Allow(
+    ///         Syscall::exit,
+    ///         vec![ArgCmp::Equal { arg_idx: 0, value: 0u64.into() }]
+    ///     )
+    /// ];
+    ///
+    /// rules.extend_from_slice(&PROCESS_EXIT_ALLOWED);
+    ///
+    /// seccomp::enable(ViolationAction::KillProcess, &PROCESS_EXIT_ALLOWED).unwrap();
+    ///
+    /// process::exit(0);
+    /// ```
+    Allow(Syscall, Vec<ArgCmp>),
+
+    /// Same as [`Rule::Allow`], but also logs the syscall in [sysctl] logs.
+    ///
+    /// The logs can be examined by running:
+    /// ```sh
+    /// sysctl -n kernel.seccomp.actions_logged
+    /// ```
+    ///
+    /// [sysctl]: https://man7.org/linux/man-pages/man8/sysctl.8.html
+    AllowAndLog(Syscall, Vec<ArgCmp>),
+
+    /// Forces syscall to return the provided error code.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use bedrock::seccomp::{self, ViolationAction, allow_list, Rule, Syscall};
+    /// use bedrock::seccomp::common_allow_lists::{SERVICE_BASICS, NET_SOCKET_API};
+    /// use std::net::TcpListener;
+    /// use std::panic;
+    /// use std::thread;
+    /// use std::io;
+    ///
+    /// const EPERM: u16 = 1;
+    ///
+    /// let mut rules = vec![Rule::ReturnError(Syscall::listen, EPERM, vec![])];
+    ///
+    /// rules.extend_from_slice(&SERVICE_BASICS);
+    /// rules.extend_from_slice(&NET_SOCKET_API);
+    ///
+    /// seccomp::enable(ViolationAction::KillProcess, &rules).unwrap();
+    ///
+    /// let err = TcpListener::bind("127.0.0.1:0").unwrap_err();
+    ///
+    /// assert_eq!(err.kind(), io::ErrorKind::PermissionDenied);
+    /// ```
+    ReturnError(Syscall, RawOsErrorNum, Vec<ArgCmp>),
+}
+
+/// Enables seccomp hardening in the current thread and all the threads spawned by it.
+///
+/// Calling the function early in the `main` function effectively enables seccomp for the whole
+/// process.
+///
+/// If seccomp encounters a syscall that is not in the `exception_rules` list it performs the
+/// provided [`ViolationAction`]. [`allow_list`] macro can be used to conveniently construct lists
+/// of allowed syscalls. In addition, the crate provides [`common_allow_lists`] that can be merged
+/// into the user-provided allow lists.
+///
+/// # Examples
+/// Forbid all the syscalls, so this fails:
+/// ```should_panic
+/// use bedrock::seccomp::{self, ViolationAction, allow_list};
+/// use bedrock::seccomp::common_allow_lists::SERVICE_BASICS;
+/// use std::net::TcpListener;
+/// use std::panic;
+/// use std::thread;
+///
+/// seccomp::enable(ViolationAction::KillProcess, &vec![]).unwrap();
+///
+/// let _ = TcpListener::bind("127.0.0.1:0");
+/// ```
+///
+/// Allow syscalls required for [`std::net::TcpListener::bind`] to work, so this works:
+/// ```
+/// use bedrock::seccomp::{self, ViolationAction, allow_list};
+/// use bedrock::seccomp::common_allow_lists::SERVICE_BASICS;
+/// use std::net::TcpListener;
+/// use std::panic;
+/// use std::thread;
+///
+/// allow_list! {
+///    static ALLOW_BIND = [
+///        ..SERVICE_BASICS,
+///        socket,
+///        setsockopt,
+///        bind,
+///        listen
+///    ]
+/// }
+///
+/// seccomp::enable(ViolationAction::KillProcess, &ALLOW_BIND).unwrap();
+///
+/// let _ = TcpListener::bind("127.0.0.1:0");
+/// ```
+pub fn enable(
+    violation_action: ViolationAction,
+    exception_rules: &Vec<Rule>,
+) -> BootstrapResult<()> {
+    let ctx = unsafe { sys::seccomp_init(violation_action as u32) };
+
+    if ctx.is_null() {
+        bail!("failed to initialize seccomp context");
+    }
+
+    for rule in exception_rules {
+        let RawRule {
+            action,
+            syscall,
+            arg_cmps,
+        } = rule.into();
+
+        let init_res = unsafe {
+            sys::seccomp_rule_add_exact_array(
+                ctx,
+                action,
+                syscall,
+                arg_cmps.len().try_into().unwrap(),
+                arg_cmps.as_ptr() as *const sys::scmp_arg_cmp,
+            )
+        };
+
+        if init_res != 0 {
+            bail!(
+                "failed to add seccomp exception rule {:#?} with error code {}",
+                rule,
+                init_res
+            );
+        }
+    }
+
+    let load_res = unsafe { sys::seccomp_load(ctx) };
+
+    if load_res != 0 {
+        bail!("failed to load seccomp rules with error code {}", load_res);
+    }
+
+    Ok(())
+}
+
+// NOTE: `#[doc(hidden)]` + `#[doc(inline)]` for `pub use` trick is used to prevent these macros
+// to show up in the crate's top level docs.
+
+/// A convenience macro for construction of documented lists with [`Rule::Allow`]s.
+///
+/// The macro creates a static list of allowed syscalls. In addition to defining the list, the
+/// macro also generates a doc comment appendix that lists syscalls enabled by this list (see allow
+/// lists in the [`common_allow_lists`] module for an example of generated docs).
+///
+/// Existing lists can be merged into the new list, by using `..ANOTHER_LIST` item syntax.
+/// A list of [argument comparators] can be added for a syscall by using `<syscall> if [..]` syntax.
+///
+/// # Examples
+///
+/// ```
+/// use bedrock::seccomp::{allow_list, ArgCmp};
+/// use bedrock::seccomp::common_allow_lists::RUST_BASICS;
+///
+/// allow_list! {
+///     pub static MY_ALLOW_LIST = [
+///         ..RUST_BASICS,
+///         connect,
+///         mmap,
+///         exit if [ ArgCmp::Equal { arg_idx: 0, value: 0u64.into() } ]
+///     ]
+/// }
+/// ```
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __allow_list {
+    (
+        $(#[$attr:meta])*
+        $vis:vis static $SET_NAME:ident = $rules:tt
+    ) => {
+        $crate::seccomp::allow_list!( @doc
+            [],
+            $rules,
+            {
+                $(#[$attr])*
+                $vis static $SET_NAME = $rules
+            }
+         );
+    };
+
+    // NOTE: first munch through the list and collect doc comments.
+    ( @doc
+        [ $($docs:expr)* ],
+        [ $(#[$attr:meta])* ..$OTHER_SET:ident $(, $($rest:tt)+ )? ],
+        $allow_list_def:tt
+    ) => {
+        $crate::seccomp::allow_list!( @doc
+            [
+                $($docs)*
+                concat!("* all the syscalls from the [`", stringify!($OTHER_SET), "`] allow list")
+            ],
+            [ $( $( $rest )+ )? ],
+            $allow_list_def
+        );
+    };
+
+    ( @doc
+        [ $($docs:expr)* ],
+        [ $(#[$attr:meta])* $syscall:ident if $arg_cmp:tt $(, $($rest:tt)+ )? ],
+        $allow_list_def:tt
+    ) => {
+        $crate::seccomp::allow_list!( @doc
+            [
+                $($docs)*
+                concat!(
+                    "* [",
+                    stringify!($syscall),
+                    "](https://man7.org/linux/man-pages/man2/",
+                    stringify!($syscall),
+                    ".2.html) with argument conditions (refer to the allow list source code for more information)"
+                )
+            ],
+            [ $( $( $rest )+ )? ],
+            $allow_list_def
+        );
+    };
+
+    ( @doc
+        [ $($docs:expr)* ],
+        [ $(#[$attr:meta])* $syscall:ident $(, $($rest:tt)+ )? ],
+        $allow_list_def:tt
+    ) => {
+        $crate::seccomp::allow_list!( @doc
+            [
+                $($docs)*
+                concat!(
+                    "* [",
+                    stringify!($syscall),
+                    "](https://man7.org/linux/man-pages/man2/",
+                    stringify!($syscall),
+                    ".2.html)"
+                )
+            ],
+            [ $( $( $rest )+ )? ],
+            $allow_list_def
+        );
+    };
+
+    // NOTE: now expand the allow list definition
+    ( @doc
+        [ $($docs:expr)* ],
+        [],
+        {
+            $(#[$attr:meta])*
+            $vis:vis static $SET_NAME:ident = $rules:tt
+        }
+    ) => {
+        $(#[$attr])*
+        ///
+        /// Syscalls in this allow list:
+        ///
+        $( #[doc = $docs] )*
+        $vis static $SET_NAME:
+            $crate::reexports_for_macros::once_cell::sync::Lazy<Vec<$crate::seccomp::Rule>> =
+            $crate::reexports_for_macros::once_cell::sync::Lazy::new(|| {
+                let mut list = vec![];
+
+                #[allow(clippy::vec_init_then_push)]
+                {
+                    $crate::seccomp::allow_list!( @rule list, $rules );
+                }
+
+                list
+            });
+    };
+
+    // NOTE: for rules we need to go through munching again. We could have done it in doc
+    // collection step, but for allow list concatenation we need the list vector and macro
+    // hygiene would not allow us to use the vector before its definition.
+    ( @rule
+        $list:ident,
+        [
+            $(#[$attr:meta])*
+            ..$OTHER_SET:ident
+            $(, $($rest:tt)+ )?
+        ]
+    ) => {
+        $(#[$attr])*
+        $list.extend_from_slice(&$OTHER_SET);
+
+        $crate::seccomp::allow_list!( @rule $list, [ $( $( $rest )+ )? ] );
+    };
+
+    ( @rule
+        $list:ident,
+        [
+            $(#[$attr:meta])*
+            $syscall:ident if [ $( $arg_cmp:expr ),+ ]
+            $(, $($rest:tt)+ )?
+        ]
+    ) => {
+        $(#[$attr])*
+        $list.push($crate::seccomp::Rule::Allow(
+            $crate::seccomp::Syscall::$syscall,
+            vec![ $( $arg_cmp ),+ ]
+        ));
+
+        $crate::seccomp::allow_list!( @rule $list, [ $( $( $rest )+ )? ] );
+    };
+
+    ( @rule
+        $list:ident,
+        [
+            $(#[$attr:meta])*
+            $syscall:ident
+            $(, $($rest:tt)+ )?
+        ]
+    ) => {
+        $(#[$attr])*
+        $list.push($crate::seccomp::Rule::Allow(
+            $crate::seccomp::Syscall::$syscall,
+            vec![]
+        ));
+
+        $crate::seccomp::allow_list!( @rule $list, [ $( $( $rest )+ )? ] );
+    };
+
+    ( @rule $list:ident, [] ) => {}
+}
+
+#[doc(inline)]
+pub use __allow_list as allow_list;

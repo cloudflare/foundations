@@ -40,4 +40,8 @@ export CMAKE=${OSXCROSSPATH}/${CTARGET}-cmake
 export BINDGEN_EXTRA_CLANG_ARGS="--sysroot=${OSXCROSSPATH}/../SDK/${MACOS_SDK_VER}.sdk/ -I${OSXCROSSPATH}/../SDK/${MACOS_SDK_VER}.sdk/usr/include/ --target=${CTARGET}"
 
 # build lib and tests
-RUSTFLAGS="-D warnings" cargo test --no-run --release --target ${TARGET} $*
+# Use platform-common-default, cross compilation confuses the build script and it attempts to build
+# seccomp bindgen otherwise.
+# Unfortunately, cargo test doesn't respect --no-default-features (https://github.com/rust-lang/cargo/issues/7160)
+# and we need to resort to using cargo build before open sourcing 
+RUSTFLAGS="-D warnings" cargo build --release --no-default-features --features platform-common-default --target ${TARGET} $*
