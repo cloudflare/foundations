@@ -4,21 +4,149 @@ fn main() {
         target_os = "linux",
         any(target_arch = "x86_64", target_arch = "aarch64")
     ))]
-    {
-        use bindgen::{Builder, CargoCallbacks};
-        use std::env;
-        use std::path::PathBuf;
+    build::build()
+}
 
+#[cfg(all(
+    feature = "seccomp",
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
+mod build {
+    use bindgen::{Builder, CargoCallbacks};
+    use std::env;
+    use std::fs;
+    use std::path::{Path, PathBuf};
+
+    const SRC_FILES: &[&str] = &[
+        "api.c",
+        "system.c",
+        "gen_pfc.c",
+        "gen_bpf.c",
+        "hash.c",
+        "db.c",
+        "arch.c",
+        "helper.c",
+        "arch-parisc.c",
+        "arch-parisc64.c",
+        "arch-parisc-syscalls.c",
+        "arch-x86.c",
+        "arch-x86-syscalls.c",
+        "arch-x86_64.c",
+        "arch-x86_64-syscalls.c",
+        "arch-x32.c",
+        "arch-x32-syscalls.c",
+        "arch-arm.c",
+        "arch-arm-syscalls.c",
+        "arch-aarch64.c",
+        "arch-aarch64-syscalls.c",
+        "arch-mips.c",
+        "arch-mips-syscalls.c",
+        "arch-mips64.c",
+        "arch-mips64-syscalls.c",
+        "arch-mips64n32.c",
+        "arch-mips64n32-syscalls.c",
+        "arch-ppc.c",
+        "arch-ppc-syscalls.c",
+        "arch-ppc64.c",
+        "arch-ppc64-syscalls.c",
+        "arch-s390.c",
+        "arch-s390-syscalls.c",
+        "arch-s390x.c",
+        "arch-s390x-syscalls.c",
+        "arch-riscv64.c",
+        "arch-riscv64-syscalls.c",
+    ];
+
+    pub(super) fn build() {
         println!("cargo:rerun-if-changed=build.rs");
+        println!("cargo:rerun-if-changed=src/seccomp/libseccomp");
+        println!("cargo:rustc-link-lib=static=seccomp");
 
+        let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
+        let crate_root = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
+        let libseccomp_repo = crate_root.join("src/seccomp/libseccomp");
+        let include_dir = libseccomp_repo.join("include");
+        let src_dir = libseccomp_repo.join("src");
+
+        if !src_dir.exists() {
+            panic!("Can't find libssecomp sources. Run `git submodule update --init --recursive`");
+        }
+
+        let header_file = render_header(out_dir.as_path(), include_dir.as_path());
+        let mut compiler = cc::Build::new();
+
+        fs::write(out_dir.join("configure.h"), b"").unwrap();
+
+        for src_file in SRC_FILES {
+            compiler.file(src_dir.join(src_file));
+        }
+
+        if have_linux_seccomp_h(out_dir.as_path()) {
+            compiler.define("HAVE_LINUX_SECCOMP_H", Some("1"));
+        }
+
+        compiler
+            .warnings(false)
+            .include(include_dir)
+            .include(&out_dir)
+            .compile("seccomp");
+
+        gen_seccomp_sys(out_dir.as_path(), header_file.as_path());
+    }
+
+    fn render_header(out_dir: &Path, include_dir: &Path) -> PathBuf {
+        let rendered = fs::read_to_string(include_dir.join("seccomp.h.in"))
+            .unwrap()
+            .replace(
+                "@VERSION_MAJOR@",
+                &env::var("CARGO_PKG_VERSION_MAJOR").unwrap(),
+            )
+            .replace(
+                "@VERSION_MINOR@",
+                &env::var("CARGO_PKG_VERSION_MINOR").unwrap(),
+            )
+            .replace(
+                "@VERSION_MICRO@",
+                &env::var("CARGO_PKG_VERSION_PATCH").unwrap(),
+            );
+
+        let header_file = out_dir.join("seccomp.h");
+
+        fs::write(&header_file, rendered).unwrap();
+
+        header_file
+    }
+
+    fn gen_seccomp_sys(out_dir: &Path, header_file: &Path) {
         Builder::default()
-            .header("/usr/include/seccomp.h")
-            .allowlist_function("seccomp_rule_add")
+            .header(header_file.display().to_string())
+            .allowlist_function("seccomp_rule_add_exact_array")
+            .allowlist_function("seccomp_init")
+            .allowlist_function("seccomp_load")
+            .allowlist_function("SCMP_ACT_ERRNO")
+            .allowlist_type("scmp_arg_cmp")
+            .allowlist_var("SCMP_ACT_LOG")
+            .allowlist_var("SCMP_ACT_KILL_PROCESS")
+            .allowlist_var("SCMP_ACT_ALLOW")
             .derive_default(true)
             .parse_callbacks(Box::new(CargoCallbacks))
             .generate()
             .unwrap()
-            .write_to_file(PathBuf::from(env::var("OUT_DIR").unwrap()).join("seccomp_bindings.rs"))
+            .write_to_file(out_dir.join("seccomp_sys.rs"))
             .unwrap();
+    }
+
+    fn have_linux_seccomp_h(out_dir: &Path) -> bool {
+        let src = out_dir.join("check_have_linux_seccomp_h.c");
+
+        fs::write(&src, "#include <linux/seccomp.h>").unwrap();
+
+        cc::Build::new()
+            .cargo_metadata(false)
+            .warnings(false)
+            .file(&src)
+            .try_compile("check_have_linux_seccomp_h")
+            .is_ok()
     }
 }

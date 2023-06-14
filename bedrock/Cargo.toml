@@ -57,6 +57,7 @@ tracing = [
 
 seccomp = [
     "dep:bindgen",
+    "dep:cc",
     "dep:once_cell"
 ]
 
@@ -94,4 +95,5 @@ tokio = { workspace = true }
 
 [target.'cfg(all(target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64")))'.build-dependencies]
 bindgen = { workspace = true, optional = true }
+cc = { workspace = true, optional = true }
 

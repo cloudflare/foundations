@@ -17,7 +17,7 @@ allow_list! {
         sched_getaffinity,
         madvise, // memory allocation
         mprotect,
-        prctl if [ ArgCmp::Equal { arg_idx: 0, value: PR_SET_NAME } ] // tokio-runtime thread name
+        prctl if [ ArgCmp::Equal { arg_idx: 0, value: PR_SET_NAME.into() } ] // tokio-runtime thread name
     ]
 }
 
@@ -63,6 +63,11 @@ allow_list! {
 
 allow_list! {
     /// An allow list for network socket API.
+    ///
+    /// Note that this allow list doesn't allow creation of new network endpoints
+    /// (e.g. by using [`Syscall::listen`]).
+    ///
+    /// [`Syscall::listen`]: super::Syscall::listen
     pub static NET_SOCKET_API = [
         socket,
         connect,
