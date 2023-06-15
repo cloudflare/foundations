@@ -3,7 +3,6 @@ builddeps: &builddeps-common
   ? sccache
   ? libclang-11-dev
   ? libssl-dev
-  ? libseccomp-dev
   ? pkg-config
   ? openssh-client
   ? build-essential

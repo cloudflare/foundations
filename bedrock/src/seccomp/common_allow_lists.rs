@@ -100,3 +100,28 @@ allow_list! {
         getdents64
     ]
 }
+
+allow_list! {
+    /// An allow list for the [vectored IO operations].
+    ///
+    /// [vectored IO operations]: https://lwn.net/Articles/170954/
+    pub static VECTORED_IO = [
+        readv,
+        writev,
+        preadv,
+        pwritev
+    ]
+}
+
+allow_list! {
+    /// An allow list of extra operations required for panic reporting by [Sentry].
+    ///
+    /// Usually used in combination with [`SERVICE_BASICS`] if Sentry is enabled.
+    ///
+    /// [Sentry]: https://sentry.io/
+    pub static SENTRY_EXTRAS = [
+        #[cfg(target_arch = "x86_64")]
+        readlink,
+        uname
+    ]
+}
