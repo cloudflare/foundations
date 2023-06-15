@@ -119,6 +119,14 @@ mod build {
     }
 
     fn gen_seccomp_sys(out_dir: &Path, header_file: &Path) {
+        // NOTE: we don't care about syscalls and this header needs to be in path for bindgen
+        // to work, so let's just remove it.
+        let edited_header = fs::read_to_string(header_file)
+            .unwrap()
+            .replace("#include <seccomp-syscalls.h>", "");
+
+        fs::write(header_file, edited_header).unwrap();
+
         Builder::default()
             .header(header_file.display().to_string())
             .allowlist_function("seccomp_rule_add_exact_array")
