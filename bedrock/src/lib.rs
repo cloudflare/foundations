@@ -20,7 +20,9 @@
 //! - **platform-common-default**: The same as **default**, but excludes platform-specific features,
 //! such as **security**.
 //! - **settings**: Enables serializable documented settings functionality.
-//! - **telemetry**: Enables all the telemetry-related features (**logging**, **tracing**).
+//! - **telemetry**: Enables all the telemetry-related features (**metrics**, **logging**, **tracing**, **telemetry-server**).
+//! - **telemetry-server**: Enables the telemetry server.
+//! - **metrics**: Enables metrics functionality.
 //! - **logging**: Enables logging functionality.
 //! - **tracing**: Enables distributed tracing functionality.
 //! - **testing**: Enables testing-related functionality.
@@ -42,7 +44,12 @@ mod utils;
 #[cfg(feature = "settings")]
 pub mod settings;
 
-#[cfg(any(feature = "logging", feature = "tracing", feature = "telemetry"))]
+#[cfg(any(
+    feature = "logging",
+    feature = "metrics",
+    feature = "telemetry",
+    feature = "tracing"
+))]
 pub mod telemetry;
 
 #[cfg(all(
@@ -54,17 +61,22 @@ pub mod security;
 
 #[doc(hidden)]
 pub mod reexports_for_macros {
+    #[cfg(any(feature = "metrics", feature = "security"))]
+    pub use once_cell;
+    #[cfg(feature = "metrics")]
+    pub use parking_lot;
+    #[cfg(feature = "metrics")]
+    pub use prometheus_client;
+    #[cfg(feature = "metrics")]
+    pub use prometools;
     #[cfg(feature = "tracing")]
     pub use rustracing;
-
-    #[cfg(feature = "settings")]
+    #[cfg(any(feature = "metrics", feature = "settings"))]
     pub use serde;
-
+    #[cfg(feature = "metrics")]
+    pub use serde_with;
     #[cfg(feature = "logging")]
     pub use slog;
-
-    #[cfg(feature = "security")]
-    pub use once_cell;
 }
 
 /// Global memory allocator backed by [jemalloc].

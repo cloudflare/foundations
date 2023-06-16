@@ -24,49 +24,73 @@ default = [
 
 # All non platform-specific features
 platform-common-default = [
-    "settings", 
+    "metrics",
+    "settings",
+    "jemalloc",
     "telemetry",
-    "jemalloc", 
-    "testing"
+    "testing",
+]
+
+# Enables metrics functionality.
+metrics = [
+    "dep:bedrock-macros",
+    "dep:erased-serde",
+    "dep:once_cell",
+    "dep:parking_lot",
+    "dep:prometheus-client",
+    "dep:prometheus",
+    "dep:prometools",
+    "dep:serde_with",
+    "dep:serde",
 ]
 
 # Enables serializable documented settings functionality.
 settings = [
     "dep:bedrock-macros", 
+    "dep:serde_path_to_error",
+    "dep:serde_yaml",
     "dep:serde", 
-    "dep:serde_yaml", 
-    "dep:yaml-merge-keys", 
-    "dep:serde_path_to_error"
+    "dep:yaml-merge-keys",
 ]
 
-# Enables all the telemetry-related features ("logging", "tracing").
+# Enables all the telemetry-related features ("logging", "metrics", "tracing", "telemetry-server").
 telemetry = [
-    "logging", 
+    "logging",
+    "memory-profiling",
+    "metrics",
     "tracing",
-    "memory-profiling"
+    "telemetry-server",
+]
+
+# Enables the telemetry server.
+telemetry-server = [
+    "dep:futures-util",
+    "dep:hyper",
+    "dep:routerify",
+    "dep:socket2",
 ]
 
 # Enables logging functionality.
 logging = [
+    "dep:once_cell",
+    "dep:parking_lot",
+    "dep:slog-async",
+    "dep:slog-json",
+    "dep:slog-term",
     "dep:slog", 
-    "dep:slog-async", 
-    "dep:slog-json", 
-    "dep:slog-term", 
-    "dep:thread_local", 
-    "dep:parking_lot", 
-    "dep:once_cell"
+    "dep:thread_local",
 ]
 
 # Enables distributed tracing functionality.
 tracing = [
-    "dep:crossbeam-channel", 
-    "dep:rustracing", 
-    "dep:rustracing_jaeger", 
-    "dep:thread_local", 
-    "dep:parking_lot", 
+    "dep:bedrock-macros",
+    "dep:crossbeam-channel",
     "dep:once_cell",
+    "dep:parking_lot",
     "dep:rand",
-    "dep:bedrock-macros"
+    "dep:rustracing_jaeger",
+    "dep:rustracing",
+    "dep:thread_local",
 ]
 
 # Enables memory profiling features (require `jemalloc` feature to be enabled)
@@ -102,7 +126,14 @@ rustdoc-args = ["--cfg", "docsrs"]
 anyhow = { workspace = true }
 bedrock-macros = { workspace = true, optional = true }
 crossbeam-channel = { workspace = true, optional = true }
+erased-serde = { workspace = true, optional = true }
+futures-util = { workspace = true, optional = true }
+hyper = { workspace = true, optional = true }
 parking_lot = { workspace = true, optional = true }
+prometheus = { workspace = true, optional = true }
+prometheus-client = { workspace = true, optional = true }
+prometools = { workspace = true, optional = true }
+routerify = { workspace = true, optional = true }
 once_cell = { workspace = true, optional = true }
 rand = { workspace = true, optional = true }
 rustracing = { workspace = true, optional = true }
@@ -110,10 +141,12 @@ rustracing_jaeger = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
 serde_path_to_error = { workspace = true, optional = true }
 serde_yaml = { workspace = true, optional = true }
+serde_with = { workspace = true, optional = true }
 slog = { workspace = true, optional = true }
 slog-async = { workspace = true, optional = true }
 slog-json = { workspace = true, optional = true }
 slog-term = { workspace = true, optional = true }
+socket2 = { workspace = true, optional = true }
 thread_local = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true }
 tikv-jemallocator = { workspace = true, optional = true }

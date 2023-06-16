@@ -11,8 +11,8 @@
 //! # Initialization
 //!
 //! In production code telemetry needs to be initialized on the service start up (usually at the
-//! begining of the `main` function) with [`init`] method for it to be collected by the external
-//! sinks.
+//! begining of the `main` function) with the [`init`] or [`init_with_server`] functions for it to
+//! be collected by the external sinks.
 //!
 //! # Telemetry context
 //!
@@ -52,6 +52,9 @@ mod testing;
 #[cfg(feature = "logging")]
 pub mod log;
 
+#[cfg(feature = "metrics")]
+pub mod metrics;
+
 #[cfg(feature = "tracing")]
 pub mod tracing;
 
@@ -64,9 +67,16 @@ mod memory_profiler;
 
 pub mod settings;
 
+#[cfg(feature = "telemetry-server")]
+mod server;
+
 use self::settings::TelemetrySettings;
 use crate::utils::feature_use;
+#[cfg(feature = "telemetry-server")]
+use crate::Result;
 use crate::{BootstrapResult, ServiceInfo};
+#[cfg(feature = "telemetry-server")]
+use futures_util::future::BoxFuture;
 use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context, Poll};
@@ -96,6 +106,14 @@ pub use self::testing::TestTelemetryContext;
     feature = "memory-profiling"
 ))]
 pub use self::memory_profiler::MemoryProfiler;
+
+/// Telemetry server future returned by [`init_with_server`].
+///
+/// This future drives a HTTP server as configured by [`TelemetryServerSettings`].
+///
+/// [`TelemetryServerSettings`]: `bedrock::telemetry::settings::TelemetryServerSettings`
+#[cfg(feature = "telemetry-server")]
+pub type TelemetryServerFuture = BoxFuture<'static, Result<()>>;
 
 /// A macro that enables telemetry testing in `#[test]` and `#[tokio::test]`.
 ///
@@ -647,8 +665,15 @@ impl TelemetryContext {
 /// The function should be called once on service initialization. Consequent calls to the function
 /// don't have any effect.
 pub fn init(service_info: ServiceInfo, settings: &TelemetrySettings) -> BootstrapResult<()> {
-    #[cfg(all(not(feature = "logging"), not(feature = "tracing")))]
-    let _ = (&service_info, &settings);
+    #[cfg(all(
+        not(feature = "metrics"),
+        not(feature = "logging"),
+        not(feature = "tracing"),
+    ))]
+    let _ = service_info;
+
+    #[cfg(all(not(feature = "logging"), not(feature = "tracing"),))]
+    let _ = settings;
 
     #[cfg(feature = "logging")]
     self::log::init::init(service_info, &settings.logging)?;
@@ -656,5 +681,22 @@ pub fn init(service_info: ServiceInfo, settings: &TelemetrySettings) -> Bootstra
     #[cfg(feature = "tracing")]
     self::tracing::init::init(service_info, &settings.tracing)?;
 
+    #[cfg(feature = "metrics")]
+    self::metrics::init::init(service_info);
+
     Ok(())
+}
+
+/// Initializes service telemetry and returns a HTTP server to be driven by the caller.
+///
+/// The server currently defines a single endpoint `/metrics` returning all the
+/// Prometheus metrics in the system.
+#[cfg(feature = "telemetry-server")]
+pub fn init_with_server(
+    service_info: ServiceInfo,
+    settings: &TelemetrySettings,
+) -> BootstrapResult<TelemetryServerFuture> {
+    init(service_info, settings)?;
+
+    self::server::init(settings)
 }
