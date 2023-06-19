@@ -647,6 +647,9 @@ impl TelemetryContext {
 /// The function should be called once on service initialization. Consequent calls to the function
 /// don't have any effect.
 pub fn init(service_info: ServiceInfo, settings: &TelemetrySettings) -> BootstrapResult<()> {
+    #[cfg(all(not(feature = "logging"), not(feature = "tracing")))]
+    let _ = (&service_info, &settings);
+
     #[cfg(feature = "logging")]
     self::log::init::init(service_info, &settings.logging)?;
 
