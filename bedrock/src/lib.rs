@@ -5,9 +5,8 @@
 //! * logging
 //! * distributed tracing
 //! * metrics
-//! * [seccomp] hardening
+//! * security features, such as [seccomp]-based syscall sandboxing
 //! * service configuration with documentation
-//! * graceful restarts primitives
 //! * full application bootstraping that set up **any combination** of the above in a few lines of code
 //!
 //! then Bedrock is a tool of choice for you.
@@ -18,13 +17,13 @@
 //!
 //! - **default**: All features are enabled by default.
 //! - **platform-common-default**: The same as **default**, but excludes platform-specific features,
-//! such as **seccomp**.
+//! such as **security**.
 //! - **settings**: Enables serializable documented settings functionality.
 //! - **telemetry**: Enables all the telemetry-related features (**logging**, **tracing**).
 //! - **logging**: Enables logging functionality.
 //! - **tracing**: Enables distributed tracing functionality.
 //! - **testing**: Enables testing-related functionality.
-//! - **seccomp**: Enables [seccomp] hardening functionality. Available only on Linux (x86_64, aarch64).
+//! - **security**: Enables security features. Available only on Linux (x86_64, aarch64).
 //!
 //! [Cargo features]: https://doc.rust-lang.org/stable/cargo/reference/features.html#the-features-section
 //! [seccomp]: https://en.wikipedia.org/wiki/Seccomp
@@ -41,11 +40,11 @@ pub mod settings;
 pub mod telemetry;
 
 #[cfg(all(
-    feature = "seccomp",
+    feature = "security",
     target_os = "linux",
     any(target_arch = "x86_64", target_arch = "aarch64")
 ))]
-pub mod seccomp;
+pub mod security;
 
 #[doc(hidden)]
 pub mod reexports_for_macros {
@@ -58,7 +57,7 @@ pub mod reexports_for_macros {
     #[cfg(feature = "logging")]
     pub use slog;
 
-    #[cfg(feature = "seccomp")]
+    #[cfg(feature = "security")]
     pub use once_cell;
 }
 

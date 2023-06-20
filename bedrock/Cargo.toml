@@ -7,7 +7,7 @@ edition = "2021"
 # Default set of features.
 default = [
     "platform-common-default", 
-    "seccomp"
+    "security"
 ]
 
 # All non platform-specific features
@@ -55,7 +55,8 @@ tracing = [
     "dep:bedrock-macros"
 ]
 
-seccomp = [
+# Enables security-related features
+security = [
     "dep:bindgen",
     "dep:cc",
     "dep:once_cell"

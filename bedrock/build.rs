@@ -1,6 +1,6 @@
 fn main() {
     #[cfg(all(
-        feature = "seccomp",
+        feature = "security",
         target_os = "linux",
         any(target_arch = "x86_64", target_arch = "aarch64")
     ))]
@@ -8,7 +8,7 @@ fn main() {
 }
 
 #[cfg(all(
-    feature = "seccomp",
+    feature = "security",
     target_os = "linux",
     any(target_arch = "x86_64", target_arch = "aarch64")
 ))]
@@ -60,12 +60,12 @@ mod build {
 
     pub(super) fn build() {
         println!("cargo:rerun-if-changed=build.rs");
-        println!("cargo:rerun-if-changed=src/seccomp/libseccomp");
+        println!("cargo:rerun-if-changed=src/security/libseccomp");
         println!("cargo:rustc-link-lib=static=seccomp");
 
         let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
         let crate_root = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
-        let libseccomp_repo = crate_root.join("src/seccomp/libseccomp");
+        let libseccomp_repo = crate_root.join("src/security/libseccomp");
         let include_dir = libseccomp_repo.join("include");
         let src_dir = libseccomp_repo.join("src");
 
@@ -92,7 +92,11 @@ mod build {
             .include(&out_dir)
             .compile("seccomp");
 
-        gen_seccomp_sys(out_dir.as_path(), header_file.as_path());
+        gen_security_sys_rs(
+            crate_root.as_path(),
+            out_dir.as_path(),
+            header_file.as_path(),
+        );
     }
 
     fn render_header(out_dir: &Path, include_dir: &Path) -> PathBuf {
@@ -118,7 +122,7 @@ mod build {
         header_file
     }
 
-    fn gen_seccomp_sys(out_dir: &Path, header_file: &Path) {
+    fn gen_security_sys_rs(crate_root: &Path, out_dir: &Path, header_file: &Path) {
         // NOTE: we don't care about syscalls and this header needs to be in path for bindgen
         // to work, so let's just remove it.
         let edited_header = fs::read_to_string(header_file)
@@ -129,19 +133,28 @@ mod build {
 
         Builder::default()
             .header(header_file.display().to_string())
+            .header(
+                crate_root
+                    .join("src/security/include/sys-deps.h")
+                    .display()
+                    .to_string(),
+            )
             .allowlist_function("seccomp_rule_add_exact_array")
             .allowlist_function("seccomp_init")
             .allowlist_function("seccomp_load")
             .allowlist_function("SCMP_ACT_ERRNO")
+            .allowlist_function("prctl")
             .allowlist_type("scmp_arg_cmp")
             .allowlist_var("SCMP_ACT_LOG")
             .allowlist_var("SCMP_ACT_KILL_PROCESS")
             .allowlist_var("SCMP_ACT_ALLOW")
+            .allowlist_var("PR_SET_TSC")
+            .allowlist_var("PR_TSC_SIGSEGV")
             .derive_default(true)
             .parse_callbacks(Box::new(CargoCallbacks))
             .generate()
             .unwrap()
-            .write_to_file(out_dir.join("seccomp_sys.rs"))
+            .write_to_file(out_dir.join("security_sys.rs"))
             .unwrap();
     }
 

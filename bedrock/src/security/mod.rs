@@ -1,25 +1,38 @@
+//! Security-related features.
+//!
+//! # Syscall sandboxing
+//!
 //! [seccomp] is a Linux kernel's syscall sandboxing feature. It allows to set up hooks for the
 //! syscalls that application is using and perform certain actions on it, such as blocking or
 //! logging. As an effect, providing an additional fence from attacks like [arbitrary code execution].
 //!
-//! seccomp filtering is applied to a thread in which [`enable`] was called and all the threads
-//! spawned by this thread. Therefore, enabling seccomp early in the `main` function enables it
-//! for the whole proccess.
+//! seccomp filtering is applied to a thread in which [`enable_syscall_sandboxing`] was called and
+//! all the threads spawned by this thread. Therefore, enabling seccomp early in the `main` function
+//! enables it for the whole proccess.
 //!
 //! All the syscalls are considered to be a security violation by default, with [`ViolationAction`]
 //! being performed when syscall is encountered. Application need to provide a list of exception
-//! [`Rule`]s to [`enable`] function for syscalls that it considers safe to use.
+//! [`Rule`]s to [`enable_syscall_sandboxing`] function for syscalls that it considers safe to use.
 //!
-//! The crate provides a few [`common_allow_lists`] for syscalls to simplify configuration.
+//! The crate provides a few [`common_syscall_allow_lists`] to simplify configuration.
 //!
 //! bedrock compiles and statically links with [libseccomp], so it doesn't require the lib to be
 //! installed.
 //!
+//! # Simple case [Spectre] mitigation for x86_64 processors
+//!
+//! One of the simplest Spectre attack vectors it to use x86_64's [time stamp counter]. bedrock
+//! provides [`forbid_x86_64_cpu_cycle_counter`] method that dissallows the usage of the
+//! counter in the process, so any attempts to use the counter by malicious code will cause process
+//! termination.
+//!
 //! [seccomp]: https://man7.org/linux/man-pages/man2/seccomp.2.html
 //! [arbitrary code execution]: https://en.wikipedia.org/wiki/Arbitrary_code_execution
 //! [libseccomp]: https://github.com/seccomp/libseccomp
+//! [Spectre]: https://en.wikipedia.org/wiki/Spectre_(security_vulnerability)
+//! [time stamp counter]: https://en.wikipedia.org/wiki/Time_Stamp_Counter
 
-pub mod common_allow_lists;
+pub mod common_syscall_allow_lists;
 mod internal;
 mod syscalls;
 
@@ -31,7 +44,7 @@ mod syscalls;
     unreachable_pub
 )]
 mod sys {
-    include!(concat!(env!("OUT_DIR"), "/seccomp_sys.rs"));
+    include!(concat!(env!("OUT_DIR"), "/security_sys.rs"));
 }
 
 use self::internal::RawRule;
@@ -162,7 +175,7 @@ pub enum ArgCmp {
     },
 }
 
-/// A syscall exception rule to be provided to [`enable`].
+/// A syscall exception rule to be provided to [`enable_syscall_sandboxing`].
 #[derive(Clone, Debug, PartialEq)]
 pub enum Rule {
     /// Allows a syscall.
@@ -174,8 +187,10 @@ pub enum Rule {
     /// Allow syscalls, required for [`std::process::exit`] to work, but allow only `0` status code,
     /// so this fails:
     /// ```should_panic
-    /// use bedrock::seccomp::{self, ArgCmp, ViolationAction, Rule, Syscall, allow_list};
-    /// use bedrock::seccomp::common_allow_lists::RUST_BASICS;
+    /// use bedrock::security::{
+    ///     enable_syscall_sandboxing, ArgCmp, ViolationAction, Rule, Syscall, allow_list
+    /// };
+    /// use bedrock::security::common_syscall_allow_lists::RUST_BASICS;
     /// use std::panic;
     /// use std::thread;
     /// use std::process;
@@ -200,15 +215,17 @@ pub enum Rule {
     ///
     /// rules.extend_from_slice(&PROCESS_EXIT_ALLOWED);
     ///
-    /// seccomp::enable(ViolationAction::KillProcess, &rules).unwrap();
+    /// enable_syscall_sandboxing(ViolationAction::KillProcess, &rules).unwrap();
     ///
     /// process::exit(1);
     /// ```
     ///
     /// Same as the above but this time exit with `0` status code, so this works:
     /// ```
-    /// use bedrock::seccomp::{self, ArgCmp, ViolationAction, Rule, Syscall, allow_list};
-    /// use bedrock::seccomp::common_allow_lists::RUST_BASICS;
+    /// use bedrock::security::{
+    ///     enable_syscall_sandboxing, ArgCmp, ViolationAction, Rule, Syscall, allow_list
+    /// };
+    /// use bedrock::security::common_syscall_allow_lists::RUST_BASICS;
     /// use std::panic;
     /// use std::thread;
     /// use std::process;
@@ -233,7 +250,7 @@ pub enum Rule {
     ///
     /// rules.extend_from_slice(&PROCESS_EXIT_ALLOWED);
     ///
-    /// seccomp::enable(ViolationAction::KillProcess, &PROCESS_EXIT_ALLOWED).unwrap();
+    /// enable_syscall_sandboxing(ViolationAction::KillProcess, &PROCESS_EXIT_ALLOWED).unwrap();
     ///
     /// process::exit(0);
     /// ```
@@ -254,8 +271,10 @@ pub enum Rule {
     /// # Examples
     ///
     /// ```
-    /// use bedrock::seccomp::{self, ViolationAction, allow_list, Rule, Syscall};
-    /// use bedrock::seccomp::common_allow_lists::{SERVICE_BASICS, NET_SOCKET_API};
+    /// use bedrock::security::{
+    ///     enable_syscall_sandboxing, ViolationAction, allow_list, Rule, Syscall
+    /// };
+    /// use bedrock::security::common_syscall_allow_lists::{SERVICE_BASICS, NET_SOCKET_API};
     /// use std::net::TcpListener;
     /// use std::panic;
     /// use std::thread;
@@ -268,7 +287,7 @@ pub enum Rule {
     /// rules.extend_from_slice(&SERVICE_BASICS);
     /// rules.extend_from_slice(&NET_SOCKET_API);
     ///
-    /// seccomp::enable(ViolationAction::KillProcess, &rules).unwrap();
+    /// enable_syscall_sandboxing(ViolationAction::KillProcess, &rules).unwrap();
     ///
     /// let err = TcpListener::bind("127.0.0.1:0").unwrap_err();
     ///
@@ -277,34 +296,37 @@ pub enum Rule {
     ReturnError(Syscall, RawOsErrorNum, Vec<ArgCmp>),
 }
 
-/// Enables seccomp hardening in the current thread and all the threads spawned by it.
+/// Enables [seccomp]-based syscall sendboxing in the current thread and all the threads spawned
+/// by it.
 ///
 /// Calling the function early in the `main` function effectively enables seccomp for the whole
 /// process.
 ///
 /// If seccomp encounters a syscall that is not in the `exception_rules` list it performs the
 /// provided [`ViolationAction`]. [`allow_list`] macro can be used to conveniently construct lists
-/// of allowed syscalls. In addition, the crate provides [`common_allow_lists`] that can be merged
-/// into the user-provided allow lists.
+/// of allowed syscalls. In addition, the crate provides [`common_syscall_allow_lists`] that can be
+/// merged into the user-provided allow lists.
+///
+/// [seccomp]: https://man7.org/linux/man-pages/man2/seccomp.2.html
 ///
 /// # Examples
 /// Forbid all the syscalls, so this fails:
 /// ```should_panic
-/// use bedrock::seccomp::{self, ViolationAction, allow_list};
-/// use bedrock::seccomp::common_allow_lists::SERVICE_BASICS;
+/// use bedrock::security::{enable_syscall_sandboxing, ViolationAction, allow_list};
+/// use bedrock::security::common_syscall_allow_lists::SERVICE_BASICS;
 /// use std::net::TcpListener;
 /// use std::panic;
 /// use std::thread;
 ///
-/// seccomp::enable(ViolationAction::KillProcess, &vec![]).unwrap();
+/// enable_syscall_sandboxing(ViolationAction::KillProcess, &vec![]).unwrap();
 ///
 /// let _ = TcpListener::bind("127.0.0.1:0");
 /// ```
 ///
 /// Allow syscalls required for [`std::net::TcpListener::bind`] to work, so this works:
 /// ```
-/// use bedrock::seccomp::{self, ViolationAction, allow_list};
-/// use bedrock::seccomp::common_allow_lists::SERVICE_BASICS;
+/// use bedrock::security::{enable_syscall_sandboxing, ViolationAction, allow_list};
+/// use bedrock::security::common_syscall_allow_lists::SERVICE_BASICS;
 /// use std::net::TcpListener;
 /// use std::panic;
 /// use std::thread;
@@ -319,11 +341,11 @@ pub enum Rule {
 ///    ]
 /// }
 ///
-/// seccomp::enable(ViolationAction::KillProcess, &ALLOW_BIND).unwrap();
+/// enable_syscall_sandboxing(ViolationAction::KillProcess, &ALLOW_BIND).unwrap();
 ///
 /// let _ = TcpListener::bind("127.0.0.1:0");
 /// ```
-pub fn enable(
+pub fn enable_syscall_sandboxing(
     violation_action: ViolationAction,
     exception_rules: &Vec<Rule>,
 ) -> BootstrapResult<()> {
@@ -368,6 +390,44 @@ pub fn enable(
     Ok(())
 }
 
+/// Forbids usage of x86_64 CPU cycle counter for [Spectre] mitigation.
+///
+/// Any attempts to use [time stamp counter] after this function call would result in process
+/// termination.
+///
+/// Note that this method should be called before [`enable_syscall_sandboxing`] as it can violate
+/// syscall sandboxing rules.
+///
+/// [Spectre]: https://en.wikipedia.org/wiki/Spectre_(security_vulnerability)
+/// [time stamp counter]: https://en.wikipedia.org/wiki/Time_Stamp_Counter
+///
+///  # Examples
+///
+/// It's possible to obtain CPU cycle count on x86_84 processors, providing a Spectre vulnerability
+/// vector:
+/// ```
+/// assert!(unsafe { std::arch::x86_64::_rdtsc() } > 0);
+/// ```
+///
+/// With forbidden timers the above code will fail to run:
+/// ```should_panic
+/// bedrock::security::forbid_x86_64_cpu_cycle_counter();
+///
+/// let _ = unsafe { std::arch::x86_64::_rdtsc() } ;
+/// ```
+#[cfg(target_arch = "x86_64")]
+pub fn forbid_x86_64_cpu_cycle_counter() {
+    unsafe {
+        sys::prctl(
+            sys::PR_SET_TSC.try_into().unwrap(),
+            sys::PR_TSC_SIGSEGV,
+            0,
+            0,
+            0,
+        )
+    };
+}
+
 // NOTE: `#[doc(hidden)]` + `#[doc(inline)]` for `pub use` trick is used to prevent these macros
 // to show up in the crate's top level docs.
 
@@ -375,7 +435,7 @@ pub fn enable(
 ///
 /// The macro creates a static list of allowed syscalls. In addition to defining the list, the
 /// macro also generates a doc comment appendix that lists syscalls enabled by this list (see allow
-/// lists in the [`common_allow_lists`] module for an example of generated docs).
+/// lists in the [`common_syscall_allow_lists`] module for an example of generated docs).
 ///
 /// Existing lists can be merged into the new list, by using `..ANOTHER_LIST` item syntax.
 /// A list of [argument comparators] can be added for a syscall by using `<syscall> if [..]` syntax.
@@ -383,8 +443,8 @@ pub fn enable(
 /// # Examples
 ///
 /// ```
-/// use bedrock::seccomp::{allow_list, ArgCmp};
-/// use bedrock::seccomp::common_allow_lists::RUST_BASICS;
+/// use bedrock::security::{allow_list, ArgCmp};
+/// use bedrock::security::common_syscall_allow_lists::RUST_BASICS;
 ///
 /// allow_list! {
 ///     pub static MY_ALLOW_LIST = [
@@ -402,7 +462,7 @@ macro_rules! __allow_list {
         $(#[$attr:meta])*
         $vis:vis static $SET_NAME:ident = $rules:tt
     ) => {
-        $crate::seccomp::allow_list!( @doc
+        $crate::security::allow_list!( @doc
             [],
             $rules,
             {
@@ -418,7 +478,7 @@ macro_rules! __allow_list {
         [ $(#[$attr:meta])* ..$OTHER_SET:ident $(, $($rest:tt)+ )? ],
         $allow_list_def:tt
     ) => {
-        $crate::seccomp::allow_list!( @doc
+        $crate::security::allow_list!( @doc
             [
                 $($docs)*
                 concat!("* all the syscalls from the [`", stringify!($OTHER_SET), "`] allow list")
@@ -433,7 +493,7 @@ macro_rules! __allow_list {
         [ $(#[$attr:meta])* $syscall:ident if $arg_cmp:tt $(, $($rest:tt)+ )? ],
         $allow_list_def:tt
     ) => {
-        $crate::seccomp::allow_list!( @doc
+        $crate::security::allow_list!( @doc
             [
                 $($docs)*
                 concat!(
@@ -454,7 +514,7 @@ macro_rules! __allow_list {
         [ $(#[$attr:meta])* $syscall:ident $(, $($rest:tt)+ )? ],
         $allow_list_def:tt
     ) => {
-        $crate::seccomp::allow_list!( @doc
+        $crate::security::allow_list!( @doc
             [
                 $($docs)*
                 concat!(
@@ -485,13 +545,13 @@ macro_rules! __allow_list {
         ///
         $( #[doc = $docs] )*
         $vis static $SET_NAME:
-            $crate::reexports_for_macros::once_cell::sync::Lazy<Vec<$crate::seccomp::Rule>> =
+            $crate::reexports_for_macros::once_cell::sync::Lazy<Vec<$crate::security::Rule>> =
             $crate::reexports_for_macros::once_cell::sync::Lazy::new(|| {
                 let mut list = vec![];
 
                 #[allow(clippy::vec_init_then_push)]
                 {
-                    $crate::seccomp::allow_list!( @rule list, $rules );
+                    $crate::security::allow_list!( @rule list, $rules );
                 }
 
                 list
@@ -512,7 +572,7 @@ macro_rules! __allow_list {
         $(#[$attr])*
         $list.extend_from_slice(&$OTHER_SET);
 
-        $crate::seccomp::allow_list!( @rule $list, [ $( $( $rest )+ )? ] );
+        $crate::security::allow_list!( @rule $list, [ $( $( $rest )+ )? ] );
     };
 
     ( @rule
@@ -524,12 +584,12 @@ macro_rules! __allow_list {
         ]
     ) => {
         $(#[$attr])*
-        $list.push($crate::seccomp::Rule::Allow(
-            $crate::seccomp::Syscall::$syscall,
+        $list.push($crate::security::Rule::Allow(
+            $crate::security::Syscall::$syscall,
             vec![ $( $arg_cmp ),+ ]
         ));
 
-        $crate::seccomp::allow_list!( @rule $list, [ $( $( $rest )+ )? ] );
+        $crate::security::allow_list!( @rule $list, [ $( $( $rest )+ )? ] );
     };
 
     ( @rule
@@ -541,12 +601,12 @@ macro_rules! __allow_list {
         ]
     ) => {
         $(#[$attr])*
-        $list.push($crate::seccomp::Rule::Allow(
-            $crate::seccomp::Syscall::$syscall,
+        $list.push($crate::security::Rule::Allow(
+            $crate::security::Syscall::$syscall,
             vec![]
         ));
 
-        $crate::seccomp::allow_list!( @rule $list, [ $( $( $rest )+ )? ] );
+        $crate::security::allow_list!( @rule $list, [ $( $( $rest )+ )? ] );
     };
 
     ( @rule $list:ident, [] ) => {}
