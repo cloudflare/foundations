@@ -69,10 +69,10 @@ everything: &everything
       - ./scripts/macos-osxcross-build.sh
 
   publish:
+    builddeps:
       <<: *builddeps-common
-      builddeps:
-        - cf-rust-tools
-      post-cache:
-        - cf-cargo-publish.sh
+      ? cf-rust-tools
+    post-cache:
+      - cf-cargo-publish.sh
 
 bullseye: *everything
