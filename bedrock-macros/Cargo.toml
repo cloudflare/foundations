@@ -2,6 +2,9 @@
 name = "bedrock-macros"
 version = "1.0.0"
 edition = "2021"
+publish = ["cloudflare"]
+description = "Procedural macros used by bedrock."
+repository = "https://bitbucket.cfdata.org/projects/OXY/repos/bedrock"
 
 [lib]
 proc-macro = true
