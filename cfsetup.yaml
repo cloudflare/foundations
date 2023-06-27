@@ -11,6 +11,7 @@ builddeps: &builddeps-common
   ? libelf-dev
   ? libsctp-dev
   ? cargo-to-teamcity
+  ? cf-rust-tools
 
 builddeps-macos: &builddeps-macos
   ? libclang-11-dev
@@ -31,6 +32,7 @@ builddeps-macos: &builddeps-macos
   ? patch
   ? libxml2-dev
   ? xz-utils
+  ? cf-rust-tools
 
 default-flavor: bullseye
 
@@ -40,6 +42,7 @@ everything: &everything
       <<: *builddeps-common
       ? cargo-hack
     post-cache:
+      - . cf-cargo-configure.sh
       - sccache-pull oxy-bedrock && export RUSTC_WRAPPER=sccache
       - RUSTFLAGS="-D warnings" cargo hack check --feature-powerset --no-dev-deps
       - sccache -s && sccache-push oxy-bedrock
@@ -48,6 +51,7 @@ everything: &everything
     builddeps:
       <<: *builddeps-common
     post-cache:
+      - . cf-cargo-configure.sh
       - sccache-pull oxy-bedrock && export RUSTC_WRAPPER=sccache
       - cargo test
       - sccache -s && sccache-push oxy-bedrock
@@ -57,6 +61,7 @@ everything: &everything
       <<: *builddeps-common
       ? cargo-deny
     post-cache:
+      - . cf-cargo-configure.sh
       - sccache-pull oxy-bedrock && export RUSTC_WRAPPER=sccache
       - ./scripts/lint.sh
       - sccache -s && sccache-push oxy-bedrock
@@ -65,13 +70,13 @@ everything: &everything
     builddeps:
       <<: *builddeps-macos
     post-cache:
+      - . cf-cargo-configure.sh
       - ./scripts/macos-osxcross-setup.sh
       - ./scripts/macos-osxcross-build.sh
 
   publish:
     builddeps:
       <<: *builddeps-common
-      ? cf-rust-tools
     post-cache:
       - cf-cargo-publish.sh
 
