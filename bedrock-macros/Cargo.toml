@@ -1,6 +1,6 @@
 [package]
 name = "bedrock-macros"
-version = "1.0.0"
+version = "1.0.1"
 edition = "2021"
 publish = ["cloudflare"]
 description = "Procedural macros used by bedrock."

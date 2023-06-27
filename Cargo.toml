@@ -11,8 +11,8 @@ debug = 1
 
 [workspace.dependencies]
 anyhow = { version = "1", features = ["backtrace", "std"] }
-bedrock = { version = "1", path = "./bedrock" }
-bedrock-macros = { version = "1", path = "./bedrock-macros" }
+bedrock = { version = "1", path = "./bedrock", registry = "cloudflare" }
+bedrock-macros = { version = "1", path = "./bedrock-macros", registry = "cloudflare" }
 bindgen = "0.65"
 cc = "1.0"
 crossbeam-channel = "0.5"
