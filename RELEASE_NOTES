@@ -1,3 +1,6 @@
+1.0.2
+- Removes cyclical dependency
+
 1.0.1
 - Updates cfsetup.yaml to support registry
 - Specifies registry in workspace toml
