@@ -1,10 +1,10 @@
 [package]
 name = "bedrock-macros"
-version = "1.0.2"
-edition = "2021"
-publish = ["cloudflare"]
 description = "Procedural macros used by bedrock."
-repository = "https://bitbucket.cfdata.org/projects/OXY/repos/bedrock"
+version = { workspace = true }
+edition= { workspace = true }
+publish= { workspace = true }
+repository= { workspace = true }
 
 [lib]
 proc-macro = true
