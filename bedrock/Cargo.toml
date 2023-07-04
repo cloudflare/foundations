@@ -2,9 +2,18 @@
 name = "bedrock"
 description = "A Rust service foundation framework."
 version = { workspace = true }
-edition= { workspace = true }
-publish= { workspace = true }
-repository= { workspace = true }
+edition = { workspace = true }
+publish = { workspace = true }
+repository = { workspace = true }
+
+[package.metadata.release]
+# run in the context of workspace root
+pre-release-hook = [
+  "git-cliff",
+  "-w", "..",
+  "-o", "../RELEASE_NOTES",
+  "--tag", "{{version}}"
+]
 
 [features]
 # Default set of features.

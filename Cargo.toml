@@ -12,6 +12,12 @@ repository = "https://bitbucket.cfdata.org/projects/OXY/repos/bedrock"
 publish = ["cloudflare"]
 edition = "2021"
 
+[workspace.metadata.release]
+pre-release-commit-message = "Release {{version}}"
+shared-version = true
+tag-prefix = ""
+publish = false
+
 [profile.release]
 debug = 1
 
