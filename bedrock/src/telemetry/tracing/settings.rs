@@ -24,6 +24,13 @@ pub struct TracingSettings {
     /// The address of the Jaeger Thrift (UDP) agent.
     pub jaeger_tracing_server_addr: SocketAddr,
 
+    /// Overrides the bind address for the reporter API.
+    /// By default, the reporter API is only exposed on the loopback
+    /// interface. This won't work in environments where the
+    /// Jaeger agent is on another host (for example, Docker).
+    /// Must have the same address family as `jaeger_tracing_server_addr`.
+    pub jaeger_reporter_bind_addr: Option<SocketAddr>,
+
     /// Sampling ratio.
     ///
     /// This can be any fractional value between `0.0` and `1.0`.
@@ -43,6 +50,7 @@ impl Default for TracingSettings {
         Self {
             enabled: false,
             jaeger_tracing_server_addr,
+            jaeger_reporter_bind_addr: None,
             sampling_ratio: 1.0,
         }
     }
