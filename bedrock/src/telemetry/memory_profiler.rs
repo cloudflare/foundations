@@ -117,10 +117,12 @@ impl MemoryProfiler {
             )
         })?;
 
-        let mut out_file = File::open(out_file_path).await?;
         let mut profile = Vec::new();
 
-        out_file.read_to_end(&mut profile).await?;
+        File::open(out_file_path)
+            .await?
+            .read_to_end(&mut profile)
+            .await?;
 
         Ok(String::from_utf8(profile)?)
     }
