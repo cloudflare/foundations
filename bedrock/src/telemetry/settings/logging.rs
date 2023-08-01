@@ -10,6 +10,9 @@ feature_use!(cfg(feature = "settings"), {
     use std::str::FromStr;
 });
 
+// NOTE: we technically don't need a feature gate here, but if we don't add it then docs don't
+// mark this re-export as available on when `logging` is enabled.
+#[cfg(feature = "logging")]
 pub use slog::Level;
 
 /// Logging settings.

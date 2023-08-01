@@ -1,6 +1,6 @@
 use super::internal::{FinishedSpan, SharedSpan, Tracer};
-use super::settings::TracingSettings;
 use crate::telemetry::scope::ScopeStack;
+use crate::telemetry::settings::TracingSettings;
 use crate::{BootstrapResult, ServiceInfo};
 use anyhow::bail;
 use crossbeam_channel::Receiver;

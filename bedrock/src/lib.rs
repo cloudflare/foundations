@@ -5,6 +5,7 @@
 //! * logging
 //! * distributed tracing
 //! * metrics
+//! * memory and async runtime profiling
 //! * security features, such as [seccomp]-based syscall sandboxing
 //! * service configuration with documentation
 //! * full application bootstraping that set up **any combination** of the above in a few lines of code
@@ -24,9 +25,14 @@
 //! - **tracing**: Enables distributed tracing functionality.
 //! - **testing**: Enables testing-related functionality.
 //! - **security**: Enables security features. Available only on Linux (x86_64, aarch64).
+//! - **jemalloc**: Enables [jemalloc] memory allocator which is known to perform much better than
+//! system allocators for long living service.
+//! - **memory-profiling**: Enables memory profiling functionality and telemetry. Requires
+//! **jemalloc** feature to be enabled.
 //!
 //! [Cargo features]: https://doc.rust-lang.org/stable/cargo/reference/features.html#the-features-section
 //! [seccomp]: https://en.wikipedia.org/wiki/Seccomp
+//! [jemalloc]: https://github.com/jemalloc/jemalloc
 
 #![warn(missing_docs)]
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
@@ -36,7 +42,7 @@ mod utils;
 #[cfg(feature = "settings")]
 pub mod settings;
 
-#[cfg(any(feature = "logging", feature = "tracing"))]
+#[cfg(any(feature = "logging", feature = "tracing", feature = "telemetry"))]
 pub mod telemetry;
 
 #[cfg(all(
@@ -60,6 +66,17 @@ pub mod reexports_for_macros {
     #[cfg(feature = "security")]
     pub use once_cell;
 }
+
+/// Global memory allocator backed by [jemalloc].
+///
+/// This static variable is exposed solely for the documentation purposes and don't need to be used
+/// directly. If **jemalloc** feature is enabled then the service will use jemalloc for all the
+/// memory allocations implicitly.
+///
+/// [jemalloc]: https://github.com/jemalloc/jemalloc
+#[cfg(feature = "jemalloc")]
+#[global_allocator]
+pub static JEMALLOC_MEMORY_ALLOCATOR: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 
 /// Error that can be returned on a service initialisation.
 ///

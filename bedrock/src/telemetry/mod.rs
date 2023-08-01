@@ -3,6 +3,7 @@
 //! * logging
 //! * distributed tracing (backed by [Jaeger])
 //! * metrics (backed by [Prometheus])
+//! * memory profiling (backed by [jemalloc])
 //!
 //! The framework strives to minimize the bootstrap code required to set up basic telemetry for a
 //! service and provide ergonomic API for telemetry-related operations.
@@ -40,6 +41,7 @@
 //!
 //! [Jaeger]: https://www.jaegertracing.io/
 //! [Prometheus]: https://prometheus.io/
+//! [jemalloc]: https://github.com/jemalloc/jemalloc
 
 #[cfg(any(feature = "logging", feature = "tracing"))]
 mod scope;
@@ -52,6 +54,13 @@ pub mod log;
 
 #[cfg(feature = "tracing")]
 pub mod tracing;
+
+#[cfg(all(
+    target_os = "linux",
+    feature = "jemalloc",
+    feature = "memory-profiling"
+))]
+mod memory_profiler;
 
 pub mod settings;
 
@@ -79,6 +88,13 @@ feature_use!(cfg(feature = "tracing"), {
 
 #[cfg(feature = "testing")]
 pub use self::testing::TestTelemetryContext;
+
+#[cfg(all(
+    target_os = "linux",
+    feature = "jemalloc",
+    feature = "memory-profiling"
+))]
+pub use self::memory_profiler::MemoryProfiler;
 
 /// A macro that enables telemetry testing in `#[test]` and `#[tokio::test]`.
 ///
@@ -307,7 +323,7 @@ impl TelemetryContext {
     /// use bedrock::telemetry::TelemetryContext;
     /// use bedrock::telemetry::tracing::{self, test_trace};
     /// use bedrock::telemetry::log::{self, TestLogRecord};
-    /// use bedrock::telemetry::log::settings::Level;
+    /// use bedrock::telemetry::settings::Level;
     ///
     /// #[tracing::span_fn("sync_fn")]
     /// fn some_sync_production_fn_that_we_test() {
@@ -558,7 +574,7 @@ impl TelemetryContext {
     /// ```
     /// use bedrock::telemetry::TelemetryContext;
     /// use bedrock::telemetry::log::{self, TestLogRecord};
-    /// use bedrock::telemetry::log::settings::Level;
+    /// use bedrock::telemetry::settings::Level;
     ///
     /// // Test context is used for demonstration purposes to show the resulting log records.
     /// let ctx = TelemetryContext::test();

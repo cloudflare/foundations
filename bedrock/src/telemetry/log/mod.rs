@@ -9,14 +9,12 @@ pub(crate) mod init;
 #[cfg(any(test, feature = "testing"))]
 pub(crate) mod testing;
 
-pub mod settings;
-
 #[doc(hidden)]
 pub mod internal;
 
 use self::init::{build_log, LogHarness};
 use self::internal::current_log;
-use self::settings::LogVerbosity;
+use crate::telemetry::settings::LogVerbosity;
 use crate::Result;
 use slog::{Level, Logger, OwnedKV};
 use std::sync::Arc;
@@ -67,7 +65,7 @@ pub fn slog_logger() -> Arc<parking_lot::RwLock<Logger>> {
 /// ```
 /// use bedrock::telemetry::TelemetryContext;
 /// use bedrock::telemetry::log::{self, TestLogRecord};
-/// use bedrock::telemetry::log::settings::Level;
+/// use bedrock::telemetry::settings::Level;
 ///
 /// // Test context is used for demonstration purposes to show the resulting log records.
 /// let ctx = TelemetryContext::test();
@@ -110,7 +108,7 @@ pub fn slog_logger() -> Arc<parking_lot::RwLock<Logger>> {
 /// ]);
 /// ```
 ///
-/// [`LoggingSettings::redact_keys`]: crate::telemetry::log::settings::LoggingSettings::redact_keys
+/// [`LoggingSettings::redact_keys`]: crate::telemetry::settings::LoggingSettings::redact_keys
 #[macro_export]
 #[doc(hidden)]
 macro_rules! __add_fields {
@@ -133,7 +131,7 @@ macro_rules! __add_fields {
 /// ```
 /// use bedrock::telemetry::TelemetryContext;
 /// use bedrock::telemetry::log::{self, TestLogRecord};
-/// use bedrock::telemetry::log::settings::Level;
+/// use bedrock::telemetry::settings::Level;
 ///
 /// // Test context is used for demonstration purposes to show the resulting log records.
 /// let ctx = TelemetryContext::test();
@@ -171,7 +169,7 @@ macro_rules! __add_fields {
 /// ]);
 /// ```
 ///
-/// [`LoggingSettings::redact_keys`]: crate::telemetry::log::settings::LoggingSettings::redact_keys
+/// [`LoggingSettings::redact_keys`]: crate::telemetry::settings::LoggingSettings::redact_keys
 #[macro_export]
 #[doc(hidden)]
 macro_rules! __error {
@@ -195,7 +193,7 @@ macro_rules! __error {
 /// ```
 /// use bedrock::telemetry::TelemetryContext;
 /// use bedrock::telemetry::log::{self, TestLogRecord};
-/// use bedrock::telemetry::log::settings::Level;
+/// use bedrock::telemetry::settings::Level;
 ///
 /// // Test context is used for demonstration purposes to show the resulting log records.
 /// let ctx = TelemetryContext::test();
@@ -233,7 +231,7 @@ macro_rules! __error {
 /// ]);
 /// ```
 ///
-/// [`LoggingSettings::redact_keys`]: crate::telemetry::log::settings::LoggingSettings::redact_keys
+/// [`LoggingSettings::redact_keys`]: crate::telemetry::settings::LoggingSettings::redact_keys
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __warn {
@@ -257,7 +255,7 @@ macro_rules! __warn {
 /// ```
 /// use bedrock::telemetry::TelemetryContext;
 /// use bedrock::telemetry::log::{self, TestLogRecord};
-/// use bedrock::telemetry::log::settings::Level;
+/// use bedrock::telemetry::settings::Level;
 ///
 /// // Test context is used for demonstration purposes to show the resulting log records.
 /// let ctx = TelemetryContext::test();
@@ -295,7 +293,7 @@ macro_rules! __warn {
 /// ]);
 /// ```
 ///
-/// [`LoggingSettings::redact_keys`]: crate::telemetry::log::settings::LoggingSettings::redact_keys
+/// [`LoggingSettings::redact_keys`]: crate::telemetry::settings::LoggingSettings::redact_keys
 #[macro_export]
 #[doc(hidden)]
 macro_rules! __debug {
@@ -319,7 +317,7 @@ macro_rules! __debug {
 /// ```
 /// use bedrock::telemetry::TelemetryContext;
 /// use bedrock::telemetry::log::{self, TestLogRecord};
-/// use bedrock::telemetry::log::settings::Level;
+/// use bedrock::telemetry::settings::Level;
 ///
 /// // Test context is used for demonstration purposes to show the resulting log records.
 /// let ctx = TelemetryContext::test();
@@ -357,7 +355,7 @@ macro_rules! __debug {
 /// ]);
 /// ```
 ///
-/// [`LoggingSettings::redact_keys`]: crate::telemetry::log::settings::LoggingSettings::redact_keys
+/// [`LoggingSettings::redact_keys`]: crate::telemetry::settings::LoggingSettings::redact_keys
 #[macro_export]
 #[doc(hidden)]
 macro_rules! __info {
@@ -381,7 +379,7 @@ macro_rules! __info {
 /// ```
 /// use bedrock::telemetry::TelemetryContext;
 /// use bedrock::telemetry::log::{self, TestLogRecord};
-/// use bedrock::telemetry::log::settings::Level;
+/// use bedrock::telemetry::settings::Level;
 ///
 /// // Test context is used for demonstration purposes to show the resulting log records.
 /// let ctx = TelemetryContext::test();
@@ -419,7 +417,7 @@ macro_rules! __info {
 /// ]);
 /// ```
 ///
-/// [`LoggingSettings::redact_keys`]: crate::telemetry::log::settings::LoggingSettings::redact_keys
+/// [`LoggingSettings::redact_keys`]: crate::telemetry::settings::LoggingSettings::redact_keys
 #[macro_export]
 #[doc(hidden)]
 macro_rules! __trace {

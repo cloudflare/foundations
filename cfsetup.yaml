@@ -53,7 +53,7 @@ everything: &everything
     post-cache:
       - . cf-cargo-configure.sh
       - sccache-pull oxy-bedrock && export RUSTC_WRAPPER=sccache
-      - cargo test
+      - _RJEM_MALLOC_CONF=prof:true cargo test
       - sccache -s && sccache-push oxy-bedrock
 
   lint:

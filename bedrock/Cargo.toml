@@ -11,7 +11,7 @@ repository = { workspace = true }
 pre-release-hook = [
   "git-cliff",
   "-w", "..",
-  "-o", "../RELEASE_NOTES",
+  "-o", "../RELEASE_NOTES.md",
   "--tag", "{{version}}"
 ]
 
@@ -25,7 +25,8 @@ default = [
 # All non platform-specific features
 platform-common-default = [
     "settings", 
-    "telemetry", 
+    "telemetry",
+    "jemalloc", 
     "testing"
 ]
 
@@ -41,7 +42,8 @@ settings = [
 # Enables all the telemetry-related features ("logging", "tracing").
 telemetry = [
     "logging", 
-    "tracing"
+    "tracing",
+    "memory-profiling"
 ]
 
 # Enables logging functionality.
@@ -67,11 +69,24 @@ tracing = [
     "dep:bedrock-macros"
 ]
 
+# Enables memory profiling features (require `jemalloc` feature to be enabled)
+memory-profiling = [
+    "dep:once_cell",
+    "dep:tikv-jemalloc-ctl",
+    "dep:tempfile",
+    "dep:tokio"
+]
+
 # Enables security-related features
 security = [
     "dep:bindgen",
     "dep:cc",
     "dep:once_cell"
+]
+
+# Enables jemalloc as a memory allocator
+jemalloc = [
+    "dep:tikv-jemallocator"
 ]
 
 # Enables testing-related functionality.
@@ -100,7 +115,13 @@ slog-async = { workspace = true, optional = true }
 slog-json = { workspace = true, optional = true }
 slog-term = { workspace = true, optional = true }
 thread_local = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true }
+tikv-jemallocator = { workspace = true, optional = true }
 yaml-merge-keys = { workspace = true, optional = true }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+tikv-jemalloc-ctl = { workspace = true, optional = true }
+tempfile = { workspace = true, optional = true }
 
 [dev-dependencies]
 rusty-hook = { workspace = true }

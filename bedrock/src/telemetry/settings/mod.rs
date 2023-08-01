@@ -1,10 +1,16 @@
 //! Telemetry settings.
 
 #[cfg(feature = "tracing")]
-use super::tracing::settings::TracingSettings;
+mod tracing;
 
 #[cfg(feature = "logging")]
-use super::log::settings::LoggingSettings;
+mod logging;
+
+#[cfg(feature = "tracing")]
+pub use self::tracing::*;
+
+#[cfg(feature = "logging")]
+pub use self::logging::*;
 
 #[cfg(feature = "settings")]
 use crate::settings::settings;
