@@ -8,14 +8,15 @@ pub(crate) mod testing;
 
 pub(crate) mod init;
 
-use self::internal::{create_span, current_span, span_trace_id, Span};
+use self::init::TracingHarness;
+use self::internal::{create_span, current_span, span_trace_id, SharedSpan, Span};
+use super::scope::Scope;
 use std::borrow::Cow;
 use std::sync::Arc;
 
 #[cfg(any(test, feature = "testing"))]
 pub use self::testing::{TestSpan, TestTrace, TestTraceIterator, TestTraceOptions};
 
-pub use self::internal::SpanScope;
 pub use rustracing_jaeger::span::SpanContextState as SerializableTraceState;
 
 /// A macro that wraps function body with a tracing span that is active as long as the function
@@ -114,6 +115,19 @@ pub use rustracing_jaeger::span::SpanContextState as SerializableTraceState;
 ///
 /// [async_trait]: https://crates.io/crates/async-trait
 pub use bedrock_macros::span_fn;
+
+/// A handle for the scope in which tracing span is active.
+///
+/// Scope ends when the handle is dropped.
+#[must_use]
+pub struct SpanScope(Scope<SharedSpan>);
+
+impl SpanScope {
+    #[inline]
+    pub(crate) fn new(span: SharedSpan) -> Self {
+        Self(Scope::new(&TracingHarness::get().span_scope_stack, span))
+    }
+}
 
 /// Options for a new trace.
 #[derive(Default, Debug)]

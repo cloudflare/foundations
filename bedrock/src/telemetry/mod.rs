@@ -77,7 +77,8 @@ feature_use!(cfg(feature = "logging"), {
 });
 
 feature_use!(cfg(feature = "tracing"), {
-    use self::tracing::internal::{create_span, current_span, fork_trace, SharedSpan, SpanScope};
+    use self::tracing::internal::{create_span, current_span, fork_trace, SharedSpan};
+    use self::tracing::SpanScope;
     use std::borrow::Cow;
 
     feature_use!(cfg(feature = "testing"), {

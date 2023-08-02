@@ -1,6 +1,5 @@
 use super::init::TracingHarness;
 use super::StartTraceOptions;
-use crate::telemetry::scope::Scope;
 use rand::{self, Rng};
 use rustracing::sampler::ProbabilisticSampler;
 use rustracing::tag::Tag;
@@ -11,16 +10,6 @@ use std::sync::Arc;
 pub(crate) type Span = rustracing::span::Span<SpanContextState>;
 pub(crate) type FinishedSpan = rustracing::span::FinishedSpan<SpanContextState>;
 pub(crate) type Tracer = rustracing::Tracer<ProbabilisticSampler, SpanContextState>;
-
-#[must_use]
-pub struct SpanScope(Scope<SharedSpan>);
-
-impl SpanScope {
-    #[inline]
-    pub(crate) fn new(span: SharedSpan) -> Self {
-        Self(Scope::new(&TracingHarness::get().span_scope_stack, span))
-    }
-}
 
 #[derive(Debug, Clone)]
 pub(crate) struct SharedSpan {
