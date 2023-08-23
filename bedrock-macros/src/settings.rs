@@ -304,10 +304,14 @@ fn get_field_default_fn(field: &Field) -> Option<proc_macro2::TokenStream> {
             continue;
         }
 
-        let Ok(Meta::List(list)) = attr.parse_meta() else { continue };
+        let Ok(Meta::List(list)) = attr.parse_meta() else {
+            continue;
+        };
 
         for meta in list.nested {
-            let NestedMeta::Meta(Meta::NameValue(mnv)) = meta else { continue };
+            let NestedMeta::Meta(Meta::NameValue(mnv)) = meta else {
+                continue;
+            };
 
             if !mnv.path.is_ident("default") {
                 continue;

@@ -107,16 +107,7 @@ impl MemoryProfiler {
             .to_str()
             .ok_or("failed to obtain heap profile output file path")?;
 
-        let mut out_file_path_c_str = CString::new(out_file_path)?.into_bytes_with_nul();
-        let out_file_path_ptr = out_file_path_c_str.as_mut_ptr() as *mut c_char;
-
-        control::write(control::PROF_DUMP, out_file_path_ptr).map_err(|e| {
-            format!(
-                "failed to dump jemalloc heap profile to {:?}: {}",
-                out_file_path, e
-            )
-        })?;
-
+        Self::write_heap_profile(out_file_path)?;
         let mut profile = Vec::new();
 
         File::open(out_file_path)
@@ -148,6 +139,20 @@ impl MemoryProfiler {
 
         Ok(String::from_utf8(stats)?)
     }
+
+    fn write_heap_profile(out_file_path: &str) -> Result<()> {
+        let mut out_file_path_c_str = CString::new(out_file_path)?.into_bytes_with_nul();
+        let out_file_path_ptr = out_file_path_c_str.as_mut_ptr() as *mut c_char;
+
+        control::write(control::PROF_DUMP, out_file_path_ptr).map_err(|e| {
+            format!(
+                "failed to dump jemalloc heap profile to {:?}: {}",
+                out_file_path, e
+            )
+        })?;
+
+        Ok(())
+    }
 }
 
 fn init_profiler(sample_interval: u8) -> BootstrapResult<Option<MemoryProfiler>> {
@@ -176,5 +181,18 @@ mod tests {
     #[test]
     fn sample_interval_out_of_bounds() {
         assert!(MemoryProfiler::get_or_init_with_sample_interval(128).is_err());
+    }
+
+    // NOTE: `heap_profile` uses raw pointers, the test ensures that it doesn't affect the returned future
+    #[test]
+    fn _assert_heap_profile_fut_is_send() {
+        fn is_send<T: Send>(_t: T) {}
+
+        is_send(
+            MemoryProfiler::get_or_init_with_sample_interval(16)
+                .unwrap()
+                .unwrap()
+                .heap_profile(),
+        );
     }
 }
