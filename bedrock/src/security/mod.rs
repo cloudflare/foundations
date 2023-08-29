@@ -368,7 +368,7 @@ pub fn enable_syscall_sandboxing(
                 action,
                 syscall,
                 arg_cmps.len().try_into().unwrap(),
-                arg_cmps.as_ptr() as *const sys::scmp_arg_cmp,
+                arg_cmps.as_ptr(),
             )
         };
 
