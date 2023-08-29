@@ -1,4 +1,14 @@
+1.2.0
+- 2023-06-16 ROCK-4: Implement bedrock::telemetry::metrics
+- 2023-08-29 Remove unnecessary cast
+- 2023-08-23 ZTC-885: Updates heap profiling code slightly to be usable by oxy
+- 2023-06-19 Fix unused_variables lint
+- 2023-08-02 Document SpanScope and move it out of internal module
+- 2023-08-01 Do not drop heap profile temp file before reading completion
+- 2023-08-01 ROCK-5 Implement jemalloc-related functionality
+
 1.1.0
+- 2023-07-26 Release 1.1.0
 - 2023-07-24 ROCK-16: Add 'jaeger_reporter_bind_addr' to TracingSettings
 - 2023-07-04 Adds cargo-release and git-cliff config
 
