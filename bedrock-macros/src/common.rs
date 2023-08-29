@@ -1,7 +1,7 @@
-use syn::parse::ParseStream;
+use syn::parse::{Parse, ParseStream, Parser};
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
-use syn::{NestedMeta, Token};
+use syn::{Attribute, NestedMeta, Token};
 
 pub(crate) type Result<T> = std::result::Result<T, syn::Error>;
 
@@ -27,6 +27,18 @@ pub(crate) fn parse_optional_trailing_meta_list(
     } else {
         Ok(Default::default())
     }
+}
+
+pub(crate) fn parse_attr_value<T>(attr: Attribute) -> Result<T>
+where
+    T: Parse,
+{
+    let parser = |input: ParseStream| {
+        let _equal_token = input.parse::<Token![=]>()?;
+        input.parse::<T>()
+    };
+
+    parser.parse2(attr.tokens)
 }
 
 #[cfg(test)]
