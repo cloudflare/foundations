@@ -9,4 +9,6 @@ cargo clippy --all-targets -- \
     -D clippy::await_holding_lock \
     -D clippy::clone_on_ref_ptr 
 
+RUSTDOCFLAGS="-D warnings" cargo doc --no-deps
+
 cargo deny check

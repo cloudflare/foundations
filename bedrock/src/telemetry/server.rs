@@ -1,20 +1,17 @@
+#[cfg(feature = "metrics")]
+use super::metrics;
 use super::settings::TelemetrySettings;
 use super::TelemetryServerFuture;
-use crate::utils::feature_use;
-use crate::BootstrapResult;
+use crate::{BootstrapResult, Result};
 use anyhow::anyhow;
 use futures_util::TryFutureExt;
+use hyper::{header, Response, StatusCode};
 use hyper::{Body, Server};
 use routerify::{Router, RouterService};
 use socket2::{Domain, SockAddr, Socket, Type};
 use std::convert::Infallible;
 use std::net::SocketAddr;
 use std::sync::Arc;
-
-feature_use!(cfg(feature = "metrics"), {
-    use super::metrics;
-    use hyper::{header, Response};
-});
 
 pub(super) fn init(settings: TelemetrySettings) -> BootstrapResult<TelemetryServerFuture> {
     let settings = Arc::new(settings);
@@ -52,32 +49,80 @@ fn bind_socket(addr: SocketAddr) -> BootstrapResult<Socket> {
 }
 
 fn create_router(settings: &Arc<TelemetrySettings>) -> BootstrapResult<Router<Body, Infallible>> {
-    #[cfg_attr(not(feature = "metrics"), allow(unused_mut))]
     let mut router = Router::builder();
 
-    #[cfg(not(feature = "metrics"))]
-    let _ = settings;
-
-    #[cfg_attr(not(feature = "metrics"), allow(unused_macros))]
     macro_rules! route {
-        ($path:expr, $f:ident) => {
+        ($path:expr, $content_type:expr, $f:expr) => {
             router = router.get($path, {
                 let settings = Arc::clone(&settings);
-                move |_| $f(Arc::clone(&settings))
+                move |_| {
+                    let res = $f(Arc::clone(&settings));
+                    async move { Ok(into_response($content_type, res.await)) }
+                }
             })
         };
     }
 
+    route!("/health", "text/plain", health);
+
     #[cfg(feature = "metrics")]
-    route!("/metrics", metrics);
+    route!("/metrics", "text/plain; version=0.0.4", metrics);
+
+    #[cfg(all(target_os = "linux", feature = "memory-profiling"))]
+    route!(
+        "/pprof/heap",
+        "application/x-gperftools-profile",
+        memory_profiling::heap_profile
+    );
+
+    #[cfg(all(target_os = "linux", feature = "memory-profiling"))]
+    route!(
+        "/pprof/heap_stats",
+        "text/plain; charset=utf-8",
+        memory_profiling::heap_stats
+    );
 
     router.build().map_err(|err| anyhow!(err))
 }
 
+fn into_response(content_type: &str, res: crate::Result<impl Into<Body>>) -> Response<Body> {
+    match res {
+        Ok(data) => Response::builder()
+            .header(header::CONTENT_TYPE, content_type)
+            .body(data.into())
+            .unwrap(),
+        Err(err) => Response::builder()
+            .status(StatusCode::INTERNAL_SERVER_ERROR)
+            .body(err.to_string().into())
+            .unwrap(),
+    }
+}
+
+async fn health(_settings: Arc<TelemetrySettings>) -> Result<&'static str> {
+    Ok("")
+}
+
 #[cfg(feature = "metrics")]
-async fn metrics(settings: Arc<TelemetrySettings>) -> Result<Response<Body>, Infallible> {
-    Ok(Response::builder()
-        .header(header::CONTENT_TYPE, "text/plain; version=0.0.4")
-        .body(Body::from(metrics::collect(&settings.metrics).unwrap()))
-        .unwrap())
+async fn metrics(settings: Arc<TelemetrySettings>) -> Result<String> {
+    metrics::collect(&settings.metrics)
+}
+
+#[cfg(all(target_os = "linux", feature = "memory-profiling"))]
+mod memory_profiling {
+    use super::*;
+    use crate::telemetry::MemoryProfiler;
+
+    fn profiler(settings: Arc<TelemetrySettings>) -> Result<MemoryProfiler> {
+        MemoryProfiler::get_or_init_with(&settings.memory_profiler)?.ok_or_else(|| {
+            "profiling should be enabled via `_RJEM_MALLOC_CONF=prof:true` env var".into()
+        })
+    }
+
+    pub(super) async fn heap_profile(settings: Arc<TelemetrySettings>) -> Result<String> {
+        profiler(settings)?.heap_profile().await
+    }
+
+    pub(super) async fn heap_stats(settings: Arc<TelemetrySettings>) -> Result<String> {
+        profiler(settings)?.heap_stats()
+    }
 }

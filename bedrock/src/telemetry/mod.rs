@@ -58,11 +58,7 @@ pub mod metrics;
 #[cfg(feature = "tracing")]
 pub mod tracing;
 
-#[cfg(all(
-    target_os = "linux",
-    feature = "jemalloc",
-    feature = "memory-profiling"
-))]
+#[cfg(all(target_os = "linux", feature = "memory-profiling"))]
 mod memory_profiler;
 
 pub mod settings;
@@ -100,11 +96,7 @@ feature_use!(cfg(feature = "tracing"), {
 #[cfg(feature = "testing")]
 pub use self::testing::TestTelemetryContext;
 
-#[cfg(all(
-    target_os = "linux",
-    feature = "jemalloc",
-    feature = "memory-profiling"
-))]
+#[cfg(all(target_os = "linux", feature = "memory-profiling"))]
 pub use self::memory_profiler::MemoryProfiler;
 
 /// Telemetry server future returned by [`init_with_server`].
@@ -689,8 +681,14 @@ pub fn init(service_info: ServiceInfo, settings: &TelemetrySettings) -> Bootstra
 
 /// Initializes service telemetry and returns a HTTP server to be driven by the caller.
 ///
-/// The server currently defines a single endpoint `/metrics` returning all the
-/// Prometheus metrics in the system.
+/// The server exposes the following URL paths:
+/// - `/health` - telemetry server healtcheck endpoint, returns `200 OK` response if server is functional.
+/// - `/metrics` - returns service metrics in [Prometheus text format] (requires **metrics** feature).
+/// - `/pprof/heap` - returns [jemalloc] heap profile (requires **memory-profiling** feature).
+/// - `/pprof/heap_stats` returns [jemalloc] heap stats (requires **memory-profiling** feature).
+///
+/// [Prometheus text format]: https://prometheus.io/docs/instrumenting/exposition_formats/#text-based-format
+/// [jemalloc]: https://github.com/jemalloc/jemalloc
 #[cfg(feature = "telemetry-server")]
 pub fn init_with_server(
     service_info: ServiceInfo,

@@ -98,7 +98,8 @@ memory-profiling = [
     "dep:once_cell",
     "dep:tikv-jemalloc-ctl",
     "dep:tempfile",
-    "dep:tokio"
+    "dep:tokio",
+    "jemalloc"
 ]
 
 # Enables security-related features

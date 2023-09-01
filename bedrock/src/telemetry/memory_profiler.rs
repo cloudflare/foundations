@@ -1,13 +1,21 @@
+use super::settings::MemoryProfilerSettings;
+use crate::utils::feature_use;
 use crate::{BootstrapError, BootstrapResult, Result};
 use anyhow::bail;
 use once_cell::sync::{Lazy, OnceCell};
 use std::ffi::{CStr, CString};
+use std::fs::File;
+use std::io::Read;
 use std::os::raw::c_char;
+use std::thread;
 use tempfile::NamedTempFile;
-use tokio::fs::File;
-use tokio::io::AsyncReadExt;
 use tokio::sync::Mutex as AsyncMutex;
 use tokio::task::spawn_blocking;
+
+feature_use!(cfg(feature = "security"), {
+    use crate::security::common_syscall_allow_lists::SERVICE_BASICS;
+    use crate::security::{allow_list, enable_syscall_sandboxing, ViolationAction};
+});
 
 static PROFILER: OnceCell<Option<MemoryProfiler>> = OnceCell::new();
 static PROFILING_IN_PROGRESS_LOCK: Lazy<AsyncMutex<()>> = Lazy::new(Default::default);
@@ -42,39 +50,40 @@ mod control {
 }
 
 // NOTE: prevent direct construction by the external code.
+#[derive(Copy, Clone)]
 struct Seal;
 
 /// A safe interface for [jemalloc]'s memory profiling functionality.
 ///
 /// [jemalloc]: https://github.com/jemalloc/jemalloc
-pub struct MemoryProfiler(Seal);
+#[derive(Copy, Clone)]
+pub struct MemoryProfiler {
+    _seal: Seal,
+
+    #[cfg(feature = "security")]
+    sandbox_profiling_syscalls: bool,
+}
 
 impl MemoryProfiler {
-    /// Creates a new profiler with the given sampling interval or returns a previously initialized
-    /// profiler ignoring the passed sampling interval.
-    ///
-    /// `sample_interval` is a value between 0 and 64 which specifies the number of bytes of
-    /// allocation activity between samples as `number_of_bytes = 2 ^ sample_interval`. Increasing
-    /// the `sample_interval` decreases profile fidelity, but also decreases the computational
-    /// overhead. The recommended default is `19` (2 ^ 19 = 512KiB).
+    /// Creates a new profiler with the given settings or returns a previously initialized
+    /// profiler ignoring the settings.
     ///
     /// # Enabling profiling
     ///
     /// Note that profiling needs to be explicitly enabled by setting `_RJEM_MALLOC_CONF=prof:true`
-    /// environment variable for the binary. Otherwise, this method will return `None`.
-    pub fn get_or_init_with_sample_interval(
-        sample_interval: u8,
-    ) -> BootstrapResult<Option<&'static Self>> {
+    /// environment variable for the binary and with [`MemoryProfilerSettings::enabled`] being set
+    /// to `true`. Otherwise, this method will return `None`.
+    pub fn get_or_init_with(settings: &MemoryProfilerSettings) -> BootstrapResult<Option<Self>> {
         const MAX_SAMPLE_INTERVAL: u8 = 64;
 
         // NOTE: https://github.com/jemalloc/jemalloc/blob/3e82f357bb218194df5ba1acee39cd6a7d6fe6f6/src/jemalloc.c#L1589
-        if sample_interval > MAX_SAMPLE_INTERVAL {
+        if settings.sample_interval > MAX_SAMPLE_INTERVAL {
             bail!("`sample_interval` value should be in the range [0, 64]");
         }
 
         PROFILER
-            .get_or_try_init(|| init_profiler(sample_interval))
-            .map(Option::as_ref)
+            .get_or_try_init(|| init_profiler(settings))
+            .copied()
     }
 
     /// Returns a heap profile.
@@ -82,10 +91,16 @@ impl MemoryProfiler {
     /// # Examples
     /// ```
     /// use bedrock::telemetry::MemoryProfiler;
+    /// use bedrock::telemetry::settings::MemoryProfilerSettings;
     ///
     /// #[tokio::main]
     /// async fn main() {
-    ///     let profiler = MemoryProfiler::get_or_init_with_sample_interval(19)
+    ///     let settings = MemoryProfilerSettings {
+    ///         enabled: true,
+    ///         ..Default::default()
+    ///     };
+    ///
+    ///     let profiler = MemoryProfiler::get_or_init_with(&settings)
     ///         .unwrap()
     ///         .expect("profiling should be enabled via `_RJEM_MALLOC_CONF=prof:true` env var");
     ///
@@ -100,22 +115,24 @@ impl MemoryProfiler {
             return Err("profiling is already in progress".into());
         };
 
-        let out_file = spawn_blocking(NamedTempFile::new).await??;
+        #[cfg(feature = "security")]
+        let sandbox_profiling_syscalls = self.sandbox_profiling_syscalls;
 
-        let out_file_path = out_file
-            .path()
-            .to_str()
-            .ok_or("failed to obtain heap profile output file path")?;
+        let collector_thread = thread::spawn(move || {
+            #[cfg(feature = "security")]
+            if sandbox_profiling_syscalls {
+                sandbox_jemalloc_syscalls()?;
+            }
 
-        Self::write_heap_profile(out_file_path)?;
-        let mut profile = Vec::new();
+            collect_heap_profile()
+        });
 
-        File::open(out_file_path)
-            .await?
-            .read_to_end(&mut profile)
-            .await?;
-
-        Ok(String::from_utf8(profile)?)
+        spawn_blocking(move || {
+            collector_thread
+                .join()
+                .map_err(|_| "heap profile collector thread panicked")?
+        })
+        .await?
     }
 
     /// Returns heap statistics.
@@ -123,8 +140,14 @@ impl MemoryProfiler {
     /// # Examples
     /// ```
     /// use bedrock::telemetry::MemoryProfiler;
+    /// use bedrock::telemetry::settings::MemoryProfilerSettings;
     ///
-    /// let profiler = MemoryProfiler::get_or_init_with_sample_interval(19)
+    /// let settings = MemoryProfilerSettings {
+    ///     enabled: true,
+    ///     ..Default::default()
+    /// };
+    ///
+    /// let profiler = MemoryProfiler::get_or_init_with(&settings)
     ///     .unwrap()
     ///     .expect("profiling should be enabled via `_RJEM_MALLOC_CONF=prof:true` env var");
     ///
@@ -139,57 +162,106 @@ impl MemoryProfiler {
 
         Ok(String::from_utf8(stats)?)
     }
-
-    fn write_heap_profile(out_file_path: &str) -> Result<()> {
-        let mut out_file_path_c_str = CString::new(out_file_path)?.into_bytes_with_nul();
-        let out_file_path_ptr = out_file_path_c_str.as_mut_ptr() as *mut c_char;
-
-        control::write(control::PROF_DUMP, out_file_path_ptr).map_err(|e| {
-            format!(
-                "failed to dump jemalloc heap profile to {:?}: {}",
-                out_file_path, e
-            )
-        })?;
-
-        Ok(())
-    }
 }
 
-fn init_profiler(sample_interval: u8) -> BootstrapResult<Option<MemoryProfiler>> {
-    if !control::profiling_enabled() {
+fn init_profiler(settings: &MemoryProfilerSettings) -> BootstrapResult<Option<MemoryProfiler>> {
+    if !settings.enabled || !control::profiling_enabled() {
         return Ok(None);
     }
 
-    #[cfg(target_os = "linux")]
     control::write(control::BACKGROUND_THREAD, true).map_err(|e| {
         BootstrapError::new(e).context("failed to activate background thread collection")
     })?;
 
-    control::write(control::PROF_RESET, sample_interval as u64)
+    control::write(control::PROF_RESET, settings.sample_interval as u64)
         .map_err(|e| BootstrapError::new(e).context("failed to set sample interval"))?;
 
     control::write(control::PROF_ACTIVE, true)
         .map_err(|e| BootstrapError::new(e).context("failed to activate profiling"))?;
 
-    Ok(Some(MemoryProfiler(Seal)))
+    Ok(Some(MemoryProfiler {
+        _seal: Seal,
+
+        #[cfg(feature = "security")]
+        sandbox_profiling_syscalls: settings.sandbox_profiling_syscalls,
+    }))
+}
+
+fn collect_heap_profile() -> Result<String> {
+    let out_file = NamedTempFile::new()?;
+
+    let out_file_path = out_file
+        .path()
+        .to_str()
+        .ok_or("failed to obtain heap profile output file path")?;
+
+    let mut out_file_path_c_str = CString::new(out_file_path)?.into_bytes_with_nul();
+    let out_file_path_ptr = out_file_path_c_str.as_mut_ptr() as *mut c_char;
+
+    control::write(control::PROF_DUMP, out_file_path_ptr).map_err(|e| {
+        format!(
+            "failed to dump jemalloc heap profile to {:?}: {}",
+            out_file_path, e
+        )
+    })?;
+
+    let mut profile = Vec::new();
+
+    File::open(out_file_path)?.read_to_end(&mut profile)?;
+
+    Ok(String::from_utf8(profile)?)
+}
+
+#[cfg(feature = "security")]
+fn sandbox_jemalloc_syscalls() -> Result<()> {
+    #[cfg(target_arch = "x86_64")]
+    allow_list! {
+        static ALLOWED_SYSCALLS = [
+            ..SERVICE_BASICS,
+            // PXY-41: Required to call Instant::now from parking-lot.
+            clock_gettime,
+            openat,
+            creat,
+            unlink
+        ]
+    }
+
+    #[cfg(target_arch = "aarch64")]
+    allow_list! {
+        static ALLOWED_SYSCALLS = [
+            ..SERVICE_BASICS,
+            clock_gettime,
+            openat,
+            unlinkat
+        ]
+    }
+
+    enable_syscall_sandboxing(ViolationAction::KillProcess, &ALLOWED_SYSCALLS)?;
+
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::telemetry::settings::MemoryProfilerSettings;
 
     #[test]
     fn sample_interval_out_of_bounds() {
-        assert!(MemoryProfiler::get_or_init_with_sample_interval(128).is_err());
+        assert!(MemoryProfiler::get_or_init_with(&MemoryProfilerSettings {
+            enabled: true,
+            sample_interval: 128,
+            ..Default::default()
+        })
+        .is_err());
     }
 
     // NOTE: `heap_profile` uses raw pointers, the test ensures that it doesn't affect the returned future
-    #[test]
     fn _assert_heap_profile_fut_is_send() {
         fn is_send<T: Send>(_t: T) {}
 
         is_send(
-            MemoryProfiler::get_or_init_with_sample_interval(16)
+            MemoryProfiler::get_or_init_with(&Default::default())
                 .unwrap()
                 .unwrap()
                 .heap_profile(),

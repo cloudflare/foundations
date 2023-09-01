@@ -1,5 +1,3 @@
-//! Logging settings.
-
 use crate::utils::feature_use;
 use std::ops::Deref;
 use std::path::PathBuf;

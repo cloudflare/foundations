@@ -25,6 +25,10 @@ skip = [
 unknown-registry = "deny"
 unknown-git = "allow"
 allow-git = []
+allow-registry = [
+    "https://github.com/rust-lang/crates.io-index",
+    "http://localhost:57909/api/v1/",
+]
 
 [licenses]
 unlicensed = "allow"

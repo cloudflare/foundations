@@ -1,5 +1,3 @@
-//! Distributed tracing settings.
-
 use crate::utils::feature_use;
 use std::net::Ipv4Addr;
 
@@ -18,7 +16,7 @@ use std::net::SocketAddr;
 )]
 #[cfg_attr(not(feature = "settings"), derive(Clone, Debug))]
 pub struct TracingSettings {
-    /// Enables tracing
+    /// Enables tracing.
     pub enabled: bool,
 
     /// The address of the Jaeger Thrift (UDP) agent.
