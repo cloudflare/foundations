@@ -78,7 +78,7 @@ pub(crate) fn create_tracer_and_span_rx(
 }
 
 // NOTE: does nothing if tracing has already been initialized in this process.
-pub(crate) fn init(service_info: ServiceInfo, settings: &TracingSettings) -> BootstrapResult<()> {
+pub(crate) fn init(service_info: &ServiceInfo, settings: &TracingSettings) -> BootstrapResult<()> {
     if settings.enabled {
         let (tracer, span_rx) = create_tracer_and_span_rx(settings, false)?;
 
@@ -99,7 +99,7 @@ pub(crate) fn init(service_info: ServiceInfo, settings: &TracingSettings) -> Boo
 }
 
 fn start_reporter(
-    service_info: ServiceInfo,
+    service_info: &ServiceInfo,
     settings: &TracingSettings,
     span_rx: Receiver<FinishedSpan>,
 ) -> BootstrapResult<()> {

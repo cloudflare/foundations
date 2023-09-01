@@ -107,32 +107,24 @@ fn expand_from_parsed(args: MacroArgs, extern_: Mod) -> proc_macro2::TokenStream
     let metric_fields = fns.iter().map(|fn_| metric_field(bedrock, fn_));
     let label_set_structs = fns.iter().filter_map(|fn_| label_set_struct(bedrock, fn_));
 
-    let registry_init = |var: &str, global: &str| {
+    let registry_init = |var: &str, kind: &str| {
         let var = Ident::new(var, Span::call_site());
-        let top_var = Ident::new(&format!("top_{var}"), Span::call_site());
-        let global = Ident::new(global, Span::call_site());
+        let method = Ident::new(&format!("get_{kind}_subsystem"), Span::call_site());
 
         quote! {
-            let mut #top_var = #reexports::parking_lot::RwLock::write(
-                &#bedrock::telemetry::metrics::internal::#global,
-            );
-
-            let #var = #reexports::prometheus_client::registry::Registry::sub_registry_with_prefix(
-                &mut #top_var,
-                stringify!(#mod_name),
-            );
+            let #var = &mut *#bedrock::telemetry::metrics::internal::Registries::#method(stringify!(#mod_name));
         }
     };
 
     let init_registry = fns
         .iter()
         .any(|fn_| !fn_.attrs.optional)
-        .then(|| registry_init("registry", "REGISTRY"));
+        .then(|| registry_init("registry", "main"));
 
     let init_opt_registry = fns
         .iter()
         .any(|fn_| fn_.attrs.optional)
-        .then(|| registry_init("opt_registry", "OPT_REGISTRY"));
+        .then(|| registry_init("opt_registry", "opt"));
 
     let metric_inits = fns.iter().map(|fn_| metric_init(bedrock, fn_));
 
@@ -448,14 +440,7 @@ mod tests {
                 #[allow(non_upper_case_globals)]
                 static __oxy_Metrics: tarmac::reexports_for_macros::once_cell::sync::Lazy<__oxy_Metrics> =
                     tarmac::reexports_for_macros::once_cell::sync::Lazy::new(|| {
-                        let mut top_registry = tarmac::reexports_for_macros::parking_lot::RwLock::write(
-                            &tarmac::telemetry::metrics::internal::REGISTRY,
-                        );
-
-                        let registry = tarmac::reexports_for_macros::prometheus_client::registry::Registry::sub_registry_with_prefix(
-                            &mut top_registry,
-                            stringify!(oxy),
-                        );
+                        let registry = &mut *tarmac::telemetry::metrics::internal::Registries::get_main_subsystem(stringify!(oxy));
 
                         __oxy_Metrics {
                             connections_total: {
@@ -512,14 +497,7 @@ mod tests {
                 #[allow(non_upper_case_globals)]
                 static __oxy_Metrics: ::bedrock::reexports_for_macros::once_cell::sync::Lazy<__oxy_Metrics> =
                     ::bedrock::reexports_for_macros::once_cell::sync::Lazy::new(|| {
-                        let mut top_opt_registry = ::bedrock::reexports_for_macros::parking_lot::RwLock::write(
-                            &::bedrock::telemetry::metrics::internal::OPT_REGISTRY,
-                        );
-
-                        let opt_registry = ::bedrock::reexports_for_macros::prometheus_client::registry::Registry::sub_registry_with_prefix(
-                            &mut top_opt_registry,
-                            stringify!(oxy),
-                        );
+                        let opt_registry = &mut *::bedrock::telemetry::metrics::internal::Registries::get_opt_subsystem(stringify!(oxy));
 
                         __oxy_Metrics {
                             connections_total: {
@@ -605,14 +583,7 @@ mod tests {
                 #[allow(non_upper_case_globals)]
                 static __oxy_Metrics: ::bedrock::reexports_for_macros::once_cell::sync::Lazy<__oxy_Metrics> =
                     ::bedrock::reexports_for_macros::once_cell::sync::Lazy::new(|| {
-                        let mut top_registry = ::bedrock::reexports_for_macros::parking_lot::RwLock::write(
-                            &::bedrock::telemetry::metrics::internal::REGISTRY,
-                        );
-
-                        let registry = ::bedrock::reexports_for_macros::prometheus_client::registry::Registry::sub_registry_with_prefix(
-                            &mut top_registry,
-                            stringify!(oxy),
-                        );
+                        let registry = &mut *::bedrock::telemetry::metrics::internal::Registries::get_main_subsystem(stringify!(oxy));
 
                         __oxy_Metrics {
                             connections_errors_total: {
@@ -707,14 +678,7 @@ mod tests {
                 #[allow(non_upper_case_globals)]
                 static __oxy_Metrics: ::bedrock::reexports_for_macros::once_cell::sync::Lazy<__oxy_Metrics> =
                     ::bedrock::reexports_for_macros::once_cell::sync::Lazy::new(|| {
-                        let mut top_registry = ::bedrock::reexports_for_macros::parking_lot::RwLock::write(
-                            &::bedrock::telemetry::metrics::internal::REGISTRY,
-                        );
-
-                        let registry = ::bedrock::reexports_for_macros::prometheus_client::registry::Registry::sub_registry_with_prefix(
-                            &mut top_registry,
-                            stringify!(oxy),
-                        );
+                        let registry = &mut *::bedrock::telemetry::metrics::internal::Registries::get_main_subsystem(stringify!(oxy));
 
                         __oxy_Metrics {
                             connections_latency: {

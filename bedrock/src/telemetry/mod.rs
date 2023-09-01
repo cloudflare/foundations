@@ -656,7 +656,7 @@ impl TelemetryContext {
 ///
 /// The function should be called once on service initialization. Consequent calls to the function
 /// don't have any effect.
-pub fn init(service_info: ServiceInfo, settings: &TelemetrySettings) -> BootstrapResult<()> {
+pub fn init(service_info: &ServiceInfo, settings: &TelemetrySettings) -> BootstrapResult<()> {
     #[cfg(all(
         not(feature = "metrics"),
         not(feature = "logging"),
@@ -674,7 +674,7 @@ pub fn init(service_info: ServiceInfo, settings: &TelemetrySettings) -> Bootstra
     self::tracing::init::init(service_info, &settings.tracing)?;
 
     #[cfg(feature = "metrics")]
-    self::metrics::init::init(service_info);
+    self::metrics::init::init(service_info, &settings.metrics);
 
     Ok(())
 }
@@ -691,7 +691,7 @@ pub fn init(service_info: ServiceInfo, settings: &TelemetrySettings) -> Bootstra
 /// [jemalloc]: https://github.com/jemalloc/jemalloc
 #[cfg(feature = "telemetry-server")]
 pub fn init_with_server(
-    service_info: ServiceInfo,
+    service_info: &ServiceInfo,
     settings: &TelemetrySettings,
 ) -> BootstrapResult<TelemetryServerFuture> {
     init(service_info, settings)?;

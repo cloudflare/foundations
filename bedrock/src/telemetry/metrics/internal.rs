@@ -1,25 +1,126 @@
 use super::{info_metric, InfoMetric};
-use crate::Result;
-use once_cell::sync::Lazy;
-use parking_lot::RwLock;
+use crate::telemetry::settings::{MetricsSettings, ServiceIdentifierFormat};
+use crate::{Result, ServiceInfo};
+use once_cell::sync::OnceCell;
+use parking_lot::{RwLock, RwLockWriteGuard};
 use prometheus_client::encoding::text::{encode, EncodeMetric};
 use prometheus_client::registry::Registry;
 use prometools::serde::InfoGauge;
 use std::any::TypeId;
 use std::collections::HashMap;
+use std::ops::DerefMut;
 
-pub(super) static INFO_REGISTRY: Lazy<RwLock<HashMap<TypeId, Box<dyn ErasedInfoMetric>>>> =
-    Lazy::new(Default::default);
-
-#[doc(hidden)]
-pub static REGISTRY: Lazy<RwLock<Registry>> =
-    Lazy::new(|| RwLock::new(Registry::with_prefix(&**METRIC_PREFIX.read())));
+static REGISTRIES: OnceCell<Registries> = OnceCell::new();
 
 #[doc(hidden)]
-pub static OPT_REGISTRY: Lazy<RwLock<Registry>> =
-    Lazy::new(|| RwLock::new(Registry::with_prefix(&**METRIC_PREFIX.read())));
+pub struct Registries {
+    main: RwLock<Registry>,
+    opt: RwLock<Registry>,
+    pub(super) info: RwLock<HashMap<TypeId, Box<dyn ErasedInfoMetric>>>,
+    extra_label: Option<(String, String)>,
+}
 
-pub(super) static METRIC_PREFIX: RwLock<&'static str> = RwLock::new("undefined");
+impl Registries {
+    pub(super) fn init(service_info: &ServiceInfo, settings: &MetricsSettings) {
+        let extra_label = match &settings.service_identifier_format {
+            ServiceIdentifierFormat::MetricPrefix => None,
+            ServiceIdentifierFormat::LabelWithName(name) => Some((
+                name.clone(),
+                service_info.metrics_service_identifier.clone(),
+            )),
+        };
+
+        let initialized = REGISTRIES
+            .set(Registries {
+                main: new_registry(service_info, settings),
+                opt: new_registry(service_info, settings),
+                info: Default::default(),
+                extra_label,
+            })
+            .is_ok();
+
+        assert!(initialized, "registries were already initialized");
+    }
+
+    pub(super) fn collect(buffer: &mut Vec<u8>, collect_optional: bool) -> Result<()> {
+        let registries = Self::get();
+
+        registries.collect_info_metrics(buffer)?;
+
+        encode_registry(buffer, &registries.main.read())?;
+
+        if collect_optional {
+            encode_registry(buffer, &registries.opt.read())?;
+        }
+
+        Ok(())
+    }
+
+    fn collect_info_metrics(&self, buffer: &mut Vec<u8>) -> Result<()> {
+        let info_registry = self.info.read();
+        let mut registry = Registry::default();
+
+        for info_metric in info_registry.values() {
+            let info_gauge = InfoGauge::new(&**info_metric);
+
+            registry.register(info_metric.name(), info_metric.help(), info_gauge)
+        }
+
+        encode_registry(buffer, &registry)
+    }
+
+    #[doc(hidden)]
+    pub fn get_main_subsystem(subsystem: &str) -> impl DerefMut<Target = Registry> + '_ {
+        let registries = Self::get();
+
+        get_subsystem(
+            Self::get().main.write(),
+            subsystem,
+            registries.extra_label.clone(),
+        )
+    }
+
+    #[doc(hidden)]
+    pub fn get_opt_subsystem(subsystem: &str) -> impl DerefMut<Target = Registry> + '_ {
+        let registries = Self::get();
+
+        get_subsystem(
+            Self::get().opt.write(),
+            subsystem,
+            registries.extra_label.clone(),
+        )
+    }
+
+    pub(super) fn get() -> &'static Registries {
+        REGISTRIES.get().expect("registries are not initialized")
+    }
+}
+
+fn new_registry(service_info: &ServiceInfo, settings: &MetricsSettings) -> RwLock<Registry> {
+    RwLock::new(match &settings.service_identifier_format {
+        ServiceIdentifierFormat::MetricPrefix => {
+            Registry::with_prefix(&service_info.metrics_service_identifier)
+        }
+        // FIXME(nox): Due to prometheus-client 0.18 not supporting the creation of
+        // registries with specific label values, we use this service identifier
+        // format directly in `Registries::get_main` and `Registries::get_optional`.
+        ServiceIdentifierFormat::LabelWithName(_) => Registry::default(),
+    })
+}
+
+fn get_subsystem<'a>(
+    guard: RwLockWriteGuard<'a, Registry>,
+    subsystem: &str,
+    extra_label: Option<(String, String)>,
+) -> impl DerefMut<Target = Registry> + 'a {
+    RwLockWriteGuard::map(guard, move |mut registry| {
+        if let Some((name, value)) = extra_label {
+            registry = registry.sub_registry_with_label((name.into(), value.into()));
+        }
+
+        registry.sub_registry_with_prefix(subsystem)
+    })
+}
 
 /// Build and version information
 #[info_metric(crate_path = "crate")]
@@ -52,19 +153,6 @@ where
     fn help(&self) -> &'static str {
         M::HELP
     }
-}
-
-pub(super) fn collect_info_metrics(buffer: &mut Vec<u8>) -> Result<()> {
-    let info_registry = INFO_REGISTRY.read();
-    let mut registry = Registry::default();
-
-    for info_metric in info_registry.values() {
-        let info_gauge = InfoGauge::new(&**info_metric);
-
-        registry.register(info_metric.name(), info_metric.help(), info_gauge)
-    }
-
-    encode_registry(buffer, &registry)
 }
 
 pub(super) fn encode_registry(

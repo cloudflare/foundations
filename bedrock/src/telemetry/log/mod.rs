@@ -34,7 +34,7 @@ pub fn set_verbosity(level: Level) -> Result<()> {
 
     // NOTE: it's ok to pass default for service info here, log keys
     // for it will be copied over from the current log.
-    let drain = build_log(Default::default(), &settings)?;
+    let drain = build_log(&Default::default(), &settings)?;
 
     *current_log().write() = Logger::root(drain, kv);
 

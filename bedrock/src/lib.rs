@@ -110,10 +110,15 @@ pub type Error = Box<dyn std::error::Error + Send + Sync + 'static>;
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// Basic service information.
-#[derive(Copy, Clone, Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct ServiceInfo {
     /// The name of the service.
     pub name: &'static str,
+
+    /// The service identifier as used in metrics.
+    ///
+    /// Usually the same as [`ServiceInfo::name`], with hyphens (`-`) replaced by underscores `_`.
+    pub metrics_service_identifier: String,
 
     /// The version of the service.
     pub version: &'static str,
@@ -128,6 +133,7 @@ macro_rules! service_info {
     () => {
         $crate::ServiceInfo {
             name: env!("CARGO_PKG_NAME"),
+            metrics_service_identifier: env!("CARGO_PKG_NAME").replace("-", "_"),
             version: env!("CARGO_PKG_VERSION"),
             description: env!("CARGO_PKG_DESCRIPTION"),
         }

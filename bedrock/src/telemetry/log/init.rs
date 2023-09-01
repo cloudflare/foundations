@@ -39,7 +39,7 @@ impl LogHarness {
 }
 
 // NOTE: Does nothing if logging has already been initialized in this process.
-pub(crate) fn init(service_info: ServiceInfo, settings: &LoggingSettings) -> BootstrapResult<()> {
+pub(crate) fn init(service_info: &ServiceInfo, settings: &LoggingSettings) -> BootstrapResult<()> {
     let root_log = build_log(service_info, settings)?;
 
     let harness = LogHarness {
@@ -54,7 +54,7 @@ pub(crate) fn init(service_info: ServiceInfo, settings: &LoggingSettings) -> Boo
 }
 
 pub(crate) fn build_log(
-    service_info: ServiceInfo,
+    service_info: &ServiceInfo,
     settings: &LoggingSettings,
 ) -> BootstrapResult<Logger> {
     Ok(match (&settings.output, settings.format) {
@@ -78,7 +78,7 @@ pub(crate) fn build_log(
 }
 
 fn build_log_with_drain<D>(
-    service_info: ServiceInfo,
+    service_info: &ServiceInfo,
     settings: &LoggingSettings,
     drain: D,
 ) -> Logger
@@ -112,7 +112,7 @@ where
     )
 }
 
-fn build_text_log<D>(service_info: ServiceInfo, settings: &LoggingSettings, decorator: D) -> Logger
+fn build_text_log<D>(service_info: &ServiceInfo, settings: &LoggingSettings, decorator: D) -> Logger
 where
     D: Decorator + Send + 'static,
 {
@@ -121,7 +121,7 @@ where
     build_log_with_drain(service_info, settings, drain)
 }
 
-fn build_json_log<O>(service_info: ServiceInfo, settings: &LoggingSettings, output: O) -> Logger
+fn build_json_log<O>(service_info: &ServiceInfo, settings: &LoggingSettings, output: O) -> Logger
 where
     O: io::Write + Send + 'static,
 {

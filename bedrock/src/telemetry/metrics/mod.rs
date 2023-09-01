@@ -21,9 +21,7 @@ pub(super) mod init;
 #[doc(hidden)]
 pub mod internal;
 
-use internal::{
-    collect_info_metrics, encode_registry, ErasedInfoMetric, INFO_REGISTRY, OPT_REGISTRY, REGISTRY,
-};
+use internal::{ErasedInfoMetric, Registries};
 
 pub use prometheus_client::metrics::family::MetricConstructor;
 pub use prometheus_client::metrics::gauge::Gauge;
@@ -38,13 +36,7 @@ pub use prometools::serde::Family;
 pub fn collect(settings: &MetricsSettings) -> Result<String> {
     let mut buffer = Vec::with_capacity(128);
 
-    collect_info_metrics(&mut buffer)?;
-    encode_registry(&mut buffer, &REGISTRY.read())?;
-
-    if settings.report_optional {
-        encode_registry(&mut buffer, &OPT_REGISTRY.read())?;
-    }
-
+    Registries::collect(&mut buffer, settings.report_optional)?;
     TextEncoder::new().encode(&prometheus::gather(), &mut buffer)?;
 
     buffer.extend_from_slice(b"# EOF\n");
@@ -266,6 +258,8 @@ pub use bedrock_macros::metrics;
 /// ```
 /// use bedrock::telemetry::metrics::{info_metric, report_info};
 ///
+/// bedrock::telemetry::init(&bedrock::service_info!(), &Default::default());
+///
 /// /// Build information
 /// #[info_metric(name = "build_info")]
 /// struct BuildInformation {
@@ -282,6 +276,8 @@ pub use bedrock_macros::metrics;
 /// can be explicitly specified for the macro to workaround that:
 ///
 /// ```
+/// bedrock::telemetry::init(&bedrock::service_info!(), &Default::default());
+///
 /// # mod rustdoc_workaround {
 /// mod reexport {
 ///     pub use bedrock::*;
@@ -316,6 +312,8 @@ pub trait InfoMetric: Serialize + Send + Sync + 'static {
 /// ```
 /// use bedrock::telemetry::metrics::{info_metric, report_info};
 ///
+/// bedrock::telemetry::init(&bedrock::service_info!(), &Default::default());
+///
 /// /// Build information
 /// #[info_metric]
 /// struct BuildInfo {
@@ -330,7 +328,7 @@ pub fn report_info<M>(info_metric: impl Into<Box<M>>)
 where
     M: InfoMetric,
 {
-    INFO_REGISTRY.write().insert(
+    Registries::get().info.write().insert(
         TypeId::of::<M>(),
         info_metric.into() as Box<dyn ErasedInfoMetric>,
     );
