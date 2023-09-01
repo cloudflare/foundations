@@ -111,7 +111,7 @@ pub use self::memory_profiler::MemoryProfiler;
 ///
 /// This future drives a HTTP server as configured by [`TelemetryServerSettings`].
 ///
-/// [`TelemetryServerSettings`]: `bedrock::telemetry::settings::TelemetryServerSettings`
+/// [`TelemetryServerSettings`]: `crate::telemetry::settings::TelemetryServerSettings`
 #[cfg(feature = "telemetry-server")]
 pub type TelemetryServerFuture = BoxFuture<'static, Result<()>>;
 
@@ -698,5 +698,5 @@ pub fn init_with_server(
 ) -> BootstrapResult<TelemetryServerFuture> {
     init(service_info, settings)?;
 
-    self::server::init(settings)
+    self::server::init(settings.clone())
 }

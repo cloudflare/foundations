@@ -1,4 +1,5 @@
 use super::{info_metric, InfoMetric};
+use crate::Result;
 use once_cell::sync::Lazy;
 use parking_lot::RwLock;
 use prometheus_client::encoding::text::{encode, EncodeMetric};
@@ -6,7 +7,6 @@ use prometheus_client::registry::Registry;
 use prometools::serde::InfoGauge;
 use std::any::TypeId;
 use std::collections::HashMap;
-use std::io;
 
 pub(super) static INFO_REGISTRY: Lazy<RwLock<HashMap<TypeId, Box<dyn ErasedInfoMetric>>>> =
     Lazy::new(Default::default);
@@ -54,7 +54,7 @@ where
     }
 }
 
-pub(super) fn collect_info_metrics(buffer: &mut Vec<u8>) -> io::Result<()> {
+pub(super) fn collect_info_metrics(buffer: &mut Vec<u8>) -> Result<()> {
     let info_registry = INFO_REGISTRY.read();
     let mut registry = Registry::default();
 
@@ -70,7 +70,7 @@ pub(super) fn collect_info_metrics(buffer: &mut Vec<u8>) -> io::Result<()> {
 pub(super) fn encode_registry(
     buffer: &mut Vec<u8>,
     registry: &Registry<impl EncodeMetric>,
-) -> io::Result<()> {
+) -> Result<()> {
     encode(buffer, registry)?;
 
     if buffer.ends_with(b"# EOF\n") {

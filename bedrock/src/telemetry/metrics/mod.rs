@@ -1,9 +1,20 @@
 //! Metrics-related functionality.
+//!
+//! Bedrock provides simple and ergonomic interface to [Prometheus] metrics:
+//! - Use [`metrics`] macro to define regular metrics.
+//! - Use [`report_info`] function to register service information metrics (metrics, whose value is
+//! persistent during the service lifetime, e.g. software version).
+//! - Use [`collect`] method to obtain metrics report programmatically.
+//! - Use [telemetry server] to expose a metrics endpoint.
+//!
+//! [Prometheus]: https://prometheus.io/
+//! [telemetry server]: crate::telemetry::init_with_server
 
+use super::settings::MetricsSettings;
+use crate::Result;
 use prometheus::{Encoder, TextEncoder};
 use serde::Serialize;
 use std::any::TypeId;
-use std::io;
 
 pub(super) mod init;
 
@@ -14,29 +25,41 @@ use internal::{
     collect_info_metrics, encode_registry, ErasedInfoMetric, INFO_REGISTRY, OPT_REGISTRY, REGISTRY,
 };
 
-/// Collects all metrics in a byte buffer.
-pub fn collect(buffer: &mut Vec<u8>, collect_optional: bool) -> io::Result<()> {
-    collect_info_metrics(buffer)?;
+pub use prometheus_client::metrics::family::MetricConstructor;
+pub use prometheus_client::metrics::gauge::Gauge;
+pub use prometheus_client::metrics::histogram::Histogram;
+pub use prometools::histogram::{HistogramTimer, TimeHistogram};
+pub use prometools::nonstandard::NonstandardUnsuffixedCounter as Counter;
+pub use prometools::serde::Family;
 
-    encode_registry(buffer, &REGISTRY.read())?;
+/// Collects all metrics in [Prometheus text format].
+///
+/// [Prometheus text format]: https://prometheus.io/docs/instrumenting/exposition_formats/#text-based-format
+pub fn collect(settings: &MetricsSettings) -> Result<String> {
+    let mut buffer = Vec::with_capacity(128);
 
-    if collect_optional {
-        encode_registry(buffer, &OPT_REGISTRY.read())?;
+    collect_info_metrics(&mut buffer)?;
+    encode_registry(&mut buffer, &REGISTRY.read())?;
+
+    if settings.report_optional {
+        encode_registry(&mut buffer, &OPT_REGISTRY.read())?;
     }
 
-    TextEncoder::new()
-        .encode(&prometheus::gather(), buffer)
-        .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
+    TextEncoder::new().encode(&prometheus::gather(), &mut buffer)?;
 
-    Ok(())
+    buffer.extend_from_slice(b"# EOF\n");
+
+    Ok(String::from_utf8(buffer)?)
 }
 
 /// A macro that allows to define Prometheus metrics.
 ///
 /// The macro is a proc macro attribute that should be put on a module containing
 /// bodyless functions. Each bodyless function corresponds to a single metric, whose
-/// name becomes `<global prefix>_<module name>_<bodyless function name>`.
+/// name becomes `<global prefix>_<module name>_<bodyless function name>`and function's
+/// Rust doc comment is reported as metric description to Prometheus.
 ///
+/// # Labels
 /// Arguments of the bodyless functions become labels for that metric.
 ///
 /// The metric types must implement [`prometheus_client::metrics::MetricType`], they
@@ -49,6 +72,25 @@ pub fn collect(buffer: &mut Vec<u8>, collect_optional: bool) -> io::Result<()> {
 ///
 /// The metrics associated with the functions are automatically registered in a global
 /// registry, and they can be collected with the [`collect`] function.
+///
+/// # Metric attributes
+///
+/// Example below shows how to use all the attributes listed here.
+///
+/// ## `#[ctor]`
+///
+/// `#[ctor]` attribute allows specifying how the metric should be built (e.g. [`HistogramBuilder`]).
+/// Constructor should implement the [`MetricConstructor<MetricType>`] trait.
+///
+/// ## `#[optional]`
+///
+/// Metrics marked with `#[optional]` are collected in a separate registry and reported only if
+/// `collect_optional` argument of [`collect`] is set to `true`, or, in case the [telemetry server]
+/// is used, if [`MetricsSettings::report_optional`] is set to `true`.
+///
+///
+/// Can be used for heavy-weight metrics (e.g. with high cardinality) that don't need to be reported
+/// on a regular basis.
 ///
 /// # Example
 ///
@@ -116,8 +158,6 @@ pub fn collect(buffer: &mut Vec<u8>, collect_optional: bool) -> io::Result<()> {
 ///     ) -> Gauge;
 ///
 ///     /// Histogram of task schedule delays
-///     // Use the `ctor` attribute to specify how the metric should be built.
-///     // The value should implement `MetricConstructor<MetricType>`.
 ///     #[ctor = HistogramBuilder {
 ///         // 0 us to 10 ms
 ///         buckets: &[0.0, 1E-4, 2E-4, 3E-4, 4E-4, 5E-4, 6E-4, 7E-4, 8E-4, 9E-4, 1E-3, 1E-2, 2E-2, 4E-2, 8E-2, 1E-1, 1.0],
@@ -146,6 +186,7 @@ pub fn collect(buffer: &mut Vec<u8>, collect_optional: bool) -> io::Result<()> {
 ///     ) -> Counter;
 ///
 ///     /// Number of stalled futures
+///     #[optional]
 ///     pub fn debug_stalled_future_count(
 ///         // Labels with a `'static` lifetime are used as is, without cloning.
 ///         name: &'static str,
@@ -197,22 +238,24 @@ pub fn collect(buffer: &mut Vec<u8>, collect_optional: bool) -> io::Result<()> {
 /// use self::reexport::telemetry::metrics::Counter;
 ///
 /// #[reexport::telemetry::metrics::metrics(crate_path = "reexport")]
-/// mod oxy {
+/// mod my_app_metrics {
 ///     /// Total number of tasks workers stole from each other.
 ///     fn tokio_runtime_total_task_steal_count() -> Counter;
 /// }
 /// # }
 /// ```
+///
+/// [telemetry server]: crate::telemetry::init_with_server
+/// [`MetricsSettings::report_optional`]: crate::telemetry::settings::MetricsSettings::report_optional
 pub use bedrock_macros::metrics;
 
 /// A macro that allows to define a Prometheus info metric.
 ///
-/// The metrics defined by this function should be used with
-/// [`report_info`] and they can be collected with
-/// the telemetry server.
+/// The metrics defined by this function should be used with [`report_info`] and they can be
+/// collected with the telemetry server.
 ///
-/// The struct name becomes the metric name in `snake_case`,
-/// and each field of the struct becomes a label.
+/// The struct name becomes the metric name in `snake_case`, and each field of the struct becomes
+/// a label.
 ///
 /// # Simple example
 ///
@@ -253,13 +296,6 @@ pub use bedrock_macros::metrics;
 /// ```
 pub use bedrock_macros::info_metric;
 
-pub use prometheus_client::metrics::family::MetricConstructor;
-pub use prometheus_client::metrics::gauge::Gauge;
-pub use prometheus_client::metrics::histogram::Histogram;
-pub use prometools::histogram::{HistogramTimer, TimeHistogram};
-pub use prometools::nonstandard::NonstandardUnsuffixedCounter as Counter;
-pub use prometools::serde::Family;
-
 /// Describes an info metric.
 ///
 /// Info metrics are used to expose textual information, through the label set, which should not
@@ -273,7 +309,7 @@ pub trait InfoMetric: Serialize + Send + Sync + 'static {
     const HELP: &'static str;
 }
 
-/// Registers an info metric, i.e. a gauge metric whose value is always 1, set at init time.
+/// Registers an info metric, i.e. a gauge metric whose value is always `1`, set at init time.
 ///
 /// # Examples
 ///
