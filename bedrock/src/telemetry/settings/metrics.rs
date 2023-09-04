@@ -7,22 +7,19 @@ use crate::settings::settings;
 pub struct MetricsSettings {
     /// How the metrics service identifier defined in `ServiceInfo` is used
     /// for this service.
-    pub service_identifier_format: ServiceIdentifierFormat,
+    pub service_name_format: ServiceNameFormat,
 
     /// Whether to report optional metrics in the telemetry server.
     pub report_optional: bool,
 }
 
-/// Service identifier format.
+/// Service name format.
 ///
-/// This dictates how the [metrics server identifier](`crate::ServiceInfo::metrics_service_identifier`)
+/// This dictates how [`crate::ServiceInfo::name_in_metrics`]
 /// should be used by the metrics system.
-///
-/// If `MetricPrefix`, the identifier is used as a prefix. If `LabelWithName(name)`, the identifier is
-/// used as the value of an additional label named `name`.
 #[cfg_attr(feature = "settings", settings(crate_path = "crate"))]
 #[cfg_attr(not(feature = "settings"), derive(Clone, Debug, Default))]
-pub enum ServiceIdentifierFormat {
+pub enum ServiceNameFormat {
     /// Use the metrics service identifier as metric prefix.
     #[default]
     MetricPrefix,

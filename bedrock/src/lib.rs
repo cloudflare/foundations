@@ -118,7 +118,7 @@ pub struct ServiceInfo {
     /// The service identifier as used in metrics.
     ///
     /// Usually the same as [`ServiceInfo::name`], with hyphens (`-`) replaced by underscores `_`.
-    pub metrics_service_identifier: String,
+    pub name_in_metrics: String,
 
     /// The version of the service.
     pub version: &'static str,
@@ -128,12 +128,15 @@ pub struct ServiceInfo {
 }
 
 /// Creates [`ServiceInfo`] from the information in `Cargo.toml` manifest of the service.
+///
+/// [`ServiceInfo::name_in_metrics`] is the same as the package name, with hypens (`-`) replaced
+/// by underscores (`_`).
 #[macro_export]
 macro_rules! service_info {
     () => {
         $crate::ServiceInfo {
             name: env!("CARGO_PKG_NAME"),
-            metrics_service_identifier: env!("CARGO_PKG_NAME").replace("-", "_"),
+            name_in_metrics: env!("CARGO_PKG_NAME").replace("-", "_"),
             version: env!("CARGO_PKG_VERSION"),
             description: env!("CARGO_PKG_DESCRIPTION"),
         }

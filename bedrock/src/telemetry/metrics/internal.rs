@@ -1,5 +1,5 @@
 use super::{info_metric, InfoMetric};
-use crate::telemetry::settings::{MetricsSettings, ServiceIdentifierFormat};
+use crate::telemetry::settings::{MetricsSettings, ServiceNameFormat};
 use crate::{Result, ServiceInfo};
 use once_cell::sync::OnceCell;
 use parking_lot::{RwLock, RwLockWriteGuard};
@@ -22,12 +22,11 @@ pub struct Registries {
 
 impl Registries {
     pub(super) fn init(service_info: &ServiceInfo, settings: &MetricsSettings) {
-        let extra_label = match &settings.service_identifier_format {
-            ServiceIdentifierFormat::MetricPrefix => None,
-            ServiceIdentifierFormat::LabelWithName(name) => Some((
-                name.clone(),
-                service_info.metrics_service_identifier.clone(),
-            )),
+        let extra_label = match &settings.service_name_format {
+            ServiceNameFormat::MetricPrefix => None,
+            ServiceNameFormat::LabelWithName(name) => {
+                Some((name.clone(), service_info.name_in_metrics.clone()))
+            }
         };
 
         let initialized = REGISTRIES
@@ -69,7 +68,6 @@ impl Registries {
         encode_registry(buffer, &registry)
     }
 
-    #[doc(hidden)]
     pub fn get_main_subsystem(subsystem: &str) -> impl DerefMut<Target = Registry> + '_ {
         let registries = Self::get();
 
@@ -80,7 +78,6 @@ impl Registries {
         )
     }
 
-    #[doc(hidden)]
     pub fn get_opt_subsystem(subsystem: &str) -> impl DerefMut<Target = Registry> + '_ {
         let registries = Self::get();
 
@@ -97,23 +94,21 @@ impl Registries {
 }
 
 fn new_registry(service_info: &ServiceInfo, settings: &MetricsSettings) -> RwLock<Registry> {
-    RwLock::new(match &settings.service_identifier_format {
-        ServiceIdentifierFormat::MetricPrefix => {
-            Registry::with_prefix(&service_info.metrics_service_identifier)
-        }
+    RwLock::new(match &settings.service_name_format {
+        ServiceNameFormat::MetricPrefix => Registry::with_prefix(&service_info.name_in_metrics),
         // FIXME(nox): Due to prometheus-client 0.18 not supporting the creation of
         // registries with specific label values, we use this service identifier
         // format directly in `Registries::get_main` and `Registries::get_optional`.
-        ServiceIdentifierFormat::LabelWithName(_) => Registry::default(),
+        ServiceNameFormat::LabelWithName(_) => Registry::default(),
     })
 }
 
 fn get_subsystem<'a>(
-    guard: RwLockWriteGuard<'a, Registry>,
+    registry: RwLockWriteGuard<'a, Registry>,
     subsystem: &str,
     extra_label: Option<(String, String)>,
 ) -> impl DerefMut<Target = Registry> + 'a {
-    RwLockWriteGuard::map(guard, move |mut registry| {
+    RwLockWriteGuard::map(registry, move |mut registry| {
         if let Some((name, value)) = extra_label {
             registry = registry.sub_registry_with_label((name.into(), value.into()));
         }
