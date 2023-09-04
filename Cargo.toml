@@ -25,7 +25,7 @@ debug = 1
 anyhow = { version = "1", features = ["backtrace", "std"] }
 bedrock = { version = "1", path = "./bedrock", registry = "cloudflare" }
 bedrock-macros = { version = "1", path = "./bedrock-macros", registry = "cloudflare" }
-bindgen = "0.65"
+bindgen = { version = "0.65", default-features = false, features = ["runtime"] }
 cc = "1.0"
 crossbeam-channel = "0.5"
 darling = "0.14"
