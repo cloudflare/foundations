@@ -158,6 +158,7 @@ tikv-jemalloc-ctl = { workspace = true, optional = true }
 tempfile = { workspace = true, optional = true }
 
 [dev-dependencies]
+reqwest = { workspace = true }
 rusty-hook = { workspace = true }
 tokio = { workspace = true }
 

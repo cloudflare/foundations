@@ -68,18 +68,21 @@ mod server;
 
 use self::settings::TelemetrySettings;
 use crate::utils::feature_use;
-#[cfg(feature = "telemetry-server")]
-use crate::Result;
 use crate::{BootstrapResult, ServiceInfo};
-#[cfg(feature = "telemetry-server")]
-use futures_util::future::BoxFuture;
 use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
+feature_use!(cfg(feature = "telemetry-server"), {
+    use crate::Result;
+    use futures_util::future::{self, BoxFuture};
+    use futures_util::FutureExt;
+    use hyper::{Body, Request, Response};
+    use std::convert::Infallible;
+});
+
 feature_use!(cfg(feature = "logging"), {
     use self::log::internal::{current_log, fork_log, LogScope, SharedLog};
-    use std::sync::Arc;
 });
 
 feature_use!(cfg(feature = "tracing"), {
@@ -93,11 +96,21 @@ feature_use!(cfg(feature = "tracing"), {
     });
 });
 
+feature_use!(
+    cfg(any(feature = "logging", feature = "telemetry-server")),
+    {
+        use std::sync::Arc;
+    }
+);
+
 #[cfg(feature = "testing")]
 pub use self::testing::TestTelemetryContext;
 
 #[cfg(all(target_os = "linux", feature = "memory-profiling"))]
 pub use self::memory_profiler::MemoryProfiler;
+
+#[cfg(feature = "telemetry-server")]
+pub use self::server::TelemetryServerRoute;
 
 /// Telemetry server future returned by [`init_with_server`].
 ///
@@ -687,14 +700,26 @@ pub fn init(service_info: &ServiceInfo, settings: &TelemetrySettings) -> Bootstr
 /// - `/pprof/heap` - returns [jemalloc] heap profile (requires **memory-profiling** feature).
 /// - `/pprof/heap_stats` returns [jemalloc] heap stats (requires **memory-profiling** feature).
 ///
+/// Additional custom routes can be added via `custom_routes` parameter.
+///
 /// [Prometheus text format]: https://prometheus.io/docs/instrumenting/exposition_formats/#text-based-format
 /// [jemalloc]: https://github.com/jemalloc/jemalloc
 #[cfg(feature = "telemetry-server")]
-pub fn init_with_server(
+pub fn init_with_server<P, H, R>(
     service_info: &ServiceInfo,
     settings: &TelemetrySettings,
-) -> BootstrapResult<TelemetryServerFuture> {
+    custom_routes: Vec<TelemetryServerRoute<P, H>>,
+) -> BootstrapResult<TelemetryServerFuture>
+where
+    P: Into<String>,
+    H: Fn(Request<Body>, Arc<TelemetrySettings>) -> R + Send + Sync + 'static,
+    R: Future<Output = std::result::Result<Response<Body>, Infallible>> + Send + 'static,
+{
     init(service_info, settings)?;
 
-    self::server::init(settings.clone())
+    if settings.server.enabled {
+        self::server::init(settings.clone(), custom_routes)
+    } else {
+        Ok(future::pending().boxed())
+    }
 }
