@@ -2,6 +2,7 @@
 members = [
     "bedrock",
     "bedrock-macros",
+    "examples",
     "tools/gen-syscall-enum"
 ]
 resolver = "2"
@@ -27,6 +28,7 @@ bedrock = { version = "1", path = "./bedrock", registry = "cloudflare" }
 bedrock-macros = { version = "1", path = "./bedrock-macros", registry = "cloudflare" }
 bindgen = { version = "0.65", default-features = false, features = ["runtime"] }
 cc = "1.0"
+clap = "4.4"
 crossbeam-channel = "0.5"
 darling = "0.14"
 erased-serde = "0.3.28"

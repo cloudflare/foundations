@@ -29,8 +29,10 @@
 //! - **security**: Enables security features. Available only on Linux (x86_64, aarch64).
 //! - **jemalloc**: Enables [jemalloc] memory allocator which is known to perform much better than
 //! system allocators for long living service.
-//! - **memory-profiling**: Enables memory profiling functionality and telemetry. Requires
-//! **jemalloc** feature to be enabled.
+//! - **memory-profiling**: Enables memory profiling functionality and telemetry. Implicity enables
+//!  **jemalloc** feature.
+//! - **cli**: Enables command line interface (CLI) functionality. Implicitly enabled **settings**
+//! feature.
 //!
 //! [Cargo features]: https://doc.rust-lang.org/stable/cargo/reference/features.html#the-features-section
 //! [seccomp]: https://en.wikipedia.org/wiki/Seccomp
@@ -40,6 +42,9 @@
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 
 mod utils;
+
+#[cfg(feature = "cli")]
+pub mod cli;
 
 #[cfg(feature = "settings")]
 pub mod settings;
@@ -92,10 +97,10 @@ pub static JEMALLOC_MEMORY_ALLOCATOR: tikv_jemallocator::Jemalloc = tikv_jemallo
 
 /// Error that can be returned on a service initialisation.
 ///
-/// This is an alias for [`anyhow::Error`]. On bootstrap all errors are propagated to
-/// the `main` function and eventually terminate the process. [Sentry] logs those errors on
-/// application termination and in order to have proper understanding of the place where error
-/// has occured we use `anyhow` errors that provide backtraces for error creation site.
+/// This is an alias for [`anyhow::Error`]. On service bootstrap all such errors can be
+/// propagated to the `main` function and eventually terminate the process. [Sentry] logs those
+/// errors on application termination and in order to have proper understanding of the place where
+/// error has occured we use `anyhow` errors that provide backtraces for error creation site.
 ///
 /// [Sentry]: https://sentry.io
 pub type BootstrapError = anyhow::Error;
@@ -123,6 +128,9 @@ pub struct ServiceInfo {
     /// The version of the service.
     pub version: &'static str,
 
+    /// Service author.
+    pub author: &'static str,
+
     /// The description of the service.
     pub description: &'static str,
 }
@@ -138,6 +146,7 @@ macro_rules! service_info {
             name: env!("CARGO_PKG_NAME"),
             name_in_metrics: env!("CARGO_PKG_NAME").replace("-", "_"),
             version: env!("CARGO_PKG_VERSION"),
+            author: env!("CARGO_PKG_AUTHORS"),
             description: env!("CARGO_PKG_DESCRIPTION"),
         }
     };
