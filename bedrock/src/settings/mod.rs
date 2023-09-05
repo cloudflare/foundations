@@ -2,6 +2,7 @@
 
 mod basic_impls;
 
+pub mod collections;
 pub mod net;
 
 use crate::BootstrapResult;

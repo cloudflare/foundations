@@ -1,3 +1,4 @@
+use bedrock::settings::collections::Map;
 use bedrock::settings::{settings, to_yaml_string};
 
 #[settings]
@@ -102,6 +103,12 @@ struct NoDefaultStruct {
     b: bool,
 }
 
+#[settings]
+struct WithMap {
+    /// Map items
+    items: Map<NestedStruct>,
+}
+
 impl Default for NoDefaultStruct {
     fn default() -> Self {
         Self { b: true }
@@ -134,9 +141,13 @@ struct StructWithCrateReexport {
 
 macro_rules! assert_ser_eq {
     ($obj:expr, $expected:expr) => {
-        let actual = to_yaml_string(&$obj).unwrap();
+        let actual = to_yaml_string(&$obj).unwrap().trim().to_string();
+        let expected = include_str!($expected);
 
-        assert_eq!(actual.trim(), include_str!($expected));
+        assert_eq!(
+            actual, expected,
+            "\n\nexpected:\n\n{expected}\n\ngot:\n\n{actual}"
+        );
     };
 }
 
@@ -195,4 +206,18 @@ fn no_impl_default() {
     let e = NoDefaultEnum::default();
 
     assert!(matches!(e, NoDefaultEnum::Variant2));
+}
+
+#[test]
+fn map() {
+    let s = WithMap {
+        items: [
+            ("foo".into(), NestedStruct { a: 1, b: 2, c: 3 }),
+            ("bar".into(), NestedStruct { a: 4, b: 5, c: 6 }),
+        ]
+        .into_iter()
+        .collect(),
+    };
+
+    assert_ser_eq!(s, "data/with_map.yaml");
 }

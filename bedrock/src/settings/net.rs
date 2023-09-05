@@ -87,3 +87,9 @@ wrap!(
 wrap!(IpAddr, Default = std::net::Ipv4Addr::LOCALHOST.into());
 wrap!(Ipv4Addr, Default = std::net::Ipv4Addr::LOCALHOST);
 wrap!(Ipv6Addr, Default = std::net::Ipv6Addr::LOCALHOST);
+
+impl<I: Into<std::net::IpAddr>> From<(I, u16)> for SocketAddr {
+    fn from(pieces: (I, u16)) -> SocketAddr {
+        std::net::SocketAddr::from(pieces).into()
+    }
+}

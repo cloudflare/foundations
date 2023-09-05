@@ -1,9 +1,7 @@
 use super::Settings;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
-use std::collections::HashMap;
 use std::fmt::Debug;
-use std::hash::Hash;
 
 macro_rules! impl_for_basic_types {
     ($($ty:ty),*) => {
@@ -35,12 +33,5 @@ impl<T: Send + Sync + Clone + Serialize + DeserializeOwned + Debug + 'static> Se
 
 impl<T: Send + Sync + Clone + Serialize + DeserializeOwned + Debug + 'static> Settings
     for Option<T>
-{
-}
-
-impl<K, V> Settings for HashMap<K, V>
-where
-    K: Send + Sync + Clone + Serialize + DeserializeOwned + Debug + Hash + Eq + 'static,
-    V: Send + Sync + Clone + Serialize + DeserializeOwned + Debug + 'static,
 {
 }
