@@ -28,6 +28,7 @@ platform-common-default = [
     "settings",
     "jemalloc",
     "telemetry",
+    "cli",
     "testing",
 ]
 
@@ -115,6 +116,12 @@ jemalloc = [
     "dep:tikv-jemallocator"
 ]
 
+# Enables command line interface functionality.
+cli = [
+    "settings",
+    "dep:clap"
+]
+
 # Enables testing-related functionality.
 testing = [
     "dep:bedrock-macros"
@@ -129,6 +136,7 @@ anyhow = { workspace = true }
 bedrock-macros = { workspace = true, optional = true }
 crossbeam-channel = { workspace = true, optional = true }
 erased-serde = { workspace = true, optional = true }
+clap = { workspace = true, optional = true }
 futures-util = { workspace = true, optional = true }
 hyper = { workspace = true, optional = true }
 indexmap = { workspace = true, optional = true }
