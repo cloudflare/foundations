@@ -51,6 +51,7 @@ settings = [
     "dep:serde_yaml",
     "dep:serde", 
     "dep:yaml-merge-keys",
+    "dep:indexmap"
 ]
 
 # Enables all the telemetry-related features ("logging", "metrics", "tracing", "telemetry-server").
@@ -130,6 +131,7 @@ crossbeam-channel = { workspace = true, optional = true }
 erased-serde = { workspace = true, optional = true }
 futures-util = { workspace = true, optional = true }
 hyper = { workspace = true, optional = true }
+indexmap = { workspace = true, optional = true }
 parking_lot = { workspace = true, optional = true }
 prometheus = { workspace = true, optional = true }
 prometheus-client = { workspace = true, optional = true }

@@ -5,12 +5,16 @@
 //! * logging
 //! * distributed tracing
 //! * metrics
-//! * memory and async runtime profiling
+//! * memory profiling and [jemalloc] allocator
 //! * security features, such as [seccomp]-based syscall sandboxing
 //! * service configuration with documentation
-//! * full application bootstraping that set up **any combination** of the above in a few lines of code
+//! * CLI helper that takes care of the configuration loading
+//! * Advanced [tokio] async runtime setup with additional security features, controlled by
+//! application configuration
 //!
 //! then Bedrock is a tool of choice for you.
+//!
+//! Check out `/examples` for an example of how all these components can be used together.
 //!
 //! # Features
 //! Bedrock can take of all aspects of service bootstrapping, but also can be used as a component
@@ -35,6 +39,7 @@
 //! [Cargo features]: https://doc.rust-lang.org/stable/cargo/reference/features.html#the-features-section
 //! [seccomp]: https://en.wikipedia.org/wiki/Seccomp
 //! [jemalloc]: https://github.com/jemalloc/jemalloc
+//! [tokio]: https://tokio.rs/
 
 #![warn(missing_docs)]
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
