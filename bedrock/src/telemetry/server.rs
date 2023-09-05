@@ -5,18 +5,37 @@ use super::TelemetryServerFuture;
 use crate::{BootstrapResult, Result};
 use anyhow::anyhow;
 use futures_util::TryFutureExt;
-use hyper::{header, Response, StatusCode};
-use hyper::{Body, Server};
+use hyper::{header, Body, Method, Request, Response, Server, StatusCode};
 use routerify::{Router, RouterService};
 use socket2::{Domain, SockAddr, Socket, Type};
 use std::convert::Infallible;
+use std::future::Future;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-pub(super) fn init(settings: TelemetrySettings) -> BootstrapResult<TelemetryServerFuture> {
-    let settings = Arc::new(settings);
+/// A telemetry server route descriptor.
+pub struct TelemetryServerRoute<P, H> {
+    /// URL path of the route.
+    pub path: P,
 
-    let router = create_router(&settings)?;
+    /// A list of HTTP methods for which this route is active.
+    pub methods: Vec<Method>,
+
+    /// A route handler.
+    pub handler: H,
+}
+
+pub(super) fn init<P, H, R>(
+    settings: TelemetrySettings,
+    custom_routes: Vec<TelemetryServerRoute<P, H>>,
+) -> BootstrapResult<TelemetryServerFuture>
+where
+    P: Into<String>,
+    H: Fn(Request<Body>, Arc<TelemetrySettings>) -> R + Send + Sync + 'static,
+    R: Future<Output = std::result::Result<Response<Body>, Infallible>> + Send + 'static,
+{
+    let settings = Arc::new(settings);
+    let router = create_router(&settings, custom_routes)?;
     let addr = settings.server.addr;
 
     #[cfg(feature = "settings")]
@@ -48,7 +67,15 @@ fn bind_socket(addr: SocketAddr) -> BootstrapResult<Socket> {
     Ok(socket)
 }
 
-fn create_router(settings: &Arc<TelemetrySettings>) -> BootstrapResult<Router<Body, Infallible>> {
+fn create_router<P, H, R>(
+    settings: &Arc<TelemetrySettings>,
+    custom_routes: Vec<TelemetryServerRoute<P, H>>,
+) -> BootstrapResult<Router<Body, Infallible>>
+where
+    P: Into<String>,
+    H: Fn(Request<Body>, Arc<TelemetrySettings>) -> R + Send + Sync + 'static,
+    R: Future<Output = std::result::Result<Response<Body>, Infallible>> + Send + 'static,
+{
     let mut router = Router::builder();
 
     macro_rules! route {
@@ -81,6 +108,19 @@ fn create_router(settings: &Arc<TelemetrySettings>) -> BootstrapResult<Router<Bo
         "text/plain; charset=utf-8",
         memory_profiling::heap_stats
     );
+
+    for route in custom_routes {
+        let TelemetryServerRoute {
+            path,
+            methods,
+            handler,
+        } = route;
+
+        router = router.add(path, methods, {
+            let settings = Arc::clone(settings);
+            move |req| handler(req, Arc::clone(&settings))
+        });
+    }
 
     router.build().map_err(|err| anyhow!(err))
 }
