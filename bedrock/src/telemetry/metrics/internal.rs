@@ -29,16 +29,12 @@ impl Registries {
             }
         };
 
-        let initialized = REGISTRIES
-            .set(Registries {
-                main: new_registry(service_info, settings),
-                opt: new_registry(service_info, settings),
-                info: Default::default(),
-                extra_label,
-            })
-            .is_ok();
-
-        assert!(initialized, "registries were already initialized");
+        REGISTRIES.get_or_init(|| Registries {
+            main: new_registry(service_info, settings),
+            opt: new_registry(service_info, settings),
+            info: Default::default(),
+            extra_label,
+        });
     }
 
     pub(super) fn collect(buffer: &mut Vec<u8>, collect_optional: bool) -> Result<()> {
