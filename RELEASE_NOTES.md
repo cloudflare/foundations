@@ -1,4 +1,19 @@
+2.0.0
+- 2023-09-07 Update example Cargo.toml
+- 2023-09-07 Make Map generic in its keys
+- 2023-09-07 Add example
+- 2023-09-06 ROCK-18: Don't panic on initializing metrics registries twice
+- 2023-09-05 Implement Cli
+- 2023-09-05 Introduce settings Map structure whose items are documentable via Settings trait
+- 2023-09-04 ROCK-18: Update docs and tweak naming for metrics service name
+- 2023-09-04 Add ability to add custom routes to telemetry server.
+- 2023-09-01 ROCK-18: Support a custom metrics service identifier value and format
+- 2023-09-04 Disable bindgen default feature `which-rustfmt`
+- 2023-09-01 ROCK-20 Implement memory profiler telemetry server endpoint
+- 2023-09-01 Some tweaks to metrics API and docs
+
 1.2.0
+- 2023-08-29 Release 1.2.0
 - 2023-06-16 ROCK-4: Implement bedrock::telemetry::metrics
 - 2023-08-29 Remove unnecessary cast
 - 2023-08-23 ZTC-885: Updates heap profiling code slightly to be usable by oxy

@@ -8,7 +8,7 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "1.2.0"
+version = "2.0.0"
 repository = "https://bitbucket.cfdata.org/projects/OXY/repos/bedrock"
 publish = ["cloudflare"]
 edition = "2021"
@@ -24,8 +24,8 @@ debug = 1
 
 [workspace.dependencies]
 anyhow = { version = "1", features = ["backtrace", "std"] }
-bedrock = { version = "1", path = "./bedrock", registry = "cloudflare" }
-bedrock-macros = { version = "1", path = "./bedrock-macros", registry = "cloudflare" }
+bedrock = { version = "2", path = "./bedrock", registry = "cloudflare" }
+bedrock-macros = { version = "2", path = "./bedrock-macros", registry = "cloudflare" }
 bindgen = { version = "0.65", default-features = false, features = ["runtime"] }
 cc = "1.0"
 clap = "4.4"
