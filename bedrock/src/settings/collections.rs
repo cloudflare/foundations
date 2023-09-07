@@ -3,6 +3,7 @@
 //! [`Settings`]: super::Settings
 
 use super::Settings;
+use indexmap::map::{IntoIter, Iter, IterMut};
 use indexmap::IndexMap;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -81,6 +82,42 @@ where
 {
     fn from_iter<I: IntoIterator<Item = (String, V)>>(iterable: I) -> Self {
         Self(IndexMap::from_iter(iterable))
+    }
+}
+
+impl<'a, V> IntoIterator for &'a Map<V>
+where
+    V: Settings + Send + Sync + Clone + Serialize + DeserializeOwned + Debug + 'static,
+{
+    type Item = (&'a String, &'a V);
+    type IntoIter = Iter<'a, String, V>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter()
+    }
+}
+
+impl<'a, V> IntoIterator for &'a mut Map<V>
+where
+    V: Settings + Send + Sync + Clone + Serialize + DeserializeOwned + Debug + 'static,
+{
+    type Item = (&'a String, &'a mut V);
+    type IntoIter = IterMut<'a, String, V>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter_mut()
+    }
+}
+
+impl<V> IntoIterator for Map<V>
+where
+    V: Settings + Send + Sync + Clone + Serialize + DeserializeOwned + Debug + 'static,
+{
+    type Item = (String, V);
+    type IntoIter = IntoIter<String, V>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
     }
 }
 

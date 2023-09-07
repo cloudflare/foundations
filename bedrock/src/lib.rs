@@ -9,8 +9,6 @@
 //! * security features, such as [seccomp]-based syscall sandboxing
 //! * service configuration with documentation
 //! * CLI helper that takes care of the configuration loading
-//! * Advanced [tokio] async runtime setup with additional security features, controlled by
-//! application configuration
 //!
 //! then Bedrock is a tool of choice for you.
 //!
@@ -41,7 +39,6 @@
 //! [Cargo features]: https://doc.rust-lang.org/stable/cargo/reference/features.html#the-features-section
 //! [seccomp]: https://en.wikipedia.org/wiki/Seccomp
 //! [jemalloc]: https://github.com/jemalloc/jemalloc
-//! [tokio]: https://tokio.rs/
 
 #![warn(missing_docs)]
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]

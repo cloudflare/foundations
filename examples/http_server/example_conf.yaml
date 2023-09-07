@@ -1,0 +1,63 @@
+---
+# Telemetry settings.
+telemetry:
+  # Distributed tracing settings
+  tracing:
+    # Enables tracing.
+    enabled: true
+    # The address of the Jaeger Thrift (UDP) agent.
+    jaeger_tracing_server_addr: "127.0.0.1:6831"
+    # Overrides the bind address for the reporter API.
+    # By default, the reporter API is only exposed on the loopback
+    # interface. This won't work in environments where the
+    # Jaeger agent is on another host (for example, Docker).
+    # Must have the same address family as `jaeger_tracing_server_addr`.
+    jaeger_reporter_bind_addr: ~
+    # Sampling ratio.
+    #
+    # This can be any fractional value between `0.0` and `1.0`.
+    # Where `1.0` means "sample everything", and `0.0` means "don't sample anything".
+    sampling_ratio: 1.0
+  # Logging settings.
+  logging:
+    # Specifies log output.
+    output: terminal
+    # The format to use for log messages.
+    format: text
+    # Set the logging verbosity level.
+    verbosity: INFO
+    # A list of field keys to redact when emitting logs.
+    #
+    # This might be useful to hide certain fields in production logs as they may
+    # contain sensative information, but allow them in testing environment.
+    redact_keys: []
+  # Metrics settings.
+  metrics:
+    # How the metrics service identifier defined in `ServiceInfo` is used
+    # for this service.
+    service_name_format: metric_prefix
+    # Whether to report optional metrics in the telemetry server.
+    report_optional: false
+  # Server settings.
+  server:
+    # Enables telemetry server
+    enabled: true
+    # Telemetry server address.
+    addr: "127.0.0.1:0"
+# HTTP endpoints configuration.
+endpoints:
+  Example endpoint:
+    # Address of the endpoint.
+    addr: "127.0.0.1:0"
+    # Endoint's URL path routes.
+    routes:
+      /hello:
+        # Status code of the route's response.
+        status_code: 200
+        # Content of the route's response.
+        response: World
+      /foo:
+        # Status code of the route's response.
+        status_code: 403
+        # Content of the route's response.
+        response: bar

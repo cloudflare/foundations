@@ -46,7 +46,7 @@ impl Default for TracingSettings {
         let jaeger_tracing_server_addr = jaeger_tracing_server_addr.into();
 
         Self {
-            enabled: false,
+            enabled: true,
             jaeger_tracing_server_addr,
             jaeger_reporter_bind_addr: None,
             sampling_ratio: 1.0,

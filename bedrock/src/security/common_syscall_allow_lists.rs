@@ -40,6 +40,11 @@ allow_list! {
         munmap,
         mremap,
         fstat,
+        statx,
+        #[cfg(target_arch = "x86_64")]
+        stat,
+        #[cfg(target_arch = "x86_64")]
+        lstat,
         newfstatat,
         lseek,
         rseq
@@ -83,7 +88,9 @@ allow_list! {
         socketpair,
         setsockopt,
         getsockopt,
-        bind
+        getsockname,
+        bind,
+        ioctl
     ]
 }
 
