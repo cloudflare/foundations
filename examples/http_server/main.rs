@@ -91,7 +91,7 @@ async fn main() -> BootstrapResult<()> {
 }
 
 fn spawn_tcp_listeners(
-    endpoints_settings: &Map<EndpointSettings>,
+    endpoints_settings: &Map<String, EndpointSettings>,
 ) -> BootstrapResult<Vec<StdTcpListener>> {
     let mut listeners = vec![];
 
@@ -112,7 +112,7 @@ fn spawn_tcp_listeners(
 
 async fn run_endpoint(
     endpoint_name: String,
-    routes: Map<ResponseSettings>,
+    routes: Map<String, ResponseSettings>,
     listener: StdTcpListener,
 ) -> BootstrapResult<()> {
     listener.set_nonblocking(true)?;
@@ -156,7 +156,7 @@ async fn serve_connection(
     endpoint_name: Arc<String>,
     conn: TcpStream,
     client_addr: SocketAddr,
-    routes: Arc<Map<ResponseSettings>>,
+    routes: Arc<Map<String, ResponseSettings>>,
 ) {
     metrics::http_server::active_connections(&endpoint_name).inc();
 
@@ -201,7 +201,7 @@ async fn serve_connection(
 async fn respond(
     endpoint_name: Arc<String>,
     req: Request<Body>,
-    routes: Arc<Map<ResponseSettings>>,
+    routes: Arc<Map<String, ResponseSettings>>,
 ) -> Result<Response<Body>, Infallible> {
     log::add_fields! {
         "request_uri" => req.uri().to_string(),

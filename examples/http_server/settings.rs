@@ -18,11 +18,11 @@ pub(crate) struct HttpServerSettings {
     pub(crate) telemetry: TelemetrySettings,
     /// HTTP endpoints configuration.
     #[serde(default = "HttpServerSettings::default_endpoints")]
-    pub(crate) endpoints: Map<EndpointSettings>,
+    pub(crate) endpoints: Map<String, EndpointSettings>,
 }
 
 impl HttpServerSettings {
-    fn default_endpoints() -> Map<EndpointSettings> {
+    fn default_endpoints() -> Map<String, EndpointSettings> {
         let mut endpoint = EndpointSettings::default();
 
         endpoint.routes.insert(
@@ -52,7 +52,7 @@ pub(crate) struct EndpointSettings {
     /// Address of the endpoint.
     pub(crate) addr: SocketAddr,
     /// Endoint's URL path routes.
-    pub(crate) routes: Map<ResponseSettings>,
+    pub(crate) routes: Map<String, ResponseSettings>,
 }
 
 #[settings]

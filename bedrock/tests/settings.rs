@@ -106,7 +106,7 @@ struct NoDefaultStruct {
 #[settings]
 struct WithMap {
     /// Map items
-    items: Map<NestedStruct>,
+    items: Map<String, NestedStruct>,
 }
 
 impl Default for NoDefaultStruct {

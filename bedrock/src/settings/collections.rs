@@ -8,10 +8,11 @@ use indexmap::IndexMap;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::fmt::Debug;
+use std::fmt::{Debug, Display};
+use std::hash::Hash;
 use std::ops::{Deref, DerefMut};
 
-/// An ordered hash map of items with [`std::string::String`] keys.
+/// An ordered hash map of items.
 ///
 /// This is essentially a thin wrapper around [`indexmap::IndexMap`] that implements [`Settings`]
 /// trait.
@@ -25,12 +26,14 @@ use std::ops::{Deref, DerefMut};
 /// its usage is still discoraged as the ordering is implicit and can differ from the intended by
 /// an implementor.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Map<V>(#[serde(bound = "")] IndexMap<String, V>)
+pub struct Map<K, V>(#[serde(bound = "")] IndexMap<K, V>)
 where
+    K: Eq + Hash + Settings + Send + Sync + Clone + Serialize + DeserializeOwned + Debug + 'static,
     V: Settings + Send + Sync + Clone + Serialize + DeserializeOwned + Debug + 'static;
 
-impl<V> Default for Map<V>
+impl<K, V> Default for Map<K, V>
 where
+    K: Eq + Hash + Settings + Send + Sync + Clone + Serialize + DeserializeOwned + Debug + 'static,
     V: Settings + Send + Sync + Clone + Serialize + DeserializeOwned + Debug + 'static,
 {
     fn default() -> Self {
@@ -38,19 +41,21 @@ where
     }
 }
 
-impl<V> Deref for Map<V>
+impl<K, V> Deref for Map<K, V>
 where
+    K: Eq + Hash + Settings + Send + Sync + Clone + Serialize + DeserializeOwned + Debug + 'static,
     V: Settings + Send + Sync + Clone + Serialize + DeserializeOwned + Debug + 'static,
 {
-    type Target = IndexMap<String, V>;
+    type Target = IndexMap<K, V>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-impl<V> DerefMut for Map<V>
+impl<K, V> DerefMut for Map<K, V>
 where
+    K: Eq + Hash + Settings + Send + Sync + Clone + Serialize + DeserializeOwned + Debug + 'static,
     V: Settings + Send + Sync + Clone + Serialize + DeserializeOwned + Debug + 'static,
 {
     fn deref_mut(&mut self) -> &mut Self::Target {
@@ -58,71 +63,88 @@ where
     }
 }
 
-impl<V> From<Map<V>> for IndexMap<String, V>
+impl<K, V> From<Map<K, V>> for IndexMap<K, V>
 where
+    K: Eq + Hash + Settings + Send + Sync + Clone + Serialize + DeserializeOwned + Debug + 'static,
     V: Settings + Send + Sync + Clone + Serialize + DeserializeOwned + Debug + 'static,
 {
-    fn from(value: Map<V>) -> Self {
+    fn from(value: Map<K, V>) -> Self {
         value.0
     }
 }
 
-impl<V> From<IndexMap<String, V>> for Map<V>
+impl<K, V> From<IndexMap<K, V>> for Map<K, V>
 where
+    K: Eq + Hash + Settings + Send + Sync + Clone + Serialize + DeserializeOwned + Debug + 'static,
     V: Settings + Send + Sync + Clone + Serialize + DeserializeOwned + Debug + 'static,
 {
-    fn from(value: IndexMap<String, V>) -> Self {
+    fn from(value: IndexMap<K, V>) -> Self {
         Self(value)
     }
 }
 
-impl<V> FromIterator<(String, V)> for Map<V>
+impl<K, V> FromIterator<(K, V)> for Map<K, V>
 where
+    K: Eq + Hash + Settings + Send + Sync + Clone + Serialize + DeserializeOwned + Debug + 'static,
     V: Settings + Send + Sync + Clone + Serialize + DeserializeOwned + Debug + 'static,
 {
-    fn from_iter<I: IntoIterator<Item = (String, V)>>(iterable: I) -> Self {
+    fn from_iter<I: IntoIterator<Item = (K, V)>>(iterable: I) -> Self {
         Self(IndexMap::from_iter(iterable))
     }
 }
 
-impl<'a, V> IntoIterator for &'a Map<V>
+impl<'a, K, V> IntoIterator for &'a Map<K, V>
 where
+    K: Eq + Hash + Settings + Send + Sync + Clone + Serialize + DeserializeOwned + Debug + 'static,
     V: Settings + Send + Sync + Clone + Serialize + DeserializeOwned + Debug + 'static,
 {
-    type Item = (&'a String, &'a V);
-    type IntoIter = Iter<'a, String, V>;
+    type Item = (&'a K, &'a V);
+    type IntoIter = Iter<'a, K, V>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.0.iter()
     }
 }
 
-impl<'a, V> IntoIterator for &'a mut Map<V>
+impl<'a, K, V> IntoIterator for &'a mut Map<K, V>
 where
+    K: Eq + Hash + Settings + Send + Sync + Clone + Serialize + DeserializeOwned + Debug + 'static,
     V: Settings + Send + Sync + Clone + Serialize + DeserializeOwned + Debug + 'static,
 {
-    type Item = (&'a String, &'a mut V);
-    type IntoIter = IterMut<'a, String, V>;
+    type Item = (&'a K, &'a mut V);
+    type IntoIter = IterMut<'a, K, V>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.0.iter_mut()
     }
 }
 
-impl<V> IntoIterator for Map<V>
+impl<K, V> IntoIterator for Map<K, V>
 where
+    K: Eq + Hash + Settings + Send + Sync + Clone + Serialize + DeserializeOwned + Debug + 'static,
     V: Settings + Send + Sync + Clone + Serialize + DeserializeOwned + Debug + 'static,
 {
-    type Item = (String, V);
-    type IntoIter = IntoIter<String, V>;
+    type Item = (K, V);
+    type IntoIter = IntoIter<K, V>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.0.into_iter()
     }
 }
 
-impl<V> Settings for Map<V>
+impl<K, V> Settings for Map<K, V>
 where
+    K: Display
+        + Eq
+        + Hash
+        + Settings
+        + Send
+        + Sync
+        + Clone
+        + Serialize
+        + DeserializeOwned
+        + Debug
+        + 'static,
     V: Settings + Send + Sync + Clone + Serialize + DeserializeOwned + Debug + 'static,
 {
     fn add_docs(
