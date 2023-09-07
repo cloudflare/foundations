@@ -1,5 +1,6 @@
 use bedrock::telemetry::settings::{TelemetryServerSettings, TelemetrySettings};
 use bedrock::telemetry::TelemetryServerRoute;
+use futures_util::FutureExt;
 use hyper::{Method, Response};
 use std::net::{Ipv4Addr, SocketAddr};
 
@@ -39,9 +40,11 @@ async fn telemetry_server() {
             &bedrock::service_info!(),
             &settings,
             vec![TelemetryServerRoute {
-                path: "/custom-route",
+                path: "/custom-route".into(),
                 methods: vec![Method::GET],
-                handler: |_, _| async { Ok(Response::builder().body("Hello".into()).unwrap()) },
+                handler: Box::new(|_, _| {
+                    async { Ok(Response::builder().body("Hello".into()).unwrap()) }.boxed()
+                }),
             }],
         )
         .unwrap(),

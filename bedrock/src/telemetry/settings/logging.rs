@@ -34,24 +34,16 @@ pub struct LoggingSettings {
 }
 
 /// Log output destination.
-#[cfg_attr(
-    feature = "settings",
-    settings(crate_path = "crate", impl_default = false)
-)]
-#[cfg_attr(not(feature = "settings"), derive(Clone, Debug))]
+#[cfg_attr(feature = "settings", settings(crate_path = "crate"))]
+#[cfg_attr(not(feature = "settings"), derive(Clone, Debug, Default))]
 pub enum LogOutput {
     /// Write log to terminal.
+    #[default]
     Terminal,
     /// Write log to file with the specified path.
     ///
     /// File will be created if it doesn't exist and overwritten otherwise.
     File(PathBuf),
-}
-
-impl Default for LogOutput {
-    fn default() -> Self {
-        LogOutput::File("./proxy.log".into())
-    }
 }
 
 /// Format of the log output.
@@ -72,7 +64,7 @@ pub struct LogVerbosity(pub Level);
 
 impl Default for LogVerbosity {
     fn default() -> Self {
-        Self(Level::Warning)
+        Self(Level::Info)
     }
 }
 

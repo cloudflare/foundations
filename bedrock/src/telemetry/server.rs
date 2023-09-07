@@ -1,39 +1,76 @@
 #[cfg(feature = "metrics")]
 use super::metrics;
 use super::settings::TelemetrySettings;
-use super::TelemetryServerFuture;
 use crate::{BootstrapResult, Result};
 use anyhow::anyhow;
+use futures_util::future::BoxFuture;
 use futures_util::TryFutureExt;
 use hyper::{header, Body, Method, Request, Response, Server, StatusCode};
 use routerify::{Router, RouterService};
 use socket2::{Domain, SockAddr, Socket, Type};
 use std::convert::Infallible;
 use std::future::Future;
-use std::net::SocketAddr;
+use std::net::{SocketAddr, TcpListener};
+use std::pin::Pin;
 use std::sync::Arc;
+use std::task::{Context, Poll};
+
+/// Telemetry server future returned by [`crate::telemetry::init_with_server`].
+///
+/// This future drives a HTTP server as configured by [`TelemetryServerSettings`].
+///
+/// [`TelemetryServerSettings`]: `crate::telemetry::settings::TelemetryServerSettings`
+pub struct TelemetryServerFuture {
+    pub(super) inner: BoxFuture<'static, BootstrapResult<()>>,
+    pub(super) server_addr: Option<SocketAddr>,
+}
+
+impl TelemetryServerFuture {
+    /// Address of the telemetry server.
+    ///
+    /// Returns `None` if the server wasn't spawned.
+    pub fn server_addr(&self) -> Option<SocketAddr> {
+        self.server_addr
+    }
+}
+
+impl Future for TelemetryServerFuture {
+    type Output = BootstrapResult<()>;
+
+    #[inline]
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        self.inner.as_mut().poll(cx)
+    }
+}
+
+/// Future returned by [`TelemetryServerRoute::handler`].
+pub type TelemetryRouteHandlerFuture =
+    BoxFuture<'static, std::result::Result<Response<Body>, Infallible>>;
+
+/// Telemetry route handler.
+pub type TelemetryRouteHandler = Box<
+    dyn Fn(Request<Body>, Arc<TelemetrySettings>) -> TelemetryRouteHandlerFuture
+        + Send
+        + Sync
+        + 'static,
+>;
 
 /// A telemetry server route descriptor.
-pub struct TelemetryServerRoute<P, H> {
+pub struct TelemetryServerRoute {
     /// URL path of the route.
-    pub path: P,
+    pub path: String,
 
     /// A list of HTTP methods for which this route is active.
     pub methods: Vec<Method>,
 
     /// A route handler.
-    pub handler: H,
+    pub handler: TelemetryRouteHandler,
 }
 
-pub(super) fn init<P, H, R>(
+pub(super) fn init(
     settings: TelemetrySettings,
-    custom_routes: Vec<TelemetryServerRoute<P, H>>,
-) -> BootstrapResult<TelemetryServerFuture>
-where
-    P: Into<String>,
-    H: Fn(Request<Body>, Arc<TelemetrySettings>) -> R + Send + Sync + 'static,
-    R: Future<Output = std::result::Result<Response<Body>, Infallible>> + Send + 'static,
-{
+    custom_routes: Vec<TelemetryServerRoute>,
+) -> BootstrapResult<TelemetryServerFuture> {
     let settings = Arc::new(settings);
     let router = create_router(&settings, custom_routes)?;
     let addr = settings.server.addr;
@@ -41,11 +78,15 @@ where
     #[cfg(feature = "settings")]
     let addr = SocketAddr::from(addr);
 
-    let socket = bind_socket(addr)?;
-    let builder = Server::from_tcp(socket.into())?;
+    let socket = TcpListener::from(bind_socket(addr)?);
+    let server_addr = socket.local_addr()?;
+    let builder = Server::from_tcp(socket)?;
     let service = RouterService::new(router).map_err(|err| anyhow!(err))?;
 
-    Ok(Box::pin(builder.serve(service).err_into()))
+    Ok(TelemetryServerFuture {
+        inner: Box::pin(builder.serve(service).err_into()),
+        server_addr: Some(server_addr),
+    })
 }
 
 fn bind_socket(addr: SocketAddr) -> BootstrapResult<Socket> {
@@ -67,15 +108,10 @@ fn bind_socket(addr: SocketAddr) -> BootstrapResult<Socket> {
     Ok(socket)
 }
 
-fn create_router<P, H, R>(
+fn create_router(
     settings: &Arc<TelemetrySettings>,
-    custom_routes: Vec<TelemetryServerRoute<P, H>>,
-) -> BootstrapResult<Router<Body, Infallible>>
-where
-    P: Into<String>,
-    H: Fn(Request<Body>, Arc<TelemetrySettings>) -> R + Send + Sync + 'static,
-    R: Future<Output = std::result::Result<Response<Body>, Infallible>> + Send + 'static,
-{
+    custom_routes: Vec<TelemetryServerRoute>,
+) -> BootstrapResult<Router<Body, Infallible>> {
     let mut router = Router::builder();
 
     macro_rules! route {

@@ -6,7 +6,9 @@
 use super::Settings;
 use serde::{Deserialize, Serialize};
 use std::fmt;
+use std::net::ToSocketAddrs;
 use std::ops::{Deref, DerefMut};
+use std::option::IntoIter;
 
 macro_rules! wrap {
     ( $Ty:ident, Default = $default:expr ) => {
@@ -72,6 +74,18 @@ macro_rules! wrap {
     };
 }
 
+macro_rules! impl_to_socket_addrs {
+    ( $Ty:ident ) => {
+        impl ToSocketAddrs for $Ty {
+            type Iter = IntoIter<std::net::SocketAddr>;
+
+            fn to_socket_addrs(&self) -> std::io::Result<Self::Iter> {
+                self.0.to_socket_addrs()
+            }
+        }
+    };
+}
+
 wrap!(
     SocketAddr,
     Default = (std::net::Ipv4Addr::LOCALHOST, 0).into()
@@ -87,6 +101,10 @@ wrap!(
 wrap!(IpAddr, Default = std::net::Ipv4Addr::LOCALHOST.into());
 wrap!(Ipv4Addr, Default = std::net::Ipv4Addr::LOCALHOST);
 wrap!(Ipv6Addr, Default = std::net::Ipv6Addr::LOCALHOST);
+
+impl_to_socket_addrs!(SocketAddr);
+impl_to_socket_addrs!(SocketAddrV4);
+impl_to_socket_addrs!(SocketAddrV6);
 
 impl<I: Into<std::net::IpAddr>> From<(I, u16)> for SocketAddr {
     fn from(pieces: (I, u16)) -> SocketAddr {

@@ -1,11 +1,16 @@
 [package]
 name = "examples"
-version = "0.0.0"
+version = "1.0.0"
 publish = false
 edition = "2021"
 
 [dev-dependencies]
+anyhow = { workspace = true }
+bedrock = { workspace = true }
+futures-util = { workspace = true }
+hyper = { workspace = true }
+tokio = { workspace = true }
 
 [[example]]
 name = "http_server"
-path = "http_server.rs"
+path = "http_server/main.rs"
