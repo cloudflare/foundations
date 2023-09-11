@@ -30,8 +30,8 @@ impl Registries {
         };
 
         REGISTRIES.get_or_init(|| Registries {
-            main: new_registry(service_info, settings),
-            opt: new_registry(service_info, settings),
+            main: new_registry(&service_info.name_in_metrics, &settings.service_name_format),
+            opt: new_registry(&service_info.name_in_metrics, &settings.service_name_format),
             info: Default::default(),
             extra_label,
         });
@@ -85,13 +85,21 @@ impl Registries {
     }
 
     pub(super) fn get() -> &'static Registries {
-        REGISTRIES.get().expect("registries are not initialized")
+        REGISTRIES.get_or_init(|| Registries {
+            main: new_registry("undefined", &ServiceNameFormat::MetricPrefix),
+            opt: new_registry("undefined", &ServiceNameFormat::MetricPrefix),
+            info: Default::default(),
+            extra_label: None,
+        })
     }
 }
 
-fn new_registry(service_info: &ServiceInfo, settings: &MetricsSettings) -> RwLock<Registry> {
-    RwLock::new(match &settings.service_name_format {
-        ServiceNameFormat::MetricPrefix => Registry::with_prefix(&service_info.name_in_metrics),
+fn new_registry(
+    service_name_in_metrics: &str,
+    service_name_format: &ServiceNameFormat,
+) -> RwLock<Registry> {
+    RwLock::new(match service_name_format {
+        ServiceNameFormat::MetricPrefix => Registry::with_prefix(service_name_in_metrics),
         // FIXME(nox): Due to prometheus-client 0.18 not supporting the creation of
         // registries with specific label values, we use this service identifier
         // format directly in `Registries::get_main` and `Registries::get_optional`.
