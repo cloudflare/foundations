@@ -1,4 +1,8 @@
+2.0.1
+- 2023-09-11 ROCK-18: Don't panic if metrics system is not initialized
+
 2.0.0
+- 2023-09-07 Release 2.0.0
 - 2023-09-07 Update example Cargo.toml
 - 2023-09-07 Make Map generic in its keys
 - 2023-09-07 Add example
