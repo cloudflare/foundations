@@ -1,18 +1,10 @@
 fn main() {
-    #[cfg(all(
-        feature = "security",
-        target_os = "linux",
-        any(target_arch = "x86_64", target_arch = "aarch64")
-    ))]
-    build::build()
+    #[cfg(feature = "security")]
+    security::build()
 }
 
-#[cfg(all(
-    feature = "security",
-    target_os = "linux",
-    any(target_arch = "x86_64", target_arch = "aarch64")
-))]
-mod build {
+#[cfg(feature = "security")]
+mod security {
     use bindgen::{Builder, CargoCallbacks};
     use std::env;
     use std::fs;
@@ -61,6 +53,20 @@ mod build {
     pub(super) fn build() {
         println!("cargo:rerun-if-changed=build.rs");
         println!("cargo:rerun-if-changed=src/security/libseccomp");
+
+        let target = std::env::var("TARGET").unwrap();
+
+        // `#[cfg(target_*)]` gates in build scripts are always about the host machine, as
+        // the resulting program will always run on the host machine building the crate,
+        // so we can't use those gates here and must check at runtime the `TARGET` environment
+        // variable. This is unfortunate as it means we need to depend on bindgen even
+        // when targetting macOS. See https://github.com/rust-lang/cargo/issues/4932.
+        if target.contains("linux") && (target.contains("x86_64") || target.contains("aarch64")) {
+            linux_build();
+        }
+    }
+
+    fn linux_build() {
         println!("cargo:rustc-link-lib=static=seccomp");
 
         let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
