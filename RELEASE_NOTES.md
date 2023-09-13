@@ -1,3 +1,9 @@
+2.0.3
+- 2023-09-13 Fix cross builds with feature security
+
+2.0.2
+- 2023-09-12 Release 2.0.2
+
 2.0.1
 - 2023-09-12 Release 2.0.1
 - 2023-09-11 ROCK-18: Don't panic if metrics system is not initialized
