@@ -1,22 +1,17 @@
 base-image: &base-image docker-registry.cfdata.org/stash/plat/dockerfiles/debian-bullseye-rustlang/master:1.72.0-0-0
 
 builddeps: &builddeps-common
-  ? cmake
   ? libclang-11-dev
   ? libelf-dev
-  ? libsctp-dev
-  ? libssl-dev
   ? pkg-config
-  ? unzip
 
 builddeps-macos: &builddeps-macos
   <<: *builddeps-common
   ? clang
+  ? cmake
   ? g++
   ? gcc
-  ? libgmp-dev
-  ? libmpc-dev
-  ? libmpfr-dev
+  ? libssl-dev
   ? libxml2-dev
   ? patch
   ? xz-utils

@@ -32,9 +32,6 @@ export TARGET_CXX=${OSXCROSSPATH}/${CTARGET}-clang++-libc++
 export TARGET_LDFLAGS="-fuse-ld=${OSXCROSSPATH}/${CTARGET}-ld"
 export TARGET_CFLAGS="-msse4.2 ${TARGET_LDFLAGS}"
 
-# boring-sys
-export CXXFLAGS="${TARGET_LDFLAGS}"
-
 # bindgen
 export CMAKE=${OSXCROSSPATH}/${CTARGET}-cmake
 export BINDGEN_EXTRA_CLANG_ARGS="--sysroot=${OSXCROSSPATH}/../SDK/${MACOS_SDK_VER}.sdk/ -I${OSXCROSSPATH}/../SDK/${MACOS_SDK_VER}.sdk/usr/include/ --target=${CTARGET}"
