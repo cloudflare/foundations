@@ -1,43 +1,30 @@
+base-image: &base-image docker-registry.cfdata.org/stash/plat/dockerfiles/debian-bullseye-rustlang/master:1.72.0-0-0
+
 builddeps: &builddeps-common
-  ? rust
-  ? sccache
-  ? libclang-11-dev
-  ? libssl-dev
-  ? pkg-config
-  ? openssh-client
-  ? build-essential
   ? cmake
-  ? unzip
+  ? libclang-11-dev
   ? libelf-dev
   ? libsctp-dev
-  ? cargo-to-teamcity
-  ? cf-rust-tools
-
-builddeps-macos: &builddeps-macos
-  ? libclang-11-dev
   ? libssl-dev
   ? pkg-config
-  ? openssh-client
-  ? build-essential
-  ? cmake
   ? unzip
-  ? libelf-dev
+
+builddeps-macos: &builddeps-macos
+  <<: *builddeps-common
   ? clang
-  ? gcc
   ? g++
-  ? zlib1g-dev
+  ? gcc
+  ? libgmp-dev
   ? libmpc-dev
   ? libmpfr-dev
-  ? libgmp-dev
-  ? patch
   ? libxml2-dev
+  ? patch
   ? xz-utils
-  ? cf-rust-tools
+  ? zlib1g-dev
 
-default-flavor: bullseye
-
-everything: &everything
+bullseye:
   check-features:
+    base_image: *base-image
     builddeps:
       <<: *builddeps-common
       ? cargo-hack
@@ -48,6 +35,7 @@ everything: &everything
       - sccache -s && sccache-push oxy-bedrock
 
   test:
+    base_image: *base-image
     builddeps:
       <<: *builddeps-common
     post-cache:
@@ -57,9 +45,9 @@ everything: &everything
       - sccache -s && sccache-push oxy-bedrock
 
   lint:
+    base_image: *base-image
     builddeps:
       <<: *builddeps-common
-      ? cargo-deny
     post-cache:
       - . cf-cargo-configure.sh
       - sccache-pull oxy-bedrock && export RUSTC_WRAPPER=sccache
@@ -67,6 +55,7 @@ everything: &everything
       - sccache -s && sccache-push oxy-bedrock
 
   build-macos:
+    base_image: *base-image
     builddeps:
       <<: *builddeps-macos
     post-cache:
@@ -75,9 +64,8 @@ everything: &everything
       - ./scripts/macos-osxcross-build.sh
 
   publish:
+    base_image: *base-image
     builddeps:
       <<: *builddeps-common
     post-cache:
       - cf-cargo-publish.sh
-
-bullseye: *everything
