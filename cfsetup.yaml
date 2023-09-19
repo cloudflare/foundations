@@ -36,7 +36,7 @@ bullseye:
     post-cache:
       - . cf-cargo-configure.sh
       - sccache-pull oxy-bedrock && export RUSTC_WRAPPER=sccache
-      - _RJEM_MALLOC_CONF=prof:true cargo test
+      - _RJEM_MALLOC_CONF=prof:true cargo nextest run --profile ci
       - sccache -s && sccache-push oxy-bedrock
 
   lint:
