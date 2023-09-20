@@ -74,6 +74,7 @@ telemetry-server = [
 
 # Enables logging functionality.
 logging = [
+    "dep:governor",
     "dep:once_cell",
     "dep:parking_lot",
     "dep:slog-async",
@@ -138,14 +139,15 @@ crossbeam-channel = { workspace = true, optional = true }
 erased-serde = { workspace = true, optional = true }
 clap = { workspace = true, optional = true }
 futures-util = { workspace = true, optional = true }
+governor = { workspace = true, optional = true }
 hyper = { workspace = true, optional = true }
 indexmap = { workspace = true, optional = true }
+once_cell = { workspace = true, optional = true }
 parking_lot = { workspace = true, optional = true }
 prometheus = { workspace = true, optional = true }
 prometheus-client = { workspace = true, optional = true }
 prometools = { workspace = true, optional = true }
 routerify = { workspace = true, optional = true }
-once_cell = { workspace = true, optional = true }
 rand = { workspace = true, optional = true }
 rustracing = { workspace = true, optional = true }
 rustracing_jaeger = { workspace = true, optional = true }

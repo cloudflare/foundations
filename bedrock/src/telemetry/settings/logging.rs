@@ -1,4 +1,5 @@
 use crate::utils::feature_use;
+
 use std::ops::Deref;
 use std::path::PathBuf;
 
@@ -31,6 +32,20 @@ pub struct LoggingSettings {
     /// This might be useful to hide certain fields in production logs as they may
     /// contain sensative information, but allow them in testing environment.
     pub redact_keys: Vec<String>,
+
+    /// Settings for rate limiting emission of log events
+    pub rate_limit: LogRateLimitingSettings,
+}
+
+/// Rate limiting settings for logging events
+#[cfg_attr(feature = "settings", settings(crate_path = "crate"))]
+#[cfg_attr(not(feature = "settings"), derive(Clone, Debug, Default))]
+pub struct LogRateLimitingSettings {
+    /// Whether to enable rate limiting of events
+    pub enabled: bool,
+
+    /// Maximum number of logging events that can be emitted per second
+    pub max_events_per_second: u32,
 }
 
 /// Log output destination.

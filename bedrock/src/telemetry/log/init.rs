@@ -5,6 +5,7 @@ use super::internal::SharedLog;
 use crate::telemetry::scope::ScopeStack;
 use crate::telemetry::settings::{LogFormat, LogOutput, LoggingSettings};
 use crate::{BootstrapResult, ServiceInfo};
+use governor::{Quota, RateLimiter};
 use once_cell::sync::{Lazy, OnceCell};
 use slog::{Discard, Drain, FnValue, Logger, Never};
 use slog_async::Async as AsyncDrain;
@@ -95,10 +96,27 @@ where
         FieldRedactFilterFactory::new(settings.redact_keys.clone()),
     );
 
+    let rate_limiter = if settings.rate_limit.enabled {
+        settings
+            .rate_limit
+            .max_events_per_second
+            .try_into()
+            .ok()
+            .map(|r| RateLimiter::direct(Quota::per_second(r)))
+    } else {
+        None
+    };
+
     let drain = AsyncDrain::new(drain)
         .chan_size(CHANNEL_SIZE)
         .build()
         .filter_level(*settings.verbosity)
+        .filter(move |_| {
+            rate_limiter
+                .as_ref()
+                .map(|r| r.check().is_ok())
+                .unwrap_or(true)
+        })
         .fuse();
 
     Logger::root(
@@ -132,4 +150,48 @@ where
         .fuse();
 
     build_log_with_drain(service_info, settings, drain)
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::telemetry::log::testing::create_test_log_with_rate_limiting;
+    use slog::warn;
+    use std::collections::HashSet;
+    use std::thread::sleep;
+    use std::time::Duration;
+
+    #[test]
+    fn test_rate_limiter() {
+        let (log, records) = create_test_log_with_rate_limiting(5);
+        for i in 0..16 {
+            warn!(log, "Hello world{}", i);
+        }
+
+        sleep(Duration::from_secs(1));
+        for i in 16..32 {
+            warn!(log, "Hello world{}", i);
+        }
+
+        let messages: HashSet<String> = records
+            .read()
+            .unwrap()
+            .iter()
+            .map(|l| l.message.clone())
+            .collect();
+        assert_eq!(messages.len(), 10);
+        for m in [
+            "Hello world0",
+            "Hello world1",
+            "Hello world2",
+            "Hello world3",
+            "Hello world4",
+            "Hello world16",
+            "Hello world17",
+            "Hello world18",
+            "Hello world19",
+            "Hello world20",
+        ] {
+            assert!(messages.contains(m));
+        }
+    }
 }

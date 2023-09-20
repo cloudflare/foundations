@@ -74,3 +74,24 @@ pub(crate) fn create_test_log(redacted_keys: Vec<String>) -> (Logger, TestLogRec
 
     (log, log_records)
 }
+
+#[cfg(test)]
+pub(crate) fn create_test_log_with_rate_limiting(
+    rate_limit_per_second: u32,
+) -> (Logger, TestLogRecords) {
+    use governor::{Quota, RateLimiter};
+    let log_records = Arc::new(RwLock::new(vec![]));
+
+    let rate_limiter =
+        RateLimiter::direct(Quota::per_second(rate_limit_per_second.try_into().unwrap()));
+
+    let drain = TestLogDrain {
+        records: Arc::clone(&log_records),
+    };
+
+    let drain = drain.filter(move |_| rate_limiter.check().is_ok()).fuse();
+
+    let log = Logger::root(drain, slog::o!());
+
+    (log, log_records)
+}
