@@ -26,7 +26,7 @@ debug = 1
 anyhow = { version = "1", features = ["backtrace", "std"] }
 bedrock = { version = "2", path = "./bedrock", registry = "cloudflare" }
 bedrock-macros = { version = "2", path = "./bedrock-macros", registry = "cloudflare" }
-bindgen = { version = "0.65", default-features = false, features = ["runtime"] }
+bindgen = { version = "0.68.1", default-features = false, features = ["runtime"] }
 cc = "1.0"
 clap = "4.4"
 crossbeam-channel = "0.5"
@@ -49,18 +49,18 @@ quote = "1"
 regex = "1.8"
 reqwest = { version = "0.11", default-features = false }
 routerify = "3"
-socket2 = { version = "0.5.3", features = ["all"] }
-syn = { version = "1", features = ["full", "fold", "parsing", "extra-traits"] }
-serde = { version = "1", features = ["derive", "rc"] }
+socket2 = { version = "0.5.3" }
+syn = { version = "1", features = ["full", "parsing", "extra-traits"] }
+serde = { version = "1", features = ["derive"] }
 serde_path_to_error = "0.1"
 serde_yaml = "0.8"
-serde_with = "2.3.1"
+serde_with = "3.3.0"
 slog = { version = "2.4", features = ["max_level_trace"] }
 slog-async = "2.3"
 slog-json = "2.3"
 slog-term = "2.4"
 tempfile = "3.7"
-tokio = { version = "1.2", features = ["full"] }
+tokio = { version = "1.2" }
 thread_local = "1.1"
 tikv-jemallocator = { version = "0.5", features = ["profiling", "stats", "background_threads"] }
 tikv-jemalloc-ctl = { version = "0.5", features = ["use_std"]}

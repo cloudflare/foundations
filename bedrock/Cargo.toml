@@ -9,16 +9,16 @@ repository = { workspace = true }
 [package.metadata.release]
 # run in the context of workspace root
 pre-release-hook = [
-  "git-cliff",
-  "-w", "..",
-  "-o", "../RELEASE_NOTES.md",
-  "--tag", "{{version}}"
+    "git-cliff",
+    "-w", "..",
+    "-o", "../RELEASE_NOTES.md",
+    "--tag", "{{version}}"
 ]
 
 [features]
 # Default set of features.
 default = [
-    "platform-common-default", 
+    "platform-common-default",
     "security"
 ]
 
@@ -47,10 +47,10 @@ metrics = [
 
 # Enables serializable documented settings functionality.
 settings = [
-    "dep:bedrock-macros", 
+    "dep:bedrock-macros",
     "dep:serde_path_to_error",
     "dep:serde_yaml",
-    "dep:serde", 
+    "dep:serde",
     "dep:yaml-merge-keys",
     "dep:indexmap"
 ]
@@ -79,7 +79,7 @@ logging = [
     "dep:slog-async",
     "dep:slog-json",
     "dep:slog-term",
-    "dep:slog", 
+    "dep:slog",
     "dep:thread_local",
 ]
 
@@ -159,7 +159,7 @@ slog-json = { workspace = true, optional = true }
 slog-term = { workspace = true, optional = true }
 socket2 = { workspace = true, optional = true }
 thread_local = { workspace = true, optional = true }
-tokio = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true, features = ["sync", "rt"] }
 tikv-jemallocator = { workspace = true, optional = true }
 yaml-merge-keys = { workspace = true, optional = true }
 
@@ -170,7 +170,8 @@ tempfile = { workspace = true, optional = true }
 [dev-dependencies]
 reqwest = { workspace = true }
 rusty-hook = { workspace = true }
-tokio = { workspace = true }
+serde = { workspace = true, features = ["rc"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 
 [build-dependencies]
 bindgen = { workspace = true, optional = true }
