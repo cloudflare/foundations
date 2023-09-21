@@ -35,20 +35,20 @@ impl Filter for FieldDedupFilter {
 
 #[cfg(test)]
 mod tests {
+    use slog::Level;
     // NOTE: test log uses field dedup filter.
-    use super::super::testing::{create_test_log, TestLogRecord};
-    use slog::{error, warn, Level};
+    use super::super::testing::TestLogRecord;
+    use crate::telemetry::{log, TestTelemetryContext};
+    use bedrock_macros::with_test_telemetry;
 
-    #[test]
-    fn remove_record_field_duplicates() {
-        let (log, records) = create_test_log(vec![]);
-
-        warn!(log, "Hello world1"; "key1" => 42, "key2" => "foo", "key1" => "bar", "key1" => "baz");
-        error!(log, "Hello world2"; "key1" => "qux", "key1" => "foo");
-        warn!(log, "Hello world3"; "key1" => "42", "key2" => "baz");
+    #[with_test_telemetry(test, crate_path = "crate")]
+    fn remove_record_field_duplicates(ctx: TestTelemetryContext) {
+        log::warn!("Hello world1"; "key1" => 42, "key2" => "foo", "key1" => "bar", "key1" => "baz");
+        log::error!("Hello world2"; "key1" => "qux", "key1" => "foo");
+        log::warn!("Hello world3"; "key1" => "42", "key2" => "baz");
 
         assert_eq!(
-            *records.read().unwrap(),
+            *ctx.log_records(),
             vec![
                 TestLogRecord {
                     level: Level::Warning,
@@ -69,22 +69,20 @@ mod tests {
         );
     }
 
-    #[test]
-    fn remove_context_field_duplicates() {
-        let (log, records) = create_test_log(vec![]);
-
-        let log = log.new(slog::o! {
+    #[with_test_telemetry(test, crate_path = "crate")]
+    fn remove_context_field_duplicates(ctx: TestTelemetryContext) {
+        log::add_fields! {
            "key1" => 42, "key2" => "foo", "key1" => "bar", "key1" => "baz", "key3" => "beep boop"
-        });
+        }
 
-        let log = log.new(slog::o! {
+        log::add_fields! {
            "key1" => "42", "key2" => "baz"
-        });
+        }
 
-        warn!(log, "Hello world");
+        log::warn!("Hello world");
 
         assert_eq!(
-            *records.read().unwrap(),
+            *ctx.log_records(),
             vec![TestLogRecord {
                 level: Level::Warning,
                 message: "Hello world".into(),

@@ -3,6 +3,7 @@
 mod field_dedup;
 mod field_filtering;
 mod field_redact;
+mod rate_limit;
 
 pub(crate) mod init;
 
