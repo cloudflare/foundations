@@ -13,8 +13,9 @@ pub(crate) mod testing;
 #[doc(hidden)]
 pub mod internal;
 
-use self::init::{build_log, LogHarness};
+use self::init::LogHarness;
 use self::internal::current_log;
+use crate::telemetry::log::init::build_log_with_drain;
 use crate::telemetry::settings::LogVerbosity;
 use crate::Result;
 use slog::{Level, Logger, OwnedKV};
@@ -27,17 +28,14 @@ pub use self::testing::TestLogRecord;
 ///
 /// [`init`]: crate::telemetry::init
 pub fn set_verbosity(level: Level) -> Result<()> {
-    let mut settings = LogHarness::get().settings.clone();
+    let harness = LogHarness::get();
 
+    let mut settings = harness.settings.clone();
     settings.verbosity = LogVerbosity(level);
 
     let kv = OwnedKV(current_log().read().list().clone());
-
-    // NOTE: it's ok to pass default for service info here, log keys
-    // for it will be copied over from the current log.
-    let drain = build_log(&Default::default(), &settings)?;
-
-    *current_log().write() = Logger::root(drain, kv);
+    let logger = build_log_with_drain(&settings, kv, Arc::clone(&harness.root_drain));
+    *current_log().write() = logger;
 
     Ok(())
 }

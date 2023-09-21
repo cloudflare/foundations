@@ -3,14 +3,14 @@ use governor::clock::DefaultClock;
 use governor::middleware::NoOpMiddleware;
 use governor::state::{InMemoryState, NotKeyed};
 use governor::{Quota, RateLimiter};
-use slog::{Drain, Never, OwnedKVList, Record, SendSyncRefUnwindSafeDrain};
+use slog::{Drain, Never, OwnedKVList, Record};
 
-pub(crate) struct RateLimitingDrain<D: SendSyncRefUnwindSafeDrain<Err = Never>> {
+pub(crate) struct RateLimitingDrain<D: Drain<Err = Never>> {
     inner: D,
     rate_limiter: Option<RateLimiter<NotKeyed, InMemoryState, DefaultClock, NoOpMiddleware>>,
 }
 
-impl<D: SendSyncRefUnwindSafeDrain<Err = Never>> RateLimitingDrain<D> {
+impl<D: Drain<Err = Never>> RateLimitingDrain<D> {
     pub(crate) fn new(inner: D, settings: &LoggingSettings) -> Self {
         let rate_limiter = if settings.rate_limit.enabled {
             settings
@@ -30,7 +30,7 @@ impl<D: SendSyncRefUnwindSafeDrain<Err = Never>> RateLimitingDrain<D> {
     }
 }
 
-impl<D: SendSyncRefUnwindSafeDrain<Err = Never>> Drain for RateLimitingDrain<D> {
+impl<D: Drain<Err = Never>> Drain for RateLimitingDrain<D> {
     type Ok = ();
     type Err = D::Err;
 

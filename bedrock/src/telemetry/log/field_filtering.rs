@@ -31,7 +31,7 @@ impl<F, D> FieldFilteringDrain<F, D> {
 impl<F, D> Drain for FieldFilteringDrain<F, D>
 where
     F: FilterFactory + Send + Sync + RefUnwindSafe + 'static,
-    D: Drain<Ok = (), Err = Never>,
+    D: Drain<Err = Never>,
 {
     type Ok = ();
     type Err = Never;
@@ -58,6 +58,7 @@ where
 
         self.inner
             .log(&filtered_record, &OwnedKV(context_fields_kv).into())
+            .map(|_| ())
     }
 }
 
