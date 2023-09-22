@@ -3,8 +3,8 @@ use crate::utils::feature_use;
 use std::ops::Deref;
 
 feature_use!(cfg(feature = "logging"), {
-    use super::log::init::LogHarness;
     use super::log::testing::{create_test_log, TestLogRecord, TestLogRecords};
+    use super::settings::LoggingSettings;
     use std::sync::Arc;
     use std::sync::RwLockReadGuard;
 });
@@ -42,11 +42,7 @@ pub struct TestTelemetryContext {
 impl TestTelemetryContext {
     pub(crate) fn new() -> Self {
         #[cfg(feature = "logging")]
-        let (log, log_records) = {
-            let settings = &LogHarness::get().settings;
-
-            create_test_log(settings.redact_keys.clone())
-        };
+        let (log, log_records) = { create_test_log(&Default::default()) };
 
         #[cfg(feature = "tracing")]
         let (tracer, traces_sink) = create_test_tracer();
@@ -69,6 +65,15 @@ impl TestTelemetryContext {
             #[cfg(feature = "logging")]
             log_records,
         }
+    }
+
+    /// Overrides the logging settings on the test telemetry context, creating a new test logger
+    /// with the settings
+    #[cfg(feature = "logging")]
+    pub fn set_logging_settings(&mut self, logging_settings: LoggingSettings) {
+        let (log, log_records) = { create_test_log(&logging_settings) };
+        *self.inner.log.write() = log;
+        self.log_records = log_records;
     }
 
     /// Returns all the log records produced in the test context.

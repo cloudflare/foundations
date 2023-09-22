@@ -1,7 +1,6 @@
-use super::field_dedup::FieldDedupFilterFactory;
-use super::field_filtering::FieldFilteringDrain;
-use super::field_redact::FieldRedactFilterFactory;
-use slog::{Drain, Key, Level, LevelFilter, Logger, Never, OwnedKVList, Record, Serializer, KV};
+use crate::telemetry::log::init::apply_filters_to_drain;
+use crate::telemetry::settings::LoggingSettings;
+use slog::{Drain, Key, Level, Logger, Never, OwnedKVList, Record, Serializer, KV};
 use std::fmt::Arguments;
 use std::sync::{Arc, RwLock};
 
@@ -59,18 +58,15 @@ impl Drain for TestLogDrain {
     }
 }
 
-pub(crate) fn create_test_log(redacted_keys: Vec<String>) -> (Logger, TestLogRecords) {
+pub(crate) fn create_test_log(settings: &LoggingSettings) -> (Logger, TestLogRecords) {
     let log_records = Arc::new(RwLock::new(vec![]));
 
     let drain = TestLogDrain {
         records: Arc::clone(&log_records),
     };
 
-    let drain = FieldFilteringDrain::new(drain, FieldRedactFilterFactory::new(redacted_keys));
-    let drain = FieldFilteringDrain::new(drain, FieldDedupFilterFactory);
-    let drain = LevelFilter::new(drain.fuse(), Level::Trace);
-
-    let log = Logger::root(drain.fuse(), slog::o!());
+    let drain = apply_filters_to_drain(drain, settings);
+    let log = Logger::root(drain, slog::o!());
 
     (log, log_records)
 }

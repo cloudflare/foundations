@@ -41,19 +41,18 @@ impl Filter for FieldRedactFilter {
 #[cfg(test)]
 mod tests {
     // NOTE: test log uses field redact filter.
-    use super::super::testing::{create_test_log, TestLogRecord};
-    use slog::{warn, Level};
+    use crate::telemetry::{log, log::TestLogRecord, TestTelemetryContext};
+    use bedrock_macros::with_test_telemetry;
+    use slog::Level;
 
-    #[test]
-    fn redact_record_fields() {
-        let (log, records) = create_test_log(vec!["key1".into(), "key3".into()]);
-
-        warn!(log, "Hello world1"; "key1" => 42, "key2" => "foo");
-        warn!(log, "Hello world2"; "key1" => "qux", "key3" => "foo");
-        warn!(log, "Hello world3"; "key1" => "42", "key2" => "baz");
+    #[with_test_telemetry(test, crate_path = "crate", redact_key = "key1", redact_key = "key3")]
+    fn redact_record_fields(ctx: TestTelemetryContext) {
+        log::warn!("Hello world1"; "key1" => 42, "key2" => "foo");
+        log::warn!("Hello world2"; "key1" => "qux", "key3" => "foo");
+        log::warn!("Hello world3"; "key1" => "42", "key2" => "baz");
 
         assert_eq!(
-            *records.read().unwrap(),
+            *ctx.log_records(),
             vec![
                 TestLogRecord {
                     level: Level::Warning,
@@ -74,22 +73,20 @@ mod tests {
         );
     }
 
-    #[test]
-    fn redact_context_fields() {
-        let (log, records) = create_test_log(vec!["key1".into(), "key4".into()]);
-
-        let log = log.new(slog::o! {
+    #[with_test_telemetry(test, crate_path = "crate", redact_key = "key1", redact_key = "key4")]
+    fn redact_context_fields(ctx: TestTelemetryContext) {
+        log::add_fields! {
            "key1" => 42, "key2" => "foo", "key3" => "beep boop"
-        });
+        }
 
-        let log = log.new(slog::o! {
+        log::add_fields! {
            "key4" => "baz"
-        });
+        }
 
-        warn!(log, "Hello world");
+        log::warn!("Hello world");
 
         assert_eq!(
-            *records.read().unwrap(),
+            *ctx.log_records(),
             vec![TestLogRecord {
                 level: Level::Warning,
                 message: "Hello world".into(),

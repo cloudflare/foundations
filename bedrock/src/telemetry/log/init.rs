@@ -2,17 +2,22 @@ use super::field_dedup::FieldDedupFilterFactory;
 use super::field_filtering::FieldFilteringDrain;
 use super::field_redact::FieldRedactFilterFactory;
 use super::internal::SharedLog;
+use crate::telemetry::log::rate_limit::RateLimitingDrain;
 use crate::telemetry::scope::ScopeStack;
 use crate::telemetry::settings::{LogFormat, LogOutput, LoggingSettings};
 use crate::{BootstrapResult, ServiceInfo};
 use once_cell::sync::{Lazy, OnceCell};
-use slog::{Discard, Drain, FnValue, Logger, Never};
+use slog::{Discard, Drain, FnValue, LevelFilter, Logger, Never, SendSyncRefUnwindSafeDrain};
 use slog_async::Async as AsyncDrain;
 use slog_json::Json as JsonDrain;
 use slog_term::{Decorator, FullFormat as TextDrain, PlainDecorator, TermDecorator};
 use std::fs::File;
 use std::io;
 use std::sync::Arc;
+
+type FilteredDrain<D> = LevelFilter<
+    FieldFilteringDrain<FieldRedactFilterFactory, FieldFilteringDrain<FieldDedupFilterFactory, D>>,
+>;
 
 static HARNESS: OnceCell<LogHarness> = OnceCell::new();
 
@@ -77,6 +82,23 @@ pub(crate) fn build_log(
     })
 }
 
+pub(crate) fn apply_filters_to_drain<D>(
+    drain: D,
+    settings: &LoggingSettings,
+) -> RateLimitingDrain<FilteredDrain<D>>
+where
+    D: SendSyncRefUnwindSafeDrain<Ok = (), Err = Never> + Send + 'static,
+{
+    let drain = FieldFilteringDrain::new(drain, FieldDedupFilterFactory);
+    let drain = FieldFilteringDrain::new(
+        drain,
+        FieldRedactFilterFactory::new(settings.redact_keys.clone()),
+    );
+    let drain = drain.filter_level(*settings.verbosity);
+
+    RateLimitingDrain::new(drain, settings)
+}
+
 fn build_log_with_drain<D>(
     service_info: &ServiceInfo,
     settings: &LoggingSettings,
@@ -88,18 +110,12 @@ where
     // NOTE: OXY-178, default is 128 (https://docs.rs/slog-async/2.7.0/src/slog_async/lib.rs.html#251)
     const CHANNEL_SIZE: usize = 1024;
 
-    let drain = FieldFilteringDrain::new(drain, FieldDedupFilterFactory);
-
-    let drain = FieldFilteringDrain::new(
-        drain,
-        FieldRedactFilterFactory::new(settings.redact_keys.clone()),
-    );
-
     let drain = AsyncDrain::new(drain)
         .chan_size(CHANNEL_SIZE)
         .build()
-        .filter_level(*settings.verbosity)
         .fuse();
+
+    let drain = apply_filters_to_drain(drain, settings);
 
     Logger::root(
         drain,
