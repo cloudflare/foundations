@@ -73,11 +73,6 @@ use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-feature_use!(cfg(feature = "telemetry-server"), {
-    use futures_util::future;
-    use futures_util::FutureExt;
-});
-
 feature_use!(cfg(feature = "logging"), {
     use self::log::internal::{current_log, fork_log, LogScope, SharedLog};
     use std::sync::Arc;
@@ -697,12 +692,5 @@ pub fn init_with_server(
 ) -> BootstrapResult<TelemetryServerFuture> {
     init(service_info, settings)?;
 
-    if settings.server.enabled {
-        self::server::init(settings.clone(), custom_routes)
-    } else {
-        Ok(TelemetryServerFuture {
-            inner: future::pending().boxed(),
-            server_addr: None,
-        })
-    }
+    self::server::init(settings.clone(), custom_routes)
 }
