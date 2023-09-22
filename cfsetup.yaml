@@ -17,6 +17,8 @@ builddeps-macos: &builddeps-macos
   ? xz-utils
   ? zlib1g-dev
 
+default-flavor: bullseye
+
 bullseye:
   check-features:
     base_image: *base-image
