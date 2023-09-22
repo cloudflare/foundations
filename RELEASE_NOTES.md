@@ -1,4 +1,15 @@
+2.0.4
+- 2023-09-22 ZTC-1189: Allow telemetry server to be gracefully shut down
+- 2023-09-21 ZTC-1187: Reuses a single root AsyncDrain object to avoid garbled log output
+- 2023-09-21 ZTC-885: Adds new options to the with_test_telemetry macro, allowing us to specify rate limit and redact_keys
+- 2023-09-21 chore: minify dep tree a little
+- 2023-09-20 ZTC-885: Rate limits logging events
+- 2023-09-19 Use cargo-nextest
+- 2023-09-19 Remove some useless cfsetup dependencies
+- 2023-09-19 Use debian-bullseye-rustlang Docker image
+
 2.0.3
+- 2023-09-13 Release 2.0.3
 - 2023-09-13 Fix cross builds with feature security
 
 2.0.2
