@@ -28,6 +28,7 @@ pub struct TelemetryServerFuture {
 
 /// Transformation of [`TelemetryServerFuture`] when that server is instructed to perform a
 /// graceful shutdown with [`TelemetryServerFuture::with_graceful_shutdown`].
+///
 /// Similarly to the original one, this should also be used to drive the HTTP server forward.
 type TelemetryServerFutureWithGracefulShutdown = BoxFuture<'static, BootstrapResult<()>>;
 
@@ -40,7 +41,9 @@ impl TelemetryServerFuture {
     }
 
     /// Instructs the telemetry server to perform an orderly shutdown when the given future `signal`
-    /// completes. The yielded future should be polled to drive the telemetry server forward.
+    /// completes.
+    ///
+    /// The yielded future should be polled to drive the telemetry server forward.
     /// If telemetry is disabled, the given signal is still awaited for in the yielded future.
     pub fn with_graceful_shutdown(
         self,
