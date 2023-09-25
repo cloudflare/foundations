@@ -5,6 +5,7 @@ use crate::{BootstrapResult, Result};
 use anyhow::anyhow;
 use futures_util::future::BoxFuture;
 use futures_util::ready;
+use futures_util::FutureExt;
 use hyper::server::conn::AddrIncoming;
 use hyper::{header, Body, Method, Request, Response, Server, StatusCode};
 use routerify::{Router, RouterService};
@@ -25,6 +26,11 @@ pub struct TelemetryServerFuture {
     pub(super) inner: Option<Server<AddrIncoming, RouterService<Body, Infallible>>>,
 }
 
+/// Transformation of [`TelemetryServerFuture`] when that server is instructed to perform a
+/// graceful shutdown with [`TelemetryServerFuture::with_graceful_shutdown`].
+/// Similarly to the original one, this should also be used to drive the HTTP server forward.
+type TelemetryServerFutureWithGracefulShutdown = BoxFuture<'static, BootstrapResult<()>>;
+
 impl TelemetryServerFuture {
     /// Address of the telemetry server.
     ///
@@ -33,19 +39,23 @@ impl TelemetryServerFuture {
         self.inner.as_ref().map(Server::local_addr)
     }
 
-    /// Prepares the telemetry server to handle graceful shutdown when
-    /// the provided future completes.
-    pub async fn with_graceful_shutdown(
+    /// Instructs the telemetry server to perform an orderly shutdown when the given future `signal`
+    /// completes. The yielded future should be polled to drive the telemetry server forward.
+    /// If telemetry is disabled, the given signal is still awaited for in the yielded future.
+    pub fn with_graceful_shutdown(
         self,
         signal: impl Future<Output = ()> + Send + Sync + 'static,
-    ) -> BootstrapResult<()> {
-        match self.inner {
-            Some(server) => Ok(server.with_graceful_shutdown(signal).await?),
-            None => {
-                signal.await;
-                Ok(())
+    ) -> TelemetryServerFutureWithGracefulShutdown {
+        async move {
+            match self.inner {
+                Some(server) => Ok(server.with_graceful_shutdown(signal).await?),
+                None => {
+                    signal.await;
+                    Ok(())
+                }
             }
         }
+        .boxed()
     }
 }
 
