@@ -1,4 +1,9 @@
+2.0.5
+- 2023-09-25 ZTC-1189: Adjust `with_graceful_shutdown` to be sync and improve its docs
+- 2023-09-22 Set up default flavor for cfsetup
+
 2.0.4
+- 2023-09-22 Release 2.0.4
 - 2023-09-22 ZTC-1189: Allow telemetry server to be gracefully shut down
 - 2023-09-21 ZTC-1187: Reuses a single root AsyncDrain object to avoid garbled log output
 - 2023-09-21 ZTC-885: Adds new options to the with_test_telemetry macro, allowing us to specify rate limit and redact_keys
