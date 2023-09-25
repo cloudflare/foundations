@@ -133,48 +133,47 @@ all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
-anyhow = { workspace = true }
+anyhow = { workspace = true, features = ["backtrace", "std"]  }
 bedrock-macros = { workspace = true, optional = true }
 crossbeam-channel = { workspace = true, optional = true }
 erased-serde = { workspace = true, optional = true }
 clap = { workspace = true, optional = true }
 futures-util = { workspace = true, optional = true }
 governor = { workspace = true, optional = true }
-hyper = { workspace = true, optional = true }
-indexmap = { workspace = true, optional = true }
+hyper = { workspace = true, optional = true, features = ["http1", "runtime", "server"] }
+indexmap = { workspace = true, optional = true, features = ["serde"] }
 once_cell = { workspace = true, optional = true }
 parking_lot = { workspace = true, optional = true }
-prometheus = { workspace = true, optional = true }
+prometheus = { workspace = true, optional = true, features = ["process"] }
 prometheus-client = { workspace = true, optional = true }
-prometools = { workspace = true, optional = true }
+prometools = { workspace = true, optional = true, features = ["serde"] }
 routerify = { workspace = true, optional = true }
 rand = { workspace = true, optional = true }
 rustracing = { workspace = true, optional = true }
 rustracing_jaeger = { workspace = true, optional = true }
-serde = { workspace = true, optional = true }
+serde = { workspace = true, optional = true, features = ["derive"] }
 serde_path_to_error = { workspace = true, optional = true }
 serde_yaml = { workspace = true, optional = true }
 serde_with = { workspace = true, optional = true }
-slog = { workspace = true, optional = true }
+slog = { workspace = true, optional = true, features = ["max_level_trace"] }
 slog-async = { workspace = true, optional = true }
 slog-json = { workspace = true, optional = true }
 slog-term = { workspace = true, optional = true }
 socket2 = { workspace = true, optional = true }
 thread_local = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true, features = ["sync", "rt"] }
-tikv-jemallocator = { workspace = true, optional = true }
-yaml-merge-keys = { workspace = true, optional = true }
+tikv-jemallocator = { workspace = true, optional = true, features = ["profiling", "stats", "background_threads"] }
+yaml-merge-keys = { workspace = true, optional = true, features = ["serde_yaml"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-tikv-jemalloc-ctl = { workspace = true, optional = true }
+tikv-jemalloc-ctl = { workspace = true, optional = true, features = ["use_std"] }
 tempfile = { workspace = true, optional = true }
 
 [dev-dependencies]
 reqwest = { workspace = true }
-rusty-hook = { workspace = true }
 serde = { workspace = true, features = ["rc"] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 
 [build-dependencies]
-bindgen = { workspace = true, optional = true }
+bindgen = { workspace = true, features = ["runtime"], optional = true }
 cc = { workspace = true, optional = true }
