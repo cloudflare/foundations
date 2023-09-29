@@ -4,7 +4,9 @@ use std::ops::Deref;
 
 feature_use!(cfg(feature = "logging"), {
     use super::log::testing::{create_test_log, TestLogRecord, TestLogRecords};
+    use super::settings::LogVerbosity;
     use super::settings::LoggingSettings;
+    use slog::Level;
     use std::sync::Arc;
     use std::sync::RwLockReadGuard;
 });
@@ -42,7 +44,12 @@ pub struct TestTelemetryContext {
 impl TestTelemetryContext {
     pub(crate) fn new() -> Self {
         #[cfg(feature = "logging")]
-        let (log, log_records) = { create_test_log(&Default::default()) };
+        let (log, log_records) = {
+            create_test_log(&LoggingSettings {
+                verbosity: LogVerbosity(Level::Trace),
+                ..Default::default()
+            })
+        };
 
         #[cfg(feature = "tracing")]
         let (tracer, traces_sink) = create_test_tracer();
