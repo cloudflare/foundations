@@ -1,3 +1,4 @@
+use crate::telemetry::settings::rate_limit::RateLimitingSettings;
 use crate::utils::feature_use;
 use std::net::Ipv4Addr;
 
@@ -34,6 +35,9 @@ pub struct TracingSettings {
     /// This can be any fractional value between `0.0` and `1.0`.
     /// Where `1.0` means "sample everything", and `0.0` means "don't sample anything".
     pub sampling_ratio: f64,
+
+    /// Settings for rate limiting emission of traces
+    pub rate_limit: RateLimitingSettings,
 }
 
 impl Default for TracingSettings {
@@ -50,6 +54,7 @@ impl Default for TracingSettings {
             jaeger_tracing_server_addr,
             jaeger_reporter_bind_addr: None,
             sampling_ratio: 1.0,
+            rate_limit: Default::default(),
         }
     }
 }

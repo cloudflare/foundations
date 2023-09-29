@@ -7,6 +7,7 @@ pub mod internal;
 pub(crate) mod testing;
 
 pub(crate) mod init;
+mod rate_limit;
 
 use self::init::TracingHarness;
 use self::internal::{create_span, current_span, span_trace_id, SharedSpan, Span};

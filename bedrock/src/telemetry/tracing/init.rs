@@ -5,7 +5,7 @@ use crate::{BootstrapResult, ServiceInfo};
 use anyhow::bail;
 use crossbeam_channel::Receiver;
 use once_cell::sync::{Lazy, OnceCell};
-use rustracing::sampler::ProbabilisticSampler;
+
 use rustracing::tag::Tag;
 use rustracing_jaeger::reporter::JaegerCompactReporter;
 use std::net::Ipv6Addr;
@@ -17,11 +17,12 @@ use std::borrow::Cow;
 
 #[cfg(feature = "logging")]
 use crate::telemetry::log;
+use crate::telemetry::tracing::rate_limit::RateLimitingProbabilisticSampler;
 
 static HARNESS: OnceCell<TracingHarness> = OnceCell::new();
 
 static NOOP_HARNESS: Lazy<TracingHarness> = Lazy::new(|| {
-    let (noop_tracer, _) = Tracer::new(ProbabilisticSampler::new(0.0).unwrap());
+    let (noop_tracer, _) = Tracer::new(Default::default());
 
     TracingHarness {
         tracer: noop_tracer,
@@ -72,7 +73,7 @@ pub(crate) fn create_tracer_and_span_rx(
         crossbeam_channel::bounded(SPAN_CHANNEL_CAPACITY)
     };
 
-    let tracer = Tracer::with_sender(ProbabilisticSampler::new(settings.sampling_ratio)?, span_tx);
+    let tracer = Tracer::with_sender(RateLimitingProbabilisticSampler::new(settings)?, span_tx);
 
     Ok((tracer, span_rx))
 }

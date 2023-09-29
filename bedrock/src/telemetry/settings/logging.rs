@@ -1,3 +1,4 @@
+use crate::telemetry::settings::rate_limit::RateLimitingSettings;
 use crate::utils::feature_use;
 
 use std::ops::Deref;
@@ -34,18 +35,7 @@ pub struct LoggingSettings {
     pub redact_keys: Vec<String>,
 
     /// Settings for rate limiting emission of log events
-    pub rate_limit: LogRateLimitingSettings,
-}
-
-/// Rate limiting settings for logging events
-#[cfg_attr(feature = "settings", settings(crate_path = "crate"))]
-#[cfg_attr(not(feature = "settings"), derive(Clone, Debug, Default))]
-pub struct LogRateLimitingSettings {
-    /// Whether to enable rate limiting of events
-    pub enabled: bool,
-
-    /// Maximum number of logging events that can be emitted per second
-    pub max_events_per_second: u32,
+    pub rate_limit: RateLimitingSettings,
 }
 
 /// Log output destination.

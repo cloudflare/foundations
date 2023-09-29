@@ -1,12 +1,21 @@
 use bedrock::telemetry::log::warn;
+use bedrock::telemetry::settings::{LoggingSettings, RateLimitingSettings};
 use bedrock::telemetry::TestTelemetryContext;
 use bedrock_macros::with_test_telemetry;
 use std::collections::HashSet;
 use std::thread::sleep;
 use std::time::Duration;
 
-#[with_test_telemetry(test, rate_limit = 5)]
-fn test_rate_limiter(ctx: TestTelemetryContext) {
+#[with_test_telemetry(test)]
+fn test_rate_limiter(mut ctx: TestTelemetryContext) {
+    ctx.set_logging_settings(LoggingSettings {
+        rate_limit: RateLimitingSettings {
+            enabled: true,
+            max_events_per_second: 5,
+        },
+        ..Default::default()
+    });
+
     for i in 0..16 {
         warn!("Hello world{}", i);
     }
