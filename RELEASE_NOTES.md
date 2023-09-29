@@ -1,4 +1,10 @@
+2.0.6
+- 2023-09-29 OXY-1224: raise the log verbosity for the test logger
+- 2023-09-25 [OXY-1241] chore: stop specifying features in the workspace toml
+- 2023-09-25 Small doc improvement for Telemetry server
+
 2.0.5
+- 2023-09-25 Release 2.0.5
 - 2023-09-25 ZTC-1189: Adjust `with_graceful_shutdown` to be sync and improve its docs
 - 2023-09-22 Set up default flavor for cfsetup
 
