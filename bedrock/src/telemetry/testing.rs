@@ -11,8 +11,12 @@ feature_use!(cfg(feature = "logging"), {
     use std::sync::RwLockReadGuard;
 });
 
-#[cfg(feature = "tracing")]
-use super::tracing::testing::{create_test_tracer, TestTrace, TestTraceOptions, TestTracesSink};
+feature_use!(cfg(feature = "tracing"), {
+    use super::settings::TracingSettings;
+    use super::tracing::testing::{
+        create_test_tracer, TestTrace, TestTraceOptions, TestTracesSink,
+    };
+});
 
 /// A test telemetry context.
 ///
@@ -52,7 +56,7 @@ impl TestTelemetryContext {
         };
 
         #[cfg(feature = "tracing")]
-        let (tracer, traces_sink) = create_test_tracer();
+        let (tracer, traces_sink) = create_test_tracer(&Default::default());
 
         TestTelemetryContext {
             inner: TelemetryContext {
@@ -81,6 +85,15 @@ impl TestTelemetryContext {
         let (log, log_records) = { create_test_log(&logging_settings) };
         *self.inner.log.write() = log;
         self.log_records = log_records;
+    }
+
+    /// Overrides the tracing settings on the test telemetry context, creating a new test tracer
+    /// with the settings
+    #[cfg(feature = "tracing")]
+    pub fn set_tracing_settings(&mut self, tracing_settings: TracingSettings) {
+        let (tracer, traces_sink) = { create_test_tracer(&tracing_settings) };
+        self.inner.test_tracer = Some(tracer);
+        self.traces_sink = traces_sink;
     }
 
     /// Returns all the log records produced in the test context.

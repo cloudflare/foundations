@@ -1,6 +1,7 @@
 use super::init::{create_tracer_and_span_rx, TracingHarness};
 use super::internal::{FinishedSpan, Tracer};
 use crate::telemetry::scope::Scope;
+use crate::telemetry::settings::TracingSettings;
 use crossbeam_channel::Receiver;
 use rustracing::span::SpanReference;
 use rustracing::tag::TagValue;
@@ -254,8 +255,8 @@ pub(crate) fn current_test_tracer() -> Option<Tracer> {
     TracingHarness::get().test_tracer_scope_stack.current()
 }
 
-pub(crate) fn create_test_tracer() -> (Tracer, TestTracesSink) {
-    let (tracer, span_rx) = create_tracer_and_span_rx(&Default::default(), true)
+pub(crate) fn create_test_tracer(settings: &TracingSettings) -> (Tracer, TestTracesSink) {
+    let (tracer, span_rx) = create_tracer_and_span_rx(settings, true)
         .expect("should create tracer with default settings");
 
     let sink = TestTracesSink {
@@ -300,7 +301,7 @@ mod tests {
 
     #[test]
     fn span_tree() {
-        let (tracer, sink) = create_test_tracer();
+        let (tracer, sink) = create_test_tracer(&Default::default());
 
         make_test_spans(&tracer);
 
@@ -327,7 +328,7 @@ mod tests {
 
     #[test]
     fn span_iterator() {
-        let (tracer, sink) = create_test_tracer();
+        let (tracer, sink) = create_test_tracer(&Default::default());
 
         make_test_spans(&tracer);
 

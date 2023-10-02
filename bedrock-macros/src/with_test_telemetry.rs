@@ -2,7 +2,7 @@ use crate::common::{error, parse_optional_trailing_meta_list};
 use darling::FromMeta;
 use proc_macro::TokenStream;
 use proc_macro2::{Span, TokenStream as TokenStream2};
-use quote::{quote, ToTokens};
+use quote::quote;
 use syn::parse::{Parse, ParseStream};
 use syn::{parse_quote, Ident, ItemFn, Path, Signature};
 
@@ -13,12 +13,6 @@ const ERR_NON_TEST_FN: &str = "`with_test_telemetry` can wrap only `test` or `to
 struct Options {
     #[darling(default = "Options::default_crate_path")]
     crate_path: Path,
-
-    #[darling(default)]
-    rate_limit: Option<u32>,
-
-    #[darling(multiple, rename = "redact_key")]
-    redact_keys: Vec<String>,
 }
 
 impl Options {
@@ -65,40 +59,6 @@ pub(crate) fn expand(args: TokenStream, item: TokenStream) -> TokenStream {
     expand_from_parsed(args, item_fn).into()
 }
 
-fn get_set_logging_settings_call(args: Args) -> Option<TokenStream2> {
-    let crate_path = args.options.crate_path;
-    let rate_limit_entry = args.options.rate_limit.map(|r| {
-        quote!(
-            rate_limit: #crate_path::telemetry::settings::LogRateLimitingSettings{
-                enabled: true,
-                max_events_per_second: #r,
-            },
-        )
-    });
-
-    let redact_keys_entry = if args.options.redact_keys.is_empty() {
-        None
-    } else {
-        let redact_keys = StringVecTokenizer(args.options.redact_keys);
-        Some(quote!(redact_keys: #redact_keys,))
-    };
-
-    rate_limit_entry.as_ref().or(redact_keys_entry.as_ref())?;
-
-    let rate_limit_entry = rate_limit_entry.unwrap_or(quote!());
-    let redact_keys_entry = redact_keys_entry.unwrap_or(quote!());
-
-    Some(quote!(
-        let logging_settings = #crate_path::telemetry::settings::LoggingSettings{
-            #rate_limit_entry
-            #redact_keys_entry
-            ..Default::default()
-        };
-
-        __ctx.set_logging_settings(logging_settings);
-    ))
-}
-
 fn expand_from_parsed(args: Args, item_fn: ItemFn) -> TokenStream2 {
     let ItemFn {
         attrs,
@@ -143,11 +103,6 @@ fn expand_from_parsed(args: Args, item_fn: ItemFn) -> TokenStream2 {
         ),
     };
 
-    let (ctx_mut_modifier, set_logging_settings_call) = match get_set_logging_settings_call(args) {
-        Some(s) => (quote!(mut), s),
-        None => (quote!(), quote!()),
-    };
-
     quote!(
         #(#attrs) *
         #[#test_attr]
@@ -156,25 +111,12 @@ fn expand_from_parsed(args: Args, item_fn: ItemFn) -> TokenStream2 {
         {
             #inner_fn
 
-            let #ctx_mut_modifier __ctx = #crate_path::telemetry::TelemetryContext::test();
-            #set_logging_settings_call
+            let __ctx = #crate_path::telemetry::TelemetryContext::test();
 
             #wrapped_call
         }
     )
 }
-
-struct StringVecTokenizer(Vec<String>);
-
-impl ToTokens for StringVecTokenizer {
-    fn to_tokens(&self, tokens: &mut TokenStream2) {
-        let strings = self.0.iter().map(|s| s.as_str());
-        tokens.extend(quote! {
-            vec![ #( #strings.to_string() ),* ]
-        });
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -264,82 +206,6 @@ mod tests {
                 }
 
                 let __ctx = ::foo::bar::telemetry::TelemetryContext::test();
-                let __scope = __ctx.scope();
-
-                __some_test(__ctx);
-            }
-        };
-
-        assert_eq!(actual, expected);
-    }
-
-    #[test]
-    fn expand_with_rate_limit() {
-        let args = parse_attr! {
-            #[with_test_telemetry(test, rate_limit = 10)]
-        };
-
-        let item_fn = parse_quote! {
-            fn some_test(ctx: TestTelemetryContext) {
-                assert!(false);
-            }
-        };
-
-        let actual = expand_from_parsed(args, item_fn).to_string();
-
-        let expected = code_str! {
-            #[test]
-            fn some_test<>() {
-                fn __some_test<>(ctx: TestTelemetryContext) {
-                    assert!(false);
-                }
-
-                let mut __ctx = ::bedrock::telemetry::TelemetryContext::test();
-                let logging_settings = ::bedrock::telemetry::settings::LoggingSettings{
-                    rate_limit: ::bedrock::telemetry::settings::LogRateLimitingSettings {
-                        enabled: true,
-                        max_events_per_second: 10u32,
-                    },
-                    ..Default::default()
-                };
-
-                __ctx.set_logging_settings(logging_settings);
-                let __scope = __ctx.scope();
-
-                __some_test(__ctx);
-            }
-        };
-
-        assert_eq!(actual, expected);
-    }
-    #[test]
-    fn expand_with_redact_keys() {
-        let args = parse_attr! {
-            #[with_test_telemetry(test, redact_key = "foo", redact_key = "bar")]
-        };
-
-        let item_fn = parse_quote! {
-            fn some_test(ctx: TestTelemetryContext) {
-                assert!(false);
-            }
-        };
-
-        let actual = expand_from_parsed(args, item_fn).to_string();
-
-        let expected = code_str! {
-            #[test]
-            fn some_test<>() {
-                fn __some_test<>(ctx: TestTelemetryContext) {
-                    assert!(false);
-                }
-
-                let mut __ctx = ::bedrock::telemetry::TelemetryContext::test();
-                let logging_settings = ::bedrock::telemetry::settings::LoggingSettings{
-                    redact_keys: vec!["foo".to_string(), "bar".to_string()],
-                    ..Default::default()
-                };
-
-                __ctx.set_logging_settings(logging_settings);
                 let __scope = __ctx.scope();
 
                 __some_test(__ctx);

@@ -12,6 +12,8 @@ mod metrics;
 #[cfg(all(target_os = "linux", feature = "memory-profiling"))]
 mod memory_profiler;
 
+mod rate_limit;
+
 #[cfg(feature = "telemetry-server")]
 mod server;
 
@@ -26,6 +28,8 @@ pub use self::metrics::*;
 
 #[cfg(all(target_os = "linux", feature = "memory-profiling"))]
 pub use self::memory_profiler::*;
+
+pub use self::rate_limit::RateLimitingSettings;
 
 #[cfg(feature = "telemetry-server")]
 pub use self::server::*;

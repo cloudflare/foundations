@@ -1,7 +1,8 @@
 use super::init::TracingHarness;
 use super::StartTraceOptions;
 use rand::{self, Rng};
-use rustracing::sampler::ProbabilisticSampler;
+
+use crate::telemetry::tracing::rate_limit::RateLimitingProbabilisticSampler;
 use rustracing::tag::Tag;
 use rustracing_jaeger::span::{SpanContext, SpanContextState};
 use std::borrow::Cow;
@@ -9,7 +10,7 @@ use std::sync::Arc;
 
 pub(crate) type Span = rustracing::span::Span<SpanContextState>;
 pub(crate) type FinishedSpan = rustracing::span::FinishedSpan<SpanContextState>;
-pub(crate) type Tracer = rustracing::Tracer<ProbabilisticSampler, SpanContextState>;
+pub(crate) type Tracer = rustracing::Tracer<RateLimitingProbabilisticSampler, SpanContextState>;
 
 #[derive(Debug, Clone)]
 pub(crate) struct SharedSpan {

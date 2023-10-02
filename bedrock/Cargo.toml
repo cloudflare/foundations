@@ -88,6 +88,7 @@ logging = [
 tracing = [
     "dep:bedrock-macros",
     "dep:crossbeam-channel",
+    "dep:governor",
     "dep:once_cell",
     "dep:parking_lot",
     "dep:rand",

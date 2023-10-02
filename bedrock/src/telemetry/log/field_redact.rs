@@ -41,12 +41,18 @@ impl Filter for FieldRedactFilter {
 #[cfg(test)]
 mod tests {
     // NOTE: test log uses field redact filter.
+    use crate::telemetry::settings::LoggingSettings;
     use crate::telemetry::{log, log::TestLogRecord, TestTelemetryContext};
     use bedrock_macros::with_test_telemetry;
     use slog::Level;
 
-    #[with_test_telemetry(test, crate_path = "crate", redact_key = "key1", redact_key = "key3")]
-    fn redact_record_fields(ctx: TestTelemetryContext) {
+    #[with_test_telemetry(test, crate_path = "crate")]
+    fn redact_record_fields(mut ctx: TestTelemetryContext) {
+        ctx.set_logging_settings(LoggingSettings {
+            redact_keys: vec!["key1".to_string(), "key3".to_string()],
+            ..Default::default()
+        });
+
         log::warn!("Hello world1"; "key1" => 42, "key2" => "foo");
         log::warn!("Hello world2"; "key1" => "qux", "key3" => "foo");
         log::warn!("Hello world3"; "key1" => "42", "key2" => "baz");
@@ -73,8 +79,13 @@ mod tests {
         );
     }
 
-    #[with_test_telemetry(test, crate_path = "crate", redact_key = "key1", redact_key = "key4")]
-    fn redact_context_fields(ctx: TestTelemetryContext) {
+    #[with_test_telemetry(test, crate_path = "crate")]
+    fn redact_context_fields(mut ctx: TestTelemetryContext) {
+        ctx.set_logging_settings(LoggingSettings {
+            redact_keys: vec!["key1".to_string(), "key4".to_string()],
+            ..Default::default()
+        });
+
         log::add_fields! {
            "key1" => 42, "key2" => "foo", "key3" => "beep boop"
         }
