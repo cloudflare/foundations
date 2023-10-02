@@ -48,6 +48,11 @@ impl LogHarness {
     pub(crate) fn get() -> &'static Self {
         HARNESS.get().unwrap_or(&NOOP_HARNESS)
     }
+
+    #[cfg(any(test, feature = "testing"))]
+    pub(crate) fn override_for_testing(override_harness: Self) -> Result<(), ()> {
+        HARNESS.set(override_harness).map_err(|_| ())
+    }
 }
 
 // NOTE: Does nothing if logging has already been initialized in this process.

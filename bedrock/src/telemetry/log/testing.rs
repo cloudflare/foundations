@@ -1,5 +1,6 @@
-use crate::telemetry::log::init::apply_filters_to_drain;
+use crate::telemetry::log::init::{apply_filters_to_drain, LogHarness};
 use crate::telemetry::settings::LoggingSettings;
+use parking_lot::RwLock as ParkingRwLock;
 use slog::{Drain, Key, Level, Logger, Never, OwnedKVList, Record, Serializer, KV};
 use std::fmt::Arguments;
 use std::sync::{Arc, RwLock};
@@ -65,8 +66,14 @@ pub(crate) fn create_test_log(settings: &LoggingSettings) -> (Logger, TestLogRec
         records: Arc::clone(&log_records),
     };
 
-    let drain = apply_filters_to_drain(drain, settings);
-    let log = Logger::root(drain, slog::o!());
+    let drain = Arc::new(apply_filters_to_drain(drain, settings));
+    let log = Logger::root(Arc::clone(&drain), slog::o!());
+    let _ = LogHarness::override_for_testing(LogHarness {
+        root_log: Arc::new(ParkingRwLock::new(log.clone())),
+        root_drain: drain,
+        settings: settings.clone(),
+        log_scope_stack: Default::default(),
+    });
 
     (log, log_records)
 }
