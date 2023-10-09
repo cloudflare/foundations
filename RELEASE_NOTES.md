@@ -1,5 +1,10 @@
+2.0.7
+- 2023-10-02 ZTC-1201: Fixes issue where log::set_verbosity broke the connection between the test logger and the log records
+
 2.0.6
+- 2023-09-29 Release 2.0.6
 - 2023-09-29 OXY-1224: raise the log verbosity for the test logger
+- 2023-09-29 ZTC-886: Rate limit trace creation if configured and removes prior additions to with_test_telemetry macro
 - 2023-09-25 [OXY-1241] chore: stop specifying features in the workspace toml
 - 2023-09-25 Small doc improvement for Telemetry server
 
