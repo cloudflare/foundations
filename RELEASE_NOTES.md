@@ -1,4 +1,8 @@
+2.1.0
+- 2023-10-13 Introduce Cli parsing from provided args.
+
 2.0.7
+- 2023-10-09 Release 2.0.7
 - 2023-10-02 ZTC-1201: Fixes issue where log::set_verbosity broke the connection between the test logger and the log records
 
 2.0.6
