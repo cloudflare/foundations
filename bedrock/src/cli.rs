@@ -5,6 +5,7 @@ use super::{BootstrapResult, ServiceInfo};
 use anyhow::anyhow;
 use clap::error::ErrorKind;
 use clap::Command;
+use std::ffi::OsString;
 
 pub use clap::{Arg, ArgAction, ArgMatches};
 
@@ -49,6 +50,20 @@ impl<S: Settings> Cli<S> {
     ///
     /// [Sentry]: https://sentry.io/
     pub fn new(service_info: &ServiceInfo, custom_args: Vec<Arg>) -> BootstrapResult<Self> {
+        Self::new_from_os_args(service_info, custom_args, std::env::args_os())
+    }
+
+    /// Bootstraps a new command line interface (CLI) for the service with the provided `os_args`.
+    ///
+    /// This method is the same as [`Cli::new`], but accepts source OS arguments instead of taking
+    /// them fron [`std::env::args_os`].
+    ///
+    /// Useful for testing purposes.
+    pub fn new_from_os_args(
+        service_info: &ServiceInfo,
+        custom_args: Vec<Arg>,
+        os_args: impl IntoIterator<Item = impl Into<OsString> + Clone>,
+    ) -> BootstrapResult<Self> {
         let mut cmd = Command::new(service_info.name)
             .version(service_info.version)
             .author(service_info.author)
@@ -73,7 +88,7 @@ impl<S: Settings> Cli<S> {
             cmd = cmd.arg(arg);
         }
 
-        let arg_matches = get_arg_matches(cmd)?;
+        let arg_matches = get_arg_matches(cmd, os_args)?;
         let settings = get_settings(&arg_matches)?;
 
         Ok(Self {
@@ -83,8 +98,11 @@ impl<S: Settings> Cli<S> {
     }
 }
 
-fn get_arg_matches(cmd: Command) -> BootstrapResult<ArgMatches> {
-    cmd.try_get_matches().map_err(|e| {
+fn get_arg_matches(
+    cmd: Command,
+    os_args: impl IntoIterator<Item = impl Into<OsString> + Clone>,
+) -> BootstrapResult<ArgMatches> {
+    cmd.try_get_matches_from(os_args).map_err(|e| {
         let kind = e.kind();
 
         // NOTE: print info and terminate the process

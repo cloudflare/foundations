@@ -35,14 +35,16 @@ impl<D: Drain<Err = Never>> Drain for RateLimitingDrain<D> {
     type Err = D::Err;
 
     fn log(&self, record: &Record, values: &OwnedKVList) -> Result<Self::Ok, Self::Err> {
-        let Some(r) = &self.rate_limiter else {
-            return self.inner.log(record, values).map(|_| ());
-        };
+        let should_log = self
+            .rate_limiter
+            .as_ref()
+            .map(|r| r.check().is_ok())
+            .unwrap_or(true);
 
-        if r.check().is_ok() {
-            return self.inner.log(record, values).map(|_| ());
+        if should_log {
+            self.inner.log(record, values).map(|_| ())
+        } else {
+            Ok(())
         }
-
-        Ok(())
     }
 }
