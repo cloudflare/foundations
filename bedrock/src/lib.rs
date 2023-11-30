@@ -92,6 +92,10 @@ pub mod reexports_for_macros {
 /// directly. If **jemalloc** feature is enabled then the service will use jemalloc for all the
 /// memory allocations implicitly.
 ///
+/// If no Bedrock API is being used by your project, you will need to explicitly link bedrock crate
+/// to your project by adding `extern crate bedrock;` to your `main.rs` or `lib.rs`, for jemalloc to
+/// be embedded in your binary.
+///
 /// [jemalloc]: https://github.com/jemalloc/jemalloc
 #[cfg(feature = "jemalloc")]
 #[global_allocator]
