@@ -94,6 +94,7 @@ pub(crate) fn init(service_info: &ServiceInfo, settings: &LoggingSettings) -> Bo
             format!("{}:{}", record.module(), record.line())
         }),
         "version" => service_info.version,
+        "pid" => std::process::id(),
     );
 
     let root_log = build_log_with_drain(settings, root_kv, Arc::clone(&root_drain));
