@@ -2,7 +2,7 @@
 CODEOWNERS.toplevel.create_pull_request_comment disable
 
 @@@oxy          @cbranch @inikulin @andrew @aramine @alessandro @lucas @nkennedy @nuno @thibault-ml @fisher
-@@@oer          @lvalentine @moswalt @arazmjou
+@@@oer          @lvalentine @moswalt @vail @avasseur
 @@@ztconn       @chungting @igor @jnorwood @joel @joliveirinha @nuno
 
 *   @@oxy @@oer @@ztconn
