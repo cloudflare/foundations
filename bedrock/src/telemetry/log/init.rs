@@ -2,6 +2,10 @@ use super::field_dedup::FieldDedupFilterFactory;
 use super::field_filtering::FieldFilteringDrain;
 use super::field_redact::FieldRedactFilterFactory;
 use super::internal::SharedLog;
+
+#[cfg(feature = "metrics")]
+use crate::telemetry::log::log_volume::LogVolumeMetricsDrain;
+
 use crate::telemetry::log::rate_limit::RateLimitingDrain;
 use crate::telemetry::scope::ScopeStack;
 use crate::telemetry::settings::{LogFormat, LogOutput, LoggingSettings};
@@ -65,7 +69,7 @@ pub(crate) fn init(service_info: &ServiceInfo, settings: &LoggingSettings) -> Bo
     // NOTE: OXY-178, default is 128 (https://docs.rs/slog-async/2.7.0/src/slog_async/lib.rs.html#251)
     const CHANNEL_SIZE: usize = 1024;
 
-    let drain = match (&settings.output, &settings.format) {
+    let base_drain = match (&settings.output, &settings.format) {
         (LogOutput::Terminal, LogFormat::Text) => {
             let drain = TextDrain::new(TermDecorator::new().stdout().build())
                 .build()
@@ -88,7 +92,7 @@ pub(crate) fn init(service_info: &ServiceInfo, settings: &LoggingSettings) -> Bo
         }
     };
 
-    let root_drain = Arc::new(drain.fuse());
+    let root_drain = get_root_drain(settings, Arc::new(base_drain.fuse()));
     let root_kv = slog::o!(
         "module" => FnValue(|record| {
             format!("{}:{}", record.module(), record.line())
@@ -108,6 +112,17 @@ pub(crate) fn init(service_info: &ServiceInfo, settings: &LoggingSettings) -> Bo
     let _ = HARNESS.set(harness);
 
     Ok(())
+}
+
+fn get_root_drain(
+    _settings: &LoggingSettings,
+    base_drain: Arc<dyn SendSyncRefUnwindSafeDrain<Err = Never, Ok = ()> + 'static>,
+) -> Arc<dyn SendSyncRefUnwindSafeDrain<Err = Never, Ok = ()> + 'static> {
+    #[cfg(feature = "metrics")]
+    if _settings.log_volume_metrics.enabled {
+        return Arc::new(LogVolumeMetricsDrain::new(base_drain));
+    }
+    base_drain
 }
 
 pub(crate) fn apply_filters_to_drain<D>(

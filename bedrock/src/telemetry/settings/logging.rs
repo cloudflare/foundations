@@ -31,11 +31,14 @@ pub struct LoggingSettings {
     /// A list of field keys to redact when emitting logs.
     ///
     /// This might be useful to hide certain fields in production logs as they may
-    /// contain sensative information, but allow them in testing environment.
+    /// contain sensitive information, but allow them in testing environment.
     pub redact_keys: Vec<String>,
 
     /// Settings for rate limiting emission of log events
     pub rate_limit: RateLimitingSettings,
+
+    /// Configure log volume metrics.
+    pub log_volume_metrics: LogVolumeMetricSettings,
 }
 
 /// Log output destination.
@@ -79,6 +82,17 @@ impl Deref for LogVerbosity {
     fn deref(&self) -> &Self::Target {
         &self.0
     }
+}
+
+/// Log volume metrics settings
+///
+/// If enabled, a counter metric will be exposed as <app_name>_bedrock_log_record_count
+/// with a tag "level" indicating the log level.
+#[cfg_attr(feature = "settings", settings(crate_path = "crate"))]
+#[cfg_attr(not(feature = "settings"), derive(Clone, Debug, Default))]
+pub struct LogVolumeMetricSettings {
+    /// Whether to enable log volume metrics
+    pub enabled: bool,
 }
 
 #[cfg(feature = "settings")]

@@ -13,6 +13,9 @@ pub(crate) mod testing;
 #[doc(hidden)]
 pub mod internal;
 
+#[cfg(feature = "metrics")]
+pub mod log_volume;
+
 use self::init::LogHarness;
 use self::internal::current_log;
 use crate::telemetry::log::init::build_log_with_drain;

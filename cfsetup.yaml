@@ -28,7 +28,7 @@ bullseye:
     post-cache:
       - . cf-cargo-configure.sh
       - sccache-pull oxy-bedrock && export RUSTC_WRAPPER=sccache
-      - RUSTFLAGS="-D warnings" cargo hack check --feature-powerset --no-dev-deps --depth 3
+      - ./scripts/check-features.sh
       - sccache -s && sccache-push oxy-bedrock
 
   test:
