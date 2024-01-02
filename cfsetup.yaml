@@ -57,8 +57,9 @@ bullseye:
       <<: *builddeps-macos
     post-cache:
       - . cf-cargo-configure.sh
-      - ./scripts/macos-osxcross-setup.sh
-      - ./scripts/macos-osxcross-build.sh
+# Disabling due to https://jira.cfdata.org/browse/OXY-1298
+#      - ./scripts/macos-osxcross-setup.sh
+#      - ./scripts/macos-osxcross-build.sh
 
   publish:
     base_image: *base-image
