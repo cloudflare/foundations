@@ -16,6 +16,8 @@ use prometheus::{Encoder, TextEncoder};
 use serde::Serialize;
 use std::any::TypeId;
 
+mod gauge;
+
 pub(super) mod init;
 
 #[doc(hidden)]
@@ -23,6 +25,7 @@ pub mod internal;
 
 use internal::{ErasedInfoMetric, Registries};
 
+pub use gauge::RangeGauge;
 pub use prometheus_client::metrics::family::MetricConstructor;
 pub use prometheus_client::metrics::gauge::Gauge;
 pub use prometheus_client::metrics::histogram::Histogram;
