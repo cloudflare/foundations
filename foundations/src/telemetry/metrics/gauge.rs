@@ -169,6 +169,79 @@ impl EncodeMetric for RangeGauge {
     }
 }
 
+/// Increments a gauge metric when created, and decrements it when dropped.
+///
+/// # Example
+///
+/// ```
+/// # // See main example in mod.rs for why we do this.
+/// # mod rustdoc_workaround {
+/// use foundations::telemetry::metrics::{metrics, Gauge, GaugeGuard};
+///
+/// #[metrics]
+/// pub mod my_app_metrics {
+///     /// Number of clients currently connected
+///     pub fn client_connections_active() -> Gauge;
+/// }
+///
+/// fn usage() {
+///     let client_metric = GaugeGuard::new(my_app_metrics::client_connections_active());
+///     // Do some work where you want the metric to remain incremented.
+///     // When it leaves scope, the metric will be decremented.
+///     // Alternatively, move ownership to another scope to change the lifetime...
+///     tokio::spawn(async move {
+///         // Do some work with arbitrary lifetime on another thread.
+///         // Manually drop to force `client_metric` ownership to this async task.
+///         drop(client_metric);
+///     });
+/// }
+/// # }
+/// ```
+pub struct GaugeGuard<G: GenericGauge>(G);
+
+impl<G: GenericGauge> GaugeGuard<G> {
+    /// Creates a new GaugeGuard to increment the Gauge metric and automatically decrement it when dropped.
+    pub fn new(gauge: G) -> Self {
+        gauge.inc();
+        Self(gauge)
+    }
+}
+
+impl<G: GenericGauge> Drop for GaugeGuard<G> {
+    fn drop(&mut self) {
+        self.0.dec();
+    }
+}
+
+/// Helper trait for GaugeGuard to wrap a gauge with an automatically incrementing/decrementing
+/// behaviour.
+pub trait GenericGauge {
+    /// Wraps the inc() method of a Gauge.
+    fn inc(&self);
+    /// Wraps the dec() method of a Gauge.
+    fn dec(&self);
+}
+
+impl GenericGauge for Gauge {
+    fn inc(&self) {
+        Gauge::inc(self);
+    }
+
+    fn dec(&self) {
+        Gauge::dec(self);
+    }
+}
+
+impl GenericGauge for RangeGauge {
+    fn inc(&self) {
+        RangeGauge::inc(self);
+    }
+
+    fn dec(&self) {
+        RangeGauge::dec(self);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -25,7 +25,7 @@ pub mod internal;
 
 use internal::{ErasedInfoMetric, Registries};
 
-pub use gauge::RangeGauge;
+pub use gauge::{GaugeGuard, RangeGauge};
 pub use prometheus_client::metrics::family::MetricConstructor;
 pub use prometheus_client::metrics::gauge::Gauge;
 pub use prometheus_client::metrics::histogram::Histogram;
