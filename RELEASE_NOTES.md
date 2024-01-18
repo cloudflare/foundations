@@ -1,3 +1,7 @@
+2.2.0
+- 2024-01-18 EGRESS-939: Adds log volume metric counter feature
+- 2023-12-21 Add PID to root logger
+
 2.1.0
 - 2023-10-13 Introduce Cli parsing from provided args.
 
