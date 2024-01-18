@@ -1,8 +1,14 @@
 2.2.0
-- 2024-01-18 EGRESS-939: Adds log volume metric counter feature
+- 2024-01-18 Release 2.2.0
+- 2023-12-28 EGRESS-939: Adds log volume metric counter feature
+- 2023-12-28 EGRESS-939: Update oer members in CODEOWNERS file
+- 2024-01-02 OXY-1298: Disable MacOS build due to errors
 - 2023-12-21 Add PID to root logger
+- 2023-12-12 Drop zero histogram bucket
+- 2023-11-30 TUN-8005: Document how to use jemalloc from bedrock
 
 2.1.0
+- 2023-10-13 Release 2.1.0
 - 2023-10-13 Introduce Cli parsing from provided args.
 
 2.0.7
