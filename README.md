@@ -6,7 +6,7 @@
     </a>
 </p>
 
-Foundations is a foundational Rust library, designed to help scale programs for distributed,
+Foundations is a modular Rust library, designed to help scale programs for distributed,
 production-grade systems. It enables engineers to concentrate on the core business logic
 of their services, rather than the intricacies of production operation setups.
 
