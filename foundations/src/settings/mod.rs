@@ -13,6 +13,12 @@
 //! works out of the box, therefore the requirement for all settings structures and enums to
 //! implement the `Default` trait.
 //!
+//! # Substitutes for commonly used Rust standard library types
+//!
+//! Some of the standard types don't implement certain traits required for settings, or are not
+//! suitable conceptually with configuration. Therefore, the library provides compatible subtitutes
+//! for such types that can be found in [`net`] and [`collections`] modules.
+//!
 //! # Explicit subsettings
 //!
 //! The other important requirement of Foundations' settings is to present as much documentation for
