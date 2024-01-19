@@ -1,4 +1,4 @@
 # bedrock
 
-A Rust service foundation framework.
+Cloudflare's Rust service foundation framework
 
