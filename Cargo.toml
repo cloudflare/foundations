@@ -10,8 +10,8 @@ resolver = "2"
 [workspace.package]
 version = "2.2.0"
 repository = "https://bitbucket.cfdata.org/projects/OXY/repos/bedrock"
-publish = ["cloudflare"]
 edition = "2021"
+authors = ["Cloudflare"]
 
 [workspace.metadata.release]
 pre-release-commit-message = "Release {{version}}"
@@ -24,8 +24,8 @@ debug = 1
 
 [workspace.dependencies]
 anyhow = "1.0.75"
-bedrock = { version = "2", path = "./bedrock", registry = "cloudflare" }
-bedrock-macros = { version = "2", path = "./bedrock-macros", registry = "cloudflare" }
+bedrock = { version = "2", path = "./bedrock" }
+bedrock-macros = { version = "2", path = "./bedrock-macros" }
 bindgen = { version = "0.68.1", default-features = false }
 cc = "1.0"
 clap = "4.4"

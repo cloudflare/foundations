@@ -3,8 +3,8 @@ name = "bedrock-macros"
 description = "Procedural macros used by bedrock."
 version = { workspace = true }
 edition = { workspace = true }
-publish = { workspace = true }
 repository = { workspace = true }
+authors = { workspace = true }
 
 [lib]
 proc-macro = true

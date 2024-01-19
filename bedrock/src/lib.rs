@@ -12,7 +12,7 @@
 //!
 //! then Bedrock is a tool of choice for you.
 //!
-//! Check out `/examples` for an example of how all these components can be used together.
+//! Check out [examples] for an example of how all these components can be used together.
 //!
 //! # Features
 //! Bedrock can take of all aspects of service bootstrapping, but also can be used as a component
@@ -39,6 +39,7 @@
 //! [Cargo features]: https://doc.rust-lang.org/stable/cargo/reference/features.html#the-features-section
 //! [seccomp]: https://en.wikipedia.org/wiki/Seccomp
 //! [jemalloc]: https://github.com/jemalloc/jemalloc
+//! [examples]: https://github.com/cloudflare/bedrock/tree/main/examples
 
 #![warn(missing_docs)]
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]

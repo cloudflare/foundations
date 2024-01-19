@@ -1,9 +1,0 @@
-# https://nexte.st/book/configuration.html
-
-[profile.ci]
-failure-output = "immediate-final"
-fail-fast = false
-
-[profile.ci.junit]
-path = "test-reports/junit.xml"
-store-success-output = true

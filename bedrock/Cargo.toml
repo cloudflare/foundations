@@ -3,8 +3,8 @@ name = "bedrock"
 description = "A Rust service foundation framework."
 version = { workspace = true }
 edition = { workspace = true }
-publish = { workspace = true }
 repository = { workspace = true }
+authors = { workspace = true }
 
 [package.metadata.release]
 # run in the context of workspace root
