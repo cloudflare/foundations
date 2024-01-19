@@ -5,7 +5,7 @@
 - 2024-01-02 OXY-1298: Disable MacOS build due to errors
 - 2023-12-21 Add PID to root logger
 - 2023-12-12 Drop zero histogram bucket
-- 2023-11-30 TUN-8005: Document how to use jemalloc from bedrock
+- 2023-11-30 TUN-8005: Document how to use jemalloc from foundations
 
 2.1.0
 - 2023-10-13 Release 2.1.0
@@ -66,7 +66,7 @@
 
 1.2.0
 - 2023-08-29 Release 1.2.0
-- 2023-06-16 ROCK-4: Implement bedrock::telemetry::metrics
+- 2023-06-16 ROCK-4: Implement foundations::telemetry::metrics
 - 2023-08-29 Remove unnecessary cast
 - 2023-08-23 ZTC-885: Updates heap profiling code slightly to be usable by oxy
 - 2023-06-19 Fix unused_variables lint
@@ -116,7 +116,7 @@
 - 2023-05-20 ROCK-9, ROCK-13 Part 1: Add the rest of the tracing API and document telemetry
 - 2023-05-12 Move settings macro into the settings module
 - 2023-05-12 ROCK-9, ROCK-10 Implement tracing internals and testing
-- 2023-05-11 GATE-4093: change bedrock package version to use the standard indexed field
+- 2023-05-11 GATE-4093: change foundations package version to use the standard indexed field
 - 2023-05-04 ROCK-2 Implement logging
 - 2023-05-02 Get rid of owned keys feature in slog to not introduce breaking changes
 - 2023-05-02 ROCK-11 Add toggle to disable Debug impl in Settings macro

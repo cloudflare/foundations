@@ -7,7 +7,7 @@ publish = false
 
 [dev-dependencies]
 anyhow = { workspace = true }
-bedrock = { workspace = true }
+foundations = { workspace = true }
 futures-util = { workspace = true }
 hyper = { workspace = true }
 tokio = { workspace = true }

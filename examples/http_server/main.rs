@@ -13,10 +13,10 @@ mod settings;
 
 use self::settings::{EndpointSettings, HttpServerSettings, ResponseSettings};
 use anyhow::anyhow;
-use bedrock::cli::{Arg, ArgAction, Cli};
-use bedrock::settings::collections::Map;
-use bedrock::telemetry::{init_with_server, log, tracing, TelemetryContext};
-use bedrock::BootstrapResult;
+use foundations::cli::{Arg, ArgAction, Cli};
+use foundations::settings::collections::Map;
+use foundations::telemetry::{init_with_server, log, tracing, TelemetryContext};
+use foundations::BootstrapResult;
 use futures_util::stream::{FuturesUnordered, StreamExt};
 use hyper::server::conn::Http;
 use hyper::service::service_fn;
@@ -29,7 +29,7 @@ use tokio::net::{TcpListener, TcpStream};
 #[tokio::main]
 async fn main() -> BootstrapResult<()> {
     // Obtain service information from Cargo.toml
-    let service_info = bedrock::service_info!();
+    let service_info = foundations::service_info!();
 
     // Parse command line arguments. Add additional command line option that allows checking
     // the config without running the server.
@@ -237,8 +237,10 @@ async fn respond(
 
 #[cfg(target_os = "linux")]
 fn sandbox_syscalls() -> BootstrapResult<()> {
-    use bedrock::security::common_syscall_allow_lists::{ASYNC, NET_SOCKET_API, SERVICE_BASICS};
-    use bedrock::security::{allow_list, enable_syscall_sandboxing, ViolationAction};
+    use foundations::security::common_syscall_allow_lists::{
+        ASYNC, NET_SOCKET_API, SERVICE_BASICS,
+    };
+    use foundations::security::{allow_list, enable_syscall_sandboxing, ViolationAction};
 
     allow_list! {
         static ALLOWED = [

@@ -1,7 +1,7 @@
 [workspace]
 members = [
-    "bedrock",
-    "bedrock-macros",
+    "foundations",
+    "foundations-macros",
     "examples",
     "tools/gen-syscall-enum"
 ]
@@ -9,7 +9,7 @@ resolver = "2"
 
 [workspace.package]
 version = "2.2.0"
-repository = "https://bitbucket.cfdata.org/projects/OXY/repos/bedrock"
+repository = "https://bitbucket.cfdata.org/projects/OXY/repos/foundations"
 edition = "2021"
 authors = ["Cloudflare"]
 
@@ -24,8 +24,8 @@ debug = 1
 
 [workspace.dependencies]
 anyhow = "1.0.75"
-bedrock = { version = "2", path = "./bedrock" }
-bedrock-macros = { version = "2", path = "./bedrock-macros" }
+foundations = { version = "2", path = "./foundations" }
+foundations-macros = { version = "2", path = "./foundations-macros" }
 bindgen = { version = "0.68.1", default-features = false }
 cc = "1.0"
 clap = "4.4"
@@ -34,8 +34,9 @@ darling = "0.14"
 erased-serde = "0.3.28"
 futures-util = "0.3.28"
 governor = "0.6"
-hyper = { version = "0.14.27", default-features = false }
+hyper = { version = "0.14", default-features = false }
 indexmap = "2.0.0"
+ipnetwork = "0.20"
 once_cell = "1.5"
 parking_lot = "0.12"
 proc-macro2 = { version = "1", default-features = false }

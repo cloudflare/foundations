@@ -1,4 +1,4 @@
-use bedrock::telemetry::metrics::{metrics, Counter, Gauge};
+use foundations::telemetry::metrics::{metrics, Counter, Gauge};
 use std::sync::Arc;
 
 #[metrics]

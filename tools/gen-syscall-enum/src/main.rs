@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::process::Command;
 
 const GLIBC_REPO: &str = "https://sourceware.org/git/glibc.git";
-const DST_DIR_REL_PATH: &str = "../../bedrock/src/seccomp/syscalls";
+const DST_DIR_REL_PATH: &str = "../../foundations/src/seccomp/syscalls";
 
 const SYSCALL_SRC_DST: &[(&str, &str)] = &[
     (

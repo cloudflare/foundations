@@ -1,0 +1,181 @@
+[package]
+name = "foundations"
+description = "A Rust service foundation framework."
+version = { workspace = true }
+edition = { workspace = true }
+repository = { workspace = true }
+authors = { workspace = true }
+
+[package.metadata.release]
+# run in the context of workspace root
+pre-release-hook = [
+    "git-cliff",
+    "-w", "..",
+    "-o", "../RELEASE_NOTES.md",
+    "--tag", "{{version}}"
+]
+
+[features]
+# Default set of features.
+default = [
+    "platform-common-default",
+    "security"
+]
+
+# All non platform-specific features
+platform-common-default = [
+    "metrics",
+    "settings",
+    "jemalloc",
+    "telemetry",
+    "cli",
+    "testing",
+]
+
+# Enables metrics functionality.
+metrics = [
+    "dep:foundations-macros",
+    "dep:erased-serde",
+    "dep:once_cell",
+    "dep:parking_lot",
+    "dep:prometheus-client",
+    "dep:prometheus",
+    "dep:prometools",
+    "dep:serde_with",
+    "dep:serde",
+]
+
+# Enables serializable documented settings functionality.
+settings = [
+    "dep:foundations-macros",
+    "dep:serde_path_to_error",
+    "dep:serde_yaml",
+    "dep:serde",
+    "dep:yaml-merge-keys",
+    "dep:indexmap"
+]
+
+# Enables all the telemetry-related features ("logging", "metrics", "tracing", "telemetry-server").
+telemetry = [
+    "logging",
+    "memory-profiling",
+    "metrics",
+    "tracing",
+    "telemetry-server",
+]
+
+# Enables the telemetry server.
+telemetry-server = [
+    "dep:futures-util",
+    "dep:hyper",
+    "dep:routerify",
+    "dep:socket2",
+]
+
+# Enables logging functionality.
+logging = [
+    "dep:governor",
+    "dep:once_cell",
+    "dep:parking_lot",
+    "dep:slog-async",
+    "dep:slog-json",
+    "dep:slog-term",
+    "dep:slog",
+    "dep:thread_local",
+]
+
+# Enables distributed tracing functionality.
+tracing = [
+    "dep:foundations-macros",
+    "dep:crossbeam-channel",
+    "dep:governor",
+    "dep:once_cell",
+    "dep:parking_lot",
+    "dep:rand",
+    "dep:rustracing_jaeger",
+    "dep:rustracing",
+    "dep:thread_local",
+]
+
+# Enables memory profiling features (require `jemalloc` feature to be enabled)
+memory-profiling = [
+    "dep:once_cell",
+    "dep:tikv-jemalloc-ctl",
+    "dep:tempfile",
+    "dep:tokio",
+    "jemalloc"
+]
+
+# Enables security-related features
+security = [
+    "dep:bindgen",
+    "dep:cc",
+    "dep:once_cell"
+]
+
+# Enables jemalloc as a memory allocator
+jemalloc = [
+    "dep:tikv-jemallocator"
+]
+
+# Enables command line interface functionality.
+cli = [
+    "settings",
+    "dep:clap"
+]
+
+# Enables testing-related functionality.
+testing = [
+    "dep:foundations-macros"
+]
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[dependencies]
+anyhow = { workspace = true, features = ["backtrace", "std"]  }
+foundations-macros = { workspace = true, optional = true }
+crossbeam-channel = { workspace = true, optional = true }
+erased-serde = { workspace = true, optional = true }
+clap = { workspace = true, optional = true }
+futures-util = { workspace = true, optional = true }
+governor = { workspace = true, optional = true }
+hyper = { workspace = true, optional = true, features = ["http1", "runtime", "server"] }
+indexmap = { workspace = true, optional = true, features = ["serde"] }
+once_cell = { workspace = true, optional = true }
+parking_lot = { workspace = true, optional = true }
+prometheus = { workspace = true, optional = true, features = ["process"] }
+prometheus-client = { workspace = true, optional = true }
+prometools = { workspace = true, optional = true, features = ["serde"] }
+routerify = { workspace = true, optional = true }
+rand = { workspace = true, optional = true }
+rustracing = { workspace = true, optional = true }
+rustracing_jaeger = { workspace = true, optional = true }
+serde = { workspace = true, optional = true, features = ["derive"] }
+serde_path_to_error = { workspace = true, optional = true }
+serde_yaml = { workspace = true, optional = true }
+serde_with = { workspace = true, optional = true }
+slog = { workspace = true, optional = true, features = ["max_level_trace"] }
+slog-async = { workspace = true, optional = true }
+slog-json = { workspace = true, optional = true }
+slog-term = { workspace = true, optional = true }
+socket2 = { workspace = true, optional = true }
+thread_local = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true, features = ["sync", "rt"] }
+tikv-jemallocator = { workspace = true, optional = true, features = ["profiling", "stats", "background_threads"] }
+yaml-merge-keys = { workspace = true, optional = true, features = ["serde_yaml"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+tikv-jemalloc-ctl = { workspace = true, optional = true, features = ["use_std"] }
+tempfile = { workspace = true, optional = true }
+
+[dev-dependencies]
+reqwest = { workspace = true }
+serde = { workspace = true, features = ["rc"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+ipnetwork = { workspace = true }
+
+[build-dependencies]
+bindgen = { workspace = true, features = ["runtime"], optional = true }
+cc = { workspace = true, optional = true }

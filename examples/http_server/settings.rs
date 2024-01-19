@@ -7,10 +7,10 @@
 //!
 //! `examples/http_server/example_conf.yaml` file included in the repo shows generated default
 //! config.
-use bedrock::settings::collections::Map;
-use bedrock::settings::net::SocketAddr;
-use bedrock::settings::settings;
-use bedrock::telemetry::settings::TelemetrySettings;
+use foundations::settings::collections::Map;
+use foundations::settings::net::SocketAddr;
+use foundations::settings::settings;
+use foundations::telemetry::settings::TelemetrySettings;
 
 #[settings]
 pub(crate) struct HttpServerSettings {
