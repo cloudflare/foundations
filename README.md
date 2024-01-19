@@ -2,7 +2,7 @@
 
 <p align="center">
     <a href="https://github.com/cloudflare/bedrock">
-        <img src="media/bedrock.png" alt="banner" style="width:472px; height: 375px" />
+        <img src="media/banner.png" alt="banner" style="width:472px; height: 375px" />
     </a>
 </p>
 
