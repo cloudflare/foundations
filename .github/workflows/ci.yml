@@ -1,0 +1,82 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+env:
+  RUSTFLAGS: -Dwarnings
+  RUST_BACKTRACE: 1
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install Rust
+        run: rustup update stable && rustup default stable
+      - name: Install cargo deny
+        run: cargo install --locked cargo-deny
+      - name: Lint
+        run: ./scripts/lint.sh
+        shell: bash
+
+  test:
+    name: Test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        thing:
+          - i686-linux
+          - aarch64-linux
+          - arm64-macos
+        include:
+          - apt_packages: ""
+          - custom_env: {}
+          - build_only: false
+          - thing: i686-linux
+            target: i686-unknown-linux-gnu
+            rust: stable
+            os: ubuntu-latest
+            apt_packages: gcc-multilib g++-multilib
+          - thing: aarch64-linux
+            target: aarch64-unknown-linux-gnu
+            rust: stable
+            os: ubuntu-latest
+            apt_packages: crossbuild-essential-arm64
+            custom_env:
+              CC: aarch64-linux-gnu-gcc
+              CXX: aarch64-linux-gnu-g++
+              CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-g++
+            build_only: true
+          - thing: arm64-macos
+            target: aarch64-apple-darwin
+            rust: stable
+            os: macos-latest
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          submodules: "recursive"
+      - name: Install Rust (rustup)
+        run: rustup update ${{ matrix.rust }} --no-self-update && rustup default ${{ matrix.rust }}
+        shell: bash
+      - name: Install target-specific APT dependencies
+        if: "matrix.apt_packages != ''"
+        run: sudo apt update && sudo apt install -y ${{ matrix.apt_packages }}
+        shell: bash
+      - run: rustup target add ${{ matrix.target }}
+      - name: Build tests
+        # We `build` because we want the linker to verify we are cross-compiling correctly for check-only targets.
+        run: cargo build --target ${{ matrix.target }}
+        shell: bash
+        env: ${{ matrix.custom_env }}
+      - name: Run tests
+        if: "!matrix.build_only"
+        run: cargo test --target ${{ matrix.target }}
+        shell: bash
+        env: ${{ matrix.custom_env }}
