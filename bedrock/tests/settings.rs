@@ -1,4 +1,5 @@
 use bedrock::settings::collections::Map;
+use bedrock::settings::net::SocketAddr;
 use bedrock::settings::{settings, to_yaml_string};
 
 #[settings]
@@ -75,7 +76,7 @@ struct PipefitterSettings {
     /// Path to pipefitter's unix socket, for routing origin TCP connections through Argo.
     ///
     /// *NOTE:* Pipefitter is disabled if not specified.
-    addr: Option<std::net::SocketAddr>,
+    addr: Option<SocketAddr>,
 }
 
 #[settings]
@@ -107,6 +108,12 @@ struct NoDefaultStruct {
 struct WithMap {
     /// Map items
     items: Map<String, NestedStruct>,
+}
+
+#[settings]
+struct WithOption {
+    /// Optional field
+    optional: Option<NestedStruct>,
 }
 
 impl Default for NoDefaultStruct {
@@ -220,4 +227,17 @@ fn map() {
     };
 
     assert_ser_eq!(s, "data/with_map.yaml");
+}
+
+#[test]
+fn option() {
+    let s = WithOption {
+        optional: Some(NestedStruct { a: 1, b: 2, c: 3 }),
+    };
+
+    assert_ser_eq!(s, "data/with_option_some.yaml");
+
+    let s = WithOption { optional: None };
+
+    assert_ser_eq!(s, "data/with_option_none.yaml");
 }

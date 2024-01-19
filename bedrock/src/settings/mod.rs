@@ -1,4 +1,118 @@
 //! Serializable service settings with documentation.
+//!
+//! Bedrock provides API to generate YAML-serializable documented settings for a service. Such
+//! settings structures can be used in conjunction with [`Cli`] which takes care of settings parsing
+//! and generation of default configuration. However, provided settings functionality can be used
+//! standalone as well.
+//!
+//! Bedrock automatically implements [`Settings`] trait for structures or enums annotated with
+//! [`settings`] attribute macro. Macro converts Rust doc comments into YAML field documentation and
+//! also implements all the traits required for settings serialization and default configuration.
+//!
+//! Bedrock's settings philosophy is that service should always have default configuration that
+//! works out of the box, therefore the requirement for all settings structures and enums to
+//! implement the `Default` trait.
+//!
+//! # Explicit subsettings
+//!
+//! The other important requirement of Bedrock's settings is to present as much documentation for
+//! the default settings as possible, so all the possible configuration is explicitly visible.
+//!
+//! Consider the following TLS settings structure:
+//!
+//! ```no_run
+//! #[settings]
+//! struct TlsSettings {
+//!     /// Certificate to be presented by the server
+//!     cert: String,
+//!
+//!     /// Certificate's public key
+//!     pkey: String
+//! }
+//! ```
+//!
+//! Let's say we want to add TLS settings to our HTTP listener settings. Since TLS is optional the
+//! common approach to reflect that in Rust would be to wrap TLS settings in `Option`:
+//!
+//! ```no_run
+//! #[settings]
+//! struct ListenerSettings {
+//!     /// Address of the server
+//!     addr: SocketAddr,
+//!
+//!     /// TLS settings
+//!     tls: Option<TlsSettings>
+//! }
+//! ```
+//!
+//! There's a problem here when it comes to settings. If you want TLS to be disabled by default then
+//! default value for the `tls` field in your config will be `None`, which means that possible knobs
+//! for TLS would not be rendered in the default YAML config, hiding the documentation for this part
+//! of functionality as well.
+//!
+//! Instead, **the recommended approach** is to avoid using `Option` in such situations and provide
+//! an explicit `enabled` knob to the `TlsSettings`:
+//!
+//! ```no_run
+//! #[settings]
+//! struct TlsSettings {
+//!     /// Enables TLS for the listener
+//!     enabled: bool,
+//!
+//!     /// Certificate to be presented by the server
+//!     cert: String,
+//!
+//!     /// Certificate's public key
+//!     pkey: String
+//! }
+//!
+//! #[settings]
+//! struct ListenerSettings {
+//!     /// Address of the server
+//!     addr: SocketAddr,
+//!
+//!     /// TLS settings
+//!     tls: TlsSettings
+//! }
+//! ```
+//!
+//! # Dealing with 3rd-party crate types in settings
+//!
+//! Even though Bedrock strives to implement the [`Settings`] trait for most commonly used types,
+//! it's not uncommon to have a type from a 3rd-party crate in your configuration whose code you
+//! don't control and, thus, can't implement the trait for it.
+//!
+//! The solution for such situations is to provide a wrapper type and implement the [`Settings`]
+//! trait for it.
+//!
+//! For example, if you would like to use [`ipnetwork::Ipv4Network`] type in your configuration you
+//! can provide the following wrapper which implements all the required traits and provides methods
+//! to convert to the original structure for it to be used in your code:
+//!
+//! ```no_run
+//! // NOTE: there's no `Default` implementation for the wrapped type, so we disable
+//! // `#[derive(Default)]` generation by the macro.
+//! #[settings(impl_default = false)]
+//! pub struct Ipv4Network(ipnetwork::Ipv4Network);
+//!
+//!
+//! // Provide a reasonable default implementation.
+//! impl Default for Ipv4Network {
+//!     fn default() -> Self {
+//!         Ipv4Network::from_str("10.0.0.0/8").unwrap()
+//!     }
+//! }
+//!
+//! // Provide a way to convert to the original type.
+//! impl From<Ipv4Network> for ipnetwork::Ipv4Network {
+//!     fn from(net: Ipv4Network) -> Self {
+//!        net.0
+//!     }
+//! }
+//! ```
+//!
+//! [`Cli`]: crate::cli::Cli
+//! [`ipnetwork::Ipv4Network`]: https://docs.rs/ipnetwork/0.20.0/ipnetwork/struct.Ipv4Network.html
 
 mod basic_impls;
 

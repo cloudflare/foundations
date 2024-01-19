@@ -1,7 +1,4 @@
 use super::Settings;
-use serde::de::DeserializeOwned;
-use serde::Serialize;
-use std::fmt::Debug;
 
 macro_rules! impl_for_basic_types {
     ($($ty:ty),*) => {
@@ -29,9 +26,30 @@ impl_for_basic_types![
     ()
 ];
 
-impl<T: Send + Sync + Clone + Serialize + DeserializeOwned + Debug + 'static> Settings for Vec<T> {}
+impl<T: Settings> Settings for Vec<T> {
+    fn add_docs(
+        &self,
+        parent_key: &[String],
+        docs: &mut std::collections::HashMap<Vec<String>, &'static [&'static str]>,
+    ) {
+        for (k, v) in self.iter().enumerate() {
+            let mut key = parent_key.to_vec();
 
-impl<T: Send + Sync + Clone + Serialize + DeserializeOwned + Debug + 'static> Settings
-    for Option<T>
-{
+            key.push(k.to_string());
+
+            v.add_docs(&key, docs);
+        }
+    }
+}
+
+impl<T: Settings> Settings for Option<T> {
+    fn add_docs(
+        &self,
+        parent_key: &[String],
+        docs: &mut std::collections::HashMap<Vec<String>, &'static [&'static str]>,
+    ) {
+        if let Some(v) = self {
+            v.add_docs(parent_key, docs);
+        }
+    }
 }
