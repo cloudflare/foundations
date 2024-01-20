@@ -5,7 +5,7 @@
 //! * metrics (backed by [Prometheus])
 //! * memory profiling (backed by [jemalloc])
 //!
-//! The framework strives to minimize the bootstrap code required to set up basic telemetry for a
+//! The library strives to minimize the bootstrap code required to set up basic telemetry for a
 //! service and provide ergonomic API for telemetry-related operations.
 //!
 //! # Initialization
@@ -36,7 +36,7 @@
 //! # Testing
 //! Telemetry is an important part of the functionality for any production-grade services and
 //! Foundations provides API for telemetry testing: special testing context can be created with
-//! [`TelemetryContext::test`] method and framework provides a special [`with_test_telemetry`] macro
+//! [`TelemetryContext::test`] method and the library provides a special [`with_test_telemetry`] macro
 //! to enable telemetry testing in `#[test]` and `#[tokio::test]`.
 //!
 //! [Jaeger]: https://www.jaegertracing.io/

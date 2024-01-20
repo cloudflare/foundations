@@ -1,6 +1,6 @@
 [package]
 name = "foundations"
-description = "A Rust service foundation framework."
+description = "A Rust service foundations library."
 version = { workspace = true }
 edition = { workspace = true }
 repository = { workspace = true }
