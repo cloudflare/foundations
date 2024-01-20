@@ -26,6 +26,9 @@ then Foundations is a tool of choice for you.
 
 https://docs.rs/foundations/
 
+## Examples
+
+https://github.com/cloudflare/foundations/tree/main/examples
 
 ## License
 
