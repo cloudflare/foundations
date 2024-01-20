@@ -1,0 +1,15 @@
+---
+# Items
+items:
+    # A field, which is named the same as another field.
+  - a: 0
+    # multi-line
+    # doc comment
+    b: 11
+    c: 0
+    # A field, which is named the same as another field.
+  - a: 0
+    # multi-line
+    # doc comment
+    b: 11
+    c: 0

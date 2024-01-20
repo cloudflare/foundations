@@ -319,9 +319,7 @@ pub use foundations_macros::settings;
 /// [`settings`] macro.
 ///
 /// [`settings`]: crate::settings::settings
-pub trait Settings:
-    Default + Send + Sync + Clone + Serialize + DeserializeOwned + Debug + 'static
-{
+pub trait Settings: Default + Clone + Serialize + DeserializeOwned + Debug + 'static {
     /// Add Rust doc comments for the settings fields.
     ///
     /// Docs for each field need to be added to the provided hashmap with the key consisting of the
@@ -403,16 +401,19 @@ pub trait Settings:
 
 /// Serialize documented settings as a YAML string.
 pub fn to_yaml_string(settings: &impl Settings) -> BootstrapResult<String> {
+    const LIST_ITEM_PREFIX: &str = "- ";
+
     let mut doc_comments = Default::default();
     let yaml = serde_yaml::to_string(settings)?;
     let mut yaml_with_docs = String::new();
     let mut key_stack = vec![];
+    let mut list_index = 0;
 
     settings.add_docs(&[], &mut doc_comments);
 
     // We read each line of the uncommented YAML, and push each key we find to `key_stack`.
     for line in yaml.lines() {
-        let spaces = line.find(|c: char| !c.is_whitespace()).unwrap_or(0);
+        let mut spaces = line.find(|c: char| !c.is_whitespace()).unwrap_or(0);
 
         // This is where we remove the keys we have just handled, by truncating the length
         // of the key stack based on how much indentation the current line got. serde_yaml
@@ -421,9 +422,21 @@ pub fn to_yaml_string(settings: &impl Settings) -> BootstrapResult<String> {
         key_stack.truncate(spaces / 2);
 
         if let Some(colon_idx) = line.find(':') {
-            let field_name = &line[spaces..colon_idx].trim();
+            let mut field_name = line[spaces..colon_idx].trim().to_string();
+            let is_list_item = field_name.starts_with(LIST_ITEM_PREFIX);
 
-            key_stack.push(field_name.to_string());
+            // NOTE: if we have a list item, then append the index of the item to the key stack.
+            if is_list_item {
+                key_stack.push(list_index.to_string());
+
+                field_name = field_name[LIST_ITEM_PREFIX.len()..].trim().to_string();
+                spaces += LIST_ITEM_PREFIX.len();
+                list_index += 1;
+            } else {
+                list_index = 0;
+            }
+
+            key_stack.push(field_name);
 
             // The field described by the current line has some documentation, so
             // we print it before the current line.

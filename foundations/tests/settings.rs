@@ -134,6 +134,12 @@ impl Default for NoDefaultEnum {
     }
 }
 
+#[settings]
+struct WithVec {
+    /// Items
+    items: Vec<NestedStruct>,
+}
+
 mod foundations_reexport {
     pub(crate) mod nested {
         pub(crate) use foundations::*;
@@ -240,4 +246,13 @@ fn option() {
     let s = WithOption { optional: None };
 
     assert_ser_eq!(s, "data/with_option_none.yaml");
+}
+
+#[test]
+fn vec() {
+    let s = WithVec {
+        items: vec![Default::default(), Default::default()],
+    };
+
+    assert_ser_eq!(s, "data/with_vec.yaml");
 }
