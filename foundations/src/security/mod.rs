@@ -296,7 +296,7 @@ pub enum Rule {
     ReturnError(Syscall, RawOsErrorNum, Vec<ArgCmp>),
 }
 
-/// Enables [seccomp]-based syscall sendboxing in the current thread and all the threads spawned
+/// Enables [seccomp]-based syscall sandboxing in the current thread and all the threads spawned
 /// by it.
 ///
 /// Calling the function early in the `main` function effectively enables seccomp for the whole
