@@ -28,12 +28,12 @@ use std::ops::{Deref, DerefMut};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Map<K, V>(#[serde(bound = "")] IndexMap<K, V>)
 where
-    K: Eq + Hash + Settings + Send + Sync + Clone + Serialize + DeserializeOwned + Debug + 'static,
+    K: Eq + Hash + Settings + Clone + Serialize + DeserializeOwned + Debug + 'static,
     V: Settings;
 
 impl<K, V> Default for Map<K, V>
 where
-    K: Eq + Hash + Settings + Send + Sync + Clone + Serialize + DeserializeOwned + Debug + 'static,
+    K: Eq + Hash + Settings + Clone + Serialize + DeserializeOwned + Debug + 'static,
     V: Settings,
 {
     fn default() -> Self {
@@ -43,7 +43,7 @@ where
 
 impl<K, V> Deref for Map<K, V>
 where
-    K: Eq + Hash + Settings + Send + Sync + Clone + Serialize + DeserializeOwned + Debug + 'static,
+    K: Eq + Hash + Settings + Clone + Serialize + DeserializeOwned + Debug + 'static,
     V: Settings,
 {
     type Target = IndexMap<K, V>;
@@ -55,7 +55,7 @@ where
 
 impl<K, V> DerefMut for Map<K, V>
 where
-    K: Eq + Hash + Settings + Send + Sync + Clone + Serialize + DeserializeOwned + Debug + 'static,
+    K: Eq + Hash + Settings + Clone + Serialize + DeserializeOwned + Debug + 'static,
     V: Settings,
 {
     fn deref_mut(&mut self) -> &mut Self::Target {
@@ -65,7 +65,7 @@ where
 
 impl<K, V> From<Map<K, V>> for IndexMap<K, V>
 where
-    K: Eq + Hash + Settings + Send + Sync + Clone + Serialize + DeserializeOwned + Debug + 'static,
+    K: Eq + Hash + Settings + Clone + Serialize + DeserializeOwned + Debug + 'static,
     V: Settings,
 {
     fn from(value: Map<K, V>) -> Self {
@@ -75,7 +75,7 @@ where
 
 impl<K, V> From<IndexMap<K, V>> for Map<K, V>
 where
-    K: Eq + Hash + Settings + Send + Sync + Clone + Serialize + DeserializeOwned + Debug + 'static,
+    K: Eq + Hash + Settings + Clone + Serialize + DeserializeOwned + Debug + 'static,
     V: Settings,
 {
     fn from(value: IndexMap<K, V>) -> Self {
@@ -85,7 +85,7 @@ where
 
 impl<K, V> FromIterator<(K, V)> for Map<K, V>
 where
-    K: Eq + Hash + Settings + Send + Sync + Clone + Serialize + DeserializeOwned + Debug + 'static,
+    K: Eq + Hash + Settings + Clone + Serialize + DeserializeOwned + Debug + 'static,
     V: Settings,
 {
     fn from_iter<I: IntoIterator<Item = (K, V)>>(iterable: I) -> Self {
@@ -95,7 +95,7 @@ where
 
 impl<'a, K, V> IntoIterator for &'a Map<K, V>
 where
-    K: Eq + Hash + Settings + Send + Sync + Clone + Serialize + DeserializeOwned + Debug + 'static,
+    K: Eq + Hash + Settings + Clone + Serialize + DeserializeOwned + Debug + 'static,
     V: Settings,
 {
     type Item = (&'a K, &'a V);
@@ -108,7 +108,7 @@ where
 
 impl<'a, K, V> IntoIterator for &'a mut Map<K, V>
 where
-    K: Eq + Hash + Settings + Send + Sync + Clone + Serialize + DeserializeOwned + Debug + 'static,
+    K: Eq + Hash + Settings + Clone + Serialize + DeserializeOwned + Debug + 'static,
     V: Settings,
 {
     type Item = (&'a K, &'a mut V);
@@ -121,7 +121,7 @@ where
 
 impl<K, V> IntoIterator for Map<K, V>
 where
-    K: Eq + Hash + Settings + Send + Sync + Clone + Serialize + DeserializeOwned + Debug + 'static,
+    K: Eq + Hash + Settings + Clone + Serialize + DeserializeOwned + Debug + 'static,
     V: Settings,
 {
     type Item = (K, V);
@@ -134,17 +134,7 @@ where
 
 impl<K, V> Settings for Map<K, V>
 where
-    K: Display
-        + Eq
-        + Hash
-        + Settings
-        + Send
-        + Sync
-        + Clone
-        + Serialize
-        + DeserializeOwned
-        + Debug
-        + 'static,
+    K: Display + Eq + Hash + Settings + Clone + Serialize + DeserializeOwned + Debug + 'static,
     V: Settings,
 {
     fn add_docs(
