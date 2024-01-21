@@ -16,7 +16,7 @@
 //!
 //! The crate provides a few [`common_syscall_allow_lists`] to simplify configuration.
 //!
-//! foundations compiles and statically links with [libseccomp], so it doesn't require the lib to be
+//! Foundations compiles and statically links with [libseccomp], so it doesn't require the lib to be
 //! installed.
 //!
 //! # Simple case [Spectre] mitigation for x86_64 processors
@@ -62,7 +62,7 @@ pub type RawOsErrorNum = u16;
 pub enum ViolationAction {
     /// Kill the process.
     ///
-    /// Note that even though seccomp API allows to kill individual threads, foundations doesn't
+    /// Note that even though seccomp API allows to kill individual threads, Foundations doesn't
     /// expose this action as killing threads without unwinding [can cause UB in Rust].
     ///
     /// [can cause UB in Rust]: https://github.com/rust-lang/unsafe-code-guidelines/issues/211
