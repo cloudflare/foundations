@@ -18,12 +18,29 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
+        with:
+          submodules: "recursive"
       - name: Install Rust
         run: rustup update stable && rustup default stable
       - name: Install cargo deny
         run: cargo install --locked cargo-deny
       - name: Lint
         run: ./scripts/lint.sh
+        shell: bash
+
+  check-features:
+    name: Check feature combinations
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          submodules: "recursive"
+      - name: Install Rust
+        run: rustup update stable && rustup default stable
+      - name: Install cargo deny
+        run: cargo install --locked cargo-hack
+      - name: Check
+        run: ./scripts/check-features.sh
         shell: bash
 
   test:
