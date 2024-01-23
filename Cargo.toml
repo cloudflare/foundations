@@ -9,7 +9,7 @@ resolver = "2"
 
 [workspace.package]
 version = "3.0.0"
-repository = "https://bitbucket.cfdata.org/projects/OXY/repos/foundations"
+repository = "https://github.com/cloudflare/foundations"
 edition = "2021"
 authors = ["Cloudflare"]
 license = "BSD-3-Clause"

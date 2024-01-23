@@ -7,22 +7,42 @@ repository = { workspace = true }
 authors = { workspace = true }
 license = { workspace = true }
 readme = "../README.md"
+documentation = "https://docs.rs/foundations"
+categories = [
+    "config",
+    "development-tools",
+    "external-ffi-bindings",
+    "memory-management",
+]
+keywords = [
+    "service",
+    "security",
+    "telemetry",
+    "settings",
+    "CLI",
+    "seccomp",
+    "metrics",
+    "log",
+    "logs",
+    "tracing",
+    "memory"
+]
 
 [package.metadata.release]
 # run in the context of workspace root
 pre-release-hook = [
     "git-cliff",
-    "-w", "..",
-    "-o", "../RELEASE_NOTES.md",
-    "--tag", "{{version}}"
+    "-w",
+    "..",
+    "-o",
+    "../RELEASE_NOTES.md",
+    "--tag",
+    "{{version}}",
 ]
 
 [features]
 # Default set of features.
-default = [
-    "platform-common-default",
-    "security"
-]
+default = ["platform-common-default", "security"]
 
 # All non platform-specific features
 platform-common-default = [
@@ -54,7 +74,7 @@ settings = [
     "dep:serde_yaml",
     "dep:serde",
     "dep:yaml-merge-keys",
-    "dep:indexmap"
+    "dep:indexmap",
 ]
 
 # Enables all the telemetry-related features ("logging", "metrics", "tracing", "telemetry-server").
@@ -105,45 +125,38 @@ memory-profiling = [
     "dep:tikv-jemalloc-ctl",
     "dep:tempfile",
     "dep:tokio",
-    "jemalloc"
+    "jemalloc",
 ]
 
 # Enables security-related features
-security = [
-    "dep:bindgen",
-    "dep:cc",
-    "dep:once_cell"
-]
+security = ["dep:bindgen", "dep:cc", "dep:once_cell"]
 
 # Enables jemalloc as a memory allocator
-jemalloc = [
-    "dep:tikv-jemallocator"
-]
+jemalloc = ["dep:tikv-jemallocator"]
 
 # Enables command line interface functionality.
-cli = [
-    "settings",
-    "dep:clap"
-]
+cli = ["settings", "dep:clap"]
 
 # Enables testing-related functionality.
-testing = [
-    "dep:foundations-macros"
-]
+testing = ["dep:foundations-macros"]
 
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
-anyhow = { workspace = true, features = ["backtrace", "std"]  }
+anyhow = { workspace = true, features = ["backtrace", "std"] }
 foundations-macros = { workspace = true, optional = true }
 crossbeam-channel = { workspace = true, optional = true }
 erased-serde = { workspace = true, optional = true }
 clap = { workspace = true, optional = true }
 futures-util = { workspace = true, optional = true }
 governor = { workspace = true, optional = true }
-hyper = { workspace = true, optional = true, features = ["http1", "runtime", "server"] }
+hyper = { workspace = true, optional = true, features = [
+    "http1",
+    "runtime",
+    "server",
+] }
 indexmap = { workspace = true, optional = true, features = ["serde"] }
 once_cell = { workspace = true, optional = true }
 parking_lot = { workspace = true, optional = true }
@@ -165,11 +178,19 @@ slog-term = { workspace = true, optional = true }
 socket2 = { workspace = true, optional = true }
 thread_local = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true, features = ["sync", "rt"] }
-tikv-jemallocator = { workspace = true, optional = true, features = ["profiling", "stats", "background_threads"] }
-yaml-merge-keys = { workspace = true, optional = true, features = ["serde_yaml"] }
+tikv-jemallocator = { workspace = true, optional = true, features = [
+    "profiling",
+    "stats",
+    "background_threads",
+] }
+yaml-merge-keys = { workspace = true, optional = true, features = [
+    "serde_yaml",
+] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-tikv-jemalloc-ctl = { workspace = true, optional = true, features = ["use_std"] }
+tikv-jemalloc-ctl = { workspace = true, optional = true, features = [
+    "use_std",
+] }
 tempfile = { workspace = true, optional = true }
 
 [dev-dependencies]
