@@ -51,7 +51,7 @@ jobs:
         thing:
           - x86_64-linux
           - aarch64-linux
-          - arm64-macos
+          - x86_64-macos
         include:
           - apt_packages: ""
           - custom_env: {}
@@ -70,8 +70,8 @@ jobs:
               CXX: aarch64-linux-gnu-g++
               CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-g++
             build_only: true
-          - thing: arm64-macos
-            target: aarch64-apple-darwin
+          - thing: x86_64-macos
+            target: x86_64-apple-darwin
             rust: stable
             os: macos-latest
     steps:
