@@ -1,4 +1,11 @@
+3.0.1
+- 2024-01-23 Add more metadata to Cargo.toml
+- 2024-01-23 Add readme to Cargo.toml
+- 2024-01-23 Fix license type in Cargo.toml
+- 2024-01-23 Add license field to Cargo.toml metadata
+
 3.0.0
+- 2024-01-23 Release 3.0.0
 - 2024-01-23 Fix macos target in CI
 - 2024-01-23 Add jemalloc flag to CI
 - 2024-01-23 Fix CI target
