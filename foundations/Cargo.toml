@@ -16,16 +16,10 @@ categories = [
 ]
 keywords = [
     "service",
-    "security",
     "telemetry",
     "settings",
-    "CLI",
     "seccomp",
     "metrics",
-    "log",
-    "logs",
-    "tracing",
-    "memory"
 ]
 
 [package.metadata.release]
