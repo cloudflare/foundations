@@ -1,11 +1,36 @@
+3.0.0
+- 2024-01-23 Fix macos target in CI
+- 2024-01-23 Add jemalloc flag to CI
+- 2024-01-23 Fix CI target
+- 2024-01-23 Update year in license
+- 2024-01-22 Revive feature combination check in CI
+- 2024-01-21 Remove Settings bound from settings::Map key
+- 2024-01-21 Remove Send + Sync bound for settings::Map keys
+- 2024-01-21 Fix doc comment typo
+- 2024-01-21 Capitilise the lib name in doc comments
+- 2024-01-20 Some minor renames in docs
+- 2024-01-20 Add examples to README
+- 2024-01-20 Add support for settings collections, add more basic impls
+- 2024-01-19 Add docs paragraph for setting standard types substitutes
+- 2024-01-19 Update README
+- 2024-01-19 Rename the library.
+- 2024-01-19 Update readme
+- 2024-01-19 Fix banner
+- 2024-01-19 Update README
+- 2024-01-19 Add license
+- 2024-01-19 Add Github CI
+- 2024-01-19 Clean up
+- 2024-01-19 Enable documentation of Settings within Vec and Option
+
 2.2.0
+- 2024-01-18 Release 2.2.0
 - 2024-01-18 Release 2.2.0
 - 2023-12-28 EGRESS-939: Adds log volume metric counter feature
 - 2023-12-28 EGRESS-939: Update oer members in CODEOWNERS file
 - 2024-01-02 OXY-1298: Disable MacOS build due to errors
 - 2023-12-21 Add PID to root logger
 - 2023-12-12 Drop zero histogram bucket
-- 2023-11-30 TUN-8005: Document how to use jemalloc from foundations
+- 2023-11-30 TUN-8005: Document how to use jemalloc from bedrock
 
 2.1.0
 - 2023-10-13 Release 2.1.0
@@ -66,7 +91,7 @@
 
 1.2.0
 - 2023-08-29 Release 1.2.0
-- 2023-06-16 ROCK-4: Implement foundations::telemetry::metrics
+- 2023-06-16 ROCK-4: Implement bedrock::telemetry::metrics
 - 2023-08-29 Remove unnecessary cast
 - 2023-08-23 ZTC-885: Updates heap profiling code slightly to be usable by oxy
 - 2023-06-19 Fix unused_variables lint
@@ -116,7 +141,7 @@
 - 2023-05-20 ROCK-9, ROCK-13 Part 1: Add the rest of the tracing API and document telemetry
 - 2023-05-12 Move settings macro into the settings module
 - 2023-05-12 ROCK-9, ROCK-10 Implement tracing internals and testing
-- 2023-05-11 GATE-4093: change foundations package version to use the standard indexed field
+- 2023-05-11 GATE-4093: change bedrock package version to use the standard indexed field
 - 2023-05-04 ROCK-2 Implement logging
 - 2023-05-02 Get rid of owned keys feature in slog to not introduce breaking changes
 - 2023-05-02 ROCK-11 Add toggle to disable Debug impl in Settings macro
