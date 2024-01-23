@@ -93,6 +93,6 @@ jobs:
         env: ${{ matrix.custom_env }}
       - name: Run tests
         if: "!matrix.build_only"
-        run: cargo test --target ${{ matrix.target }}
+        run: _RJEM_MALLOC_CONF=prof:true cargo test --target ${{ matrix.target }}
         shell: bash
         env: ${{ matrix.custom_env }}
