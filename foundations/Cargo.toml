@@ -6,6 +6,7 @@ edition = { workspace = true }
 repository = { workspace = true }
 authors = { workspace = true }
 license = { workspace = true }
+readme = "../README.md"
 
 [package.metadata.release]
 # run in the context of workspace root

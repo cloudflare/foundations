@@ -6,6 +6,7 @@ edition = { workspace = true }
 repository = { workspace = true }
 authors = { workspace = true }
 license = { workspace = true }
+readme = "../README.md"
 
 [lib]
 proc-macro = true
