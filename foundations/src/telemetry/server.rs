@@ -135,6 +135,7 @@ fn bind_socket(addr: SocketAddr) -> BootstrapResult<Socket> {
     )?;
 
     socket.set_reuse_address(true)?;
+    #[cfg(unix)]
     socket.set_reuse_port(true)?;
     socket.bind(&SockAddr::from(addr))?;
     socket.listen(1024)?;
