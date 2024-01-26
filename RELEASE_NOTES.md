@@ -1,4 +1,11 @@
+3.1.0
+- 2024-01-26 Introduce feature sets for clients
+- 2024-01-25 Merge pull request #1 from zegevlier/fix-windows
+- 2024-01-25 Only use `socket.set_reuse_port` on supported operating systems
+- 2024-01-23 Make crates.io happy about keywords
+
 3.0.1
+- 2024-01-23 Release 3.0.1
 - 2024-01-23 Add more metadata to Cargo.toml
 - 2024-01-23 Add readme to Cargo.toml
 - 2024-01-23 Fix license type in Cargo.toml
@@ -28,8 +35,6 @@
 - 2024-01-19 Add Github CI
 - 2024-01-19 Clean up
 - 2024-01-19 Enable documentation of Settings within Vec and Option
-
-2.2.0
 - 2024-01-18 Release 2.2.0
 - 2024-01-18 Release 2.2.0
 - 2023-12-28 EGRESS-939: Adds log volume metric counter feature
@@ -38,28 +43,18 @@
 - 2023-12-21 Add PID to root logger
 - 2023-12-12 Drop zero histogram bucket
 - 2023-11-30 TUN-8005: Document how to use jemalloc from bedrock
-
-2.1.0
 - 2023-10-13 Release 2.1.0
 - 2023-10-13 Introduce Cli parsing from provided args.
-
-2.0.7
 - 2023-10-09 Release 2.0.7
 - 2023-10-02 ZTC-1201: Fixes issue where log::set_verbosity broke the connection between the test logger and the log records
-
-2.0.6
 - 2023-09-29 Release 2.0.6
 - 2023-09-29 OXY-1224: raise the log verbosity for the test logger
 - 2023-09-29 ZTC-886: Rate limit trace creation if configured and removes prior additions to with_test_telemetry macro
 - 2023-09-25 [OXY-1241] chore: stop specifying features in the workspace toml
 - 2023-09-25 Small doc improvement for Telemetry server
-
-2.0.5
 - 2023-09-25 Release 2.0.5
 - 2023-09-25 ZTC-1189: Adjust `with_graceful_shutdown` to be sync and improve its docs
 - 2023-09-22 Set up default flavor for cfsetup
-
-2.0.4
 - 2023-09-22 Release 2.0.4
 - 2023-09-22 ZTC-1189: Allow telemetry server to be gracefully shut down
 - 2023-09-21 ZTC-1187: Reuses a single root AsyncDrain object to avoid garbled log output
@@ -69,19 +64,11 @@
 - 2023-09-19 Use cargo-nextest
 - 2023-09-19 Remove some useless cfsetup dependencies
 - 2023-09-19 Use debian-bullseye-rustlang Docker image
-
-2.0.3
 - 2023-09-13 Release 2.0.3
 - 2023-09-13 Fix cross builds with feature security
-
-2.0.2
 - 2023-09-12 Release 2.0.2
-
-2.0.1
 - 2023-09-12 Release 2.0.1
 - 2023-09-11 ROCK-18: Don't panic if metrics system is not initialized
-
-2.0.0
 - 2023-09-07 Release 2.0.0
 - 2023-09-07 Update example Cargo.toml
 - 2023-09-07 Make Map generic in its keys
@@ -95,8 +82,6 @@
 - 2023-09-04 Disable bindgen default feature `which-rustfmt`
 - 2023-09-01 ROCK-20 Implement memory profiler telemetry server endpoint
 - 2023-09-01 Some tweaks to metrics API and docs
-
-1.2.0
 - 2023-08-29 Release 1.2.0
 - 2023-06-16 ROCK-4: Implement bedrock::telemetry::metrics
 - 2023-08-29 Remove unnecessary cast
@@ -105,26 +90,16 @@
 - 2023-08-02 Document SpanScope and move it out of internal module
 - 2023-08-01 Do not drop heap profile temp file before reading completion
 - 2023-08-01 ROCK-5 Implement jemalloc-related functionality
-
-1.1.0
 - 2023-07-26 Release 1.1.0
 - 2023-07-24 ROCK-16: Add 'jaeger_reporter_bind_addr' to TracingSettings
 - 2023-07-04 Adds cargo-release and git-cliff config
-
-1.0.3
 - 2023-07-03 Version 1.0.3
 - 2023-06-28 Use workspace metadata for crates
-
-1.0.2
 - 2023-06-27 Version 1.0.2
 - 2023-06-27 Removes cyclical dependency
-
-1.0.1
 - 2023-06-27 Release 1.0.1
 - 2023-06-27 Updates cfsetup.yaml to support registry
 - 2023-06-27 Specifies registry in workspace toml
-
-1.0.0
 - 2023-06-23 ETI-942: Fixes indentation of cfsetup publish builddeps
 - 2023-06-23 Release 1.0.0
 - 2023-06-23 ETI-942: Publish crate to internal registry
