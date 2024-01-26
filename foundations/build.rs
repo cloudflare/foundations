@@ -61,7 +61,10 @@ mod security {
         // so we can't use those gates here and must check at runtime the `TARGET` environment
         // variable. This is unfortunate as it means we need to depend on bindgen even
         // when targetting macOS. See https://github.com/rust-lang/cargo/issues/4932.
-        if target.contains("linux") && (target.contains("x86_64") || target.contains("aarch64")) {
+        if target.contains("linux")
+            && !target.contains("android")
+            && (target.contains("x86_64") || target.contains("aarch64"))
+        {
             linux_build();
         }
     }

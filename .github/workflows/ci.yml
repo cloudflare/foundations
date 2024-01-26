@@ -51,16 +51,23 @@ jobs:
         thing:
           - x86_64-linux
           - aarch64-linux
+          - arm64-android
+          - arm-android
+          - aarch64-ios
           - x86_64-macos
         include:
           - apt_packages: ""
           - custom_env: {}
           - build_only: false
+          - cargo_args: ""
+
           - thing: x86_64-linux
             target: x86_64-unknown-linux-gnu
             rust: stable
             os: ubuntu-latest
+
           - thing: aarch64-linux
+            build_only: true
             target: aarch64-unknown-linux-gnu
             rust: stable
             os: ubuntu-latest
@@ -69,11 +76,32 @@ jobs:
               CC: aarch64-linux-gnu-gcc
               CXX: aarch64-linux-gnu-g++
               CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-g++
+
+          - thing: arm64-android
             build_only: true
+            target: aarch64-linux-android
+            rust: stable
+            os: ubuntu-latest
+            cargo_args: --no-default-features --features server-client-common-default
+
+          - thing: arm-android
+            build_only: true
+            target: armv7-linux-androideabi
+            rust: stable
+            os: ubuntu-latest
+            cargo_args: --no-default-features --features server-client-common-default
+
+          - thing: aarch64-ios
+            build_only: true
+            target: aarch64-apple-ios
+            os: macos-latest
+            cargo_args: --no-default-features --features server-client-common-default
+
           - thing: x86_64-macos
             target: x86_64-apple-darwin
             rust: stable
             os: macos-latest
+
     steps:
       - uses: actions/checkout@v2
         with:
@@ -86,13 +114,16 @@ jobs:
         run: sudo apt update && sudo apt install -y ${{ matrix.apt_packages }}
         shell: bash
       - run: rustup target add ${{ matrix.target }}
+      - name: Set Android Linker path
+        if: endsWith(matrix.thing, '-android')
+        run: echo "CARGO_TARGET_$(echo ${{ matrix.target }} | tr \\-a-z _A-Z)_LINKER=$ANDROID_NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/$(echo ${{ matrix.target }} | sed s/armv7/armv7a/)21-clang++" >> "$GITHUB_ENV"
       - name: Build tests
         # We `build` because we want the linker to verify we are cross-compiling correctly for check-only targets.
-        run: cargo build --target ${{ matrix.target }}
+        run: cargo build --target ${{ matrix.target }} ${{matrix.cargo_args}}
         shell: bash
         env: ${{ matrix.custom_env }}
       - name: Run tests
         if: "!matrix.build_only"
-        run: _RJEM_MALLOC_CONF=prof:true cargo test --target ${{ matrix.target }}
+        run: _RJEM_MALLOC_CONF=prof:true cargo test --target ${{ matrix.target }} ${{matrix.cargo_args}}
         shell: bash
         env: ${{ matrix.custom_env }}
