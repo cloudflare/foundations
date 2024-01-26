@@ -14,13 +14,7 @@ categories = [
     "external-ffi-bindings",
     "memory-management",
 ]
-keywords = [
-    "service",
-    "telemetry",
-    "settings",
-    "seccomp",
-    "metrics",
-]
+keywords = ["service", "telemetry", "settings", "seccomp", "metrics"]
 
 [package.metadata.release]
 # run in the context of workspace root
@@ -40,13 +34,16 @@ default = ["platform-common-default", "security"]
 
 # All non platform-specific features
 platform-common-default = [
-    "metrics",
     "settings",
     "jemalloc",
     "telemetry",
     "cli",
     "testing",
 ]
+
+# A subset of features that can be used both on server and client sides. Useful for libraries
+# that can be used either way.
+server-client-common-default = ["settings", "client-telemetry", "testing"]
 
 # Enables metrics functionality.
 metrics = [
@@ -79,6 +76,9 @@ telemetry = [
     "tracing",
     "telemetry-server",
 ]
+
+# Enables a subset of telemetry features suitable for usage in clients.
+client-telemetry = ["logging", "metrics", "tracing"]
 
 # Enables the telemetry server.
 telemetry-server = [

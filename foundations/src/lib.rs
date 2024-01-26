@@ -23,9 +23,12 @@
 //! - **default**: All features are enabled by default.
 //! - **platform-common-default**: The same as **default**, but excludes platform-specific features,
 //! such as **security**.
+//! - **server-client-common-default**: A subset of features that can be used both on server and client sides.
+//!   Useful for libraries that can be used either way.
 //! - **settings**: Enables serializable documented settings functionality.
 //! - **telemetry**: Enables all the telemetry-related features (**metrics**, **logging**, **tracing**, **telemetry-server**).
 //! - **telemetry-server**: Enables the telemetry server.
+//! - **client-telemetry**: Enables a subset of telemetry features suitable for usage in clients (e.g. on mobile devices).
 //! - **metrics**: Enables metrics functionality.
 //! - **logging**: Enables logging functionality.
 //! - **tracing**: Enables distributed tracing functionality.
