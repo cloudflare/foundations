@@ -1,14 +1,32 @@
+use std::env;
+use std::path::PathBuf;
+
 fn main() {
+    ensure_seccomp_sources_fetched();
+
     #[cfg(feature = "security")]
     security::build()
 }
 
+fn ensure_seccomp_sources_fetched() {
+    let src_dir =
+        PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap()).join("src/security/libseccomp/src");
+
+    if !src_dir.exists() {
+        panic!(
+            "Can't find libssecomp sources. Run `git submodule update --init --recursive`. \
+            This is required even if `security` feature is disabled or the OS is not Linux, \
+            to ensure that sources are always included on publishing."
+        );
+    }
+}
+
 #[cfg(feature = "security")]
 mod security {
+    use super::*;
     use bindgen::{Builder, CargoCallbacks};
-    use std::env;
     use std::fs;
-    use std::path::{Path, PathBuf};
+    use std::path::Path;
 
     const SRC_FILES: &[&str] = &[
         "api.c",
