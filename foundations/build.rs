@@ -95,11 +95,6 @@ mod security {
         let libseccomp_repo = crate_root.join("src/security/libseccomp");
         let include_dir = libseccomp_repo.join("include");
         let src_dir = libseccomp_repo.join("src");
-
-        if !src_dir.exists() {
-            panic!("Can't find libssecomp sources. Run `git submodule update --init --recursive`");
-        }
-
         let header_file = render_header(out_dir.as_path(), include_dir.as_path());
         let mut compiler = cc::Build::new();
 

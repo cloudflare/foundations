@@ -1,4 +1,7 @@
-3.1.0
+3.1.1
+- 2024-01-26 Add check for missing seccomp sources to ensure that they are always published
+- 2024-01-26 Release 3.1.0
+- 2024-01-26 Merge pull request #2 from cloudflare/android-ci
 - 2024-01-26 Introduce feature sets for clients
 - 2024-01-25 Merge pull request #1 from zegevlier/fix-windows
 - 2024-01-25 Only use `socket.set_reuse_port` on supported operating systems
