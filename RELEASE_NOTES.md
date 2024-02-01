@@ -1,4 +1,7 @@
-3.1.1
+3.1.2
+- 2024-02-01 Disable `default-features` for dependency `prometheus`
+- 2024-01-31 ci: add macos to features check ci
+- 2024-01-26 Release 3.1.1
 - 2024-01-26 Add check for missing seccomp sources to ensure that they are always published
 - 2024-01-26 Release 3.1.0
 - 2024-01-26 Merge pull request #2 from cloudflare/android-ci
