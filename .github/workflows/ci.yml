@@ -13,20 +13,93 @@ env:
   RUST_BACKTRACE: 1
 
 jobs:
-  lint:
-    name: Lint
+  pr-status-checks:
+    name: Pull Request Status Checks
+    runs-on: ubuntu-latest
+    needs:
+      - docs
+      - deny
+      - clippy
+      - fmt
+      - check-features
+      - test
+    steps:
+      - run: exit 0
+
+  docs:
+    name: Doc checks
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
         with:
           submodules: "recursive"
       - name: Install Rust
-        run: rustup update stable && rustup default stable
-      - name: Install cargo deny
-        run: cargo install --locked cargo-deny
-      - name: Lint
-        run: ./scripts/lint.sh
-        shell: bash
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly
+      - uses: Swatinem/rust-cache@v2
+      - name: Run doc checks
+        run: |
+          cargo doc --lib --no-deps --all-features --document-private-items
+        env:
+          RUSTDOCFLAGS: -Dwarnings
+
+  deny:
+    name: Cargo deny checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: "recursive"
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Run cargo deny checks
+        uses: EmbarkStudios/cargo-deny-action@v1
+        with:
+          command: check
+
+  clippy:
+    name: Clippy checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: "recursive"
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Run Clippy
+        run: |
+          cargo clippy --all-targets -- \
+            -D warnings \
+            -D unreachable_pub \
+            -D clippy::await_holding_lock \
+            -D clippy::clone_on_ref_ptr
+
+  fmt:
+    name: fmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: "recursive"
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+      # Check fmt
+      - name: "rustfmt --check"
+        # Workaround for rust-lang/cargo#7732
+        # based on tokio's ci job
+        run: |
+          if ! rustfmt --check --edition 2021 $(git ls-files '*.rs'); then
+            printf "Please run \`rustfmt --edition 2021 \$(git ls-files '*.rs')\` to fix rustfmt errors.\n" >&2
+            exit 1
+          fi
 
   check-features:
     name: Check feature combinations
@@ -35,13 +108,14 @@ jobs:
         os: [ ubuntu-latest, macos-latest ]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
         with:
           submodules: "recursive"
       - name: Install Rust
-        run: rustup update stable && rustup default stable
-      - name: Install cargo deny
-        run: cargo install --locked cargo-hack
+        uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install cargo hack
+        uses: taiki-e/install-action@cargo-hack
       - name: Check
         run: ./scripts/check-features.sh
         shell: bash
@@ -97,6 +171,7 @@ jobs:
           - thing: aarch64-ios
             build_only: true
             target: aarch64-apple-ios
+            rust: stable
             os: macos-latest
             cargo_args: --no-default-features --features server-client-common-default
 
@@ -106,17 +181,19 @@ jobs:
             os: macos-latest
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
         with:
           submodules: "recursive"
-      - name: Install Rust (rustup)
-        run: rustup update ${{ matrix.rust }} --no-self-update && rustup default ${{ matrix.rust }}
-        shell: bash
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.rust }}
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
       - name: Install target-specific APT dependencies
         if: "matrix.apt_packages != ''"
         run: sudo apt update && sudo apt install -y ${{ matrix.apt_packages }}
         shell: bash
-      - run: rustup target add ${{ matrix.target }}
       - name: Set Android Linker path
         if: endsWith(matrix.thing, '-android')
         run: echo "CARGO_TARGET_$(echo ${{ matrix.target }} | tr \\-a-z _A-Z)_LINKER=$ANDROID_NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/$(echo ${{ matrix.target }} | sed s/armv7/armv7a/)21-clang++" >> "$GITHUB_ENV"
