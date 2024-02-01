@@ -41,7 +41,7 @@ ipnetwork = "0.20"
 once_cell = "1.5"
 parking_lot = "0.12"
 proc-macro2 = { version = "1", default-features = false }
-prometheus = "0.13.3"
+prometheus = { version = "0.13.3", default-features = false }
 prometheus-client = "0.18.1"
 prometools = "0.2.1"
 rand = "0.8"
