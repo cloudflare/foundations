@@ -34,7 +34,7 @@
 //! ```no_run
 //! # use std::thread;
 //! # use std::time::Duration;
-//! # use foundations::telemetry::tokio::RuntimeMonitor;
+//! # use foundations::telemetry::tokio_runtime_metrics::RuntimeMonitor;
 //! // create and monitor 8 runtimes spawned on other threads, then poll in the background from this one
 //! let mut monitor = RuntimeMonitor::new();
 //!

@@ -63,12 +63,20 @@ mod memory_profiler;
 
 pub mod settings;
 
-#[cfg(all(feature = "tokio-metrics", tokio_unstable, foundations_unstable))]
+#[cfg(all(
+    feature = "tokio-runtime-metrics",
+    tokio_unstable,
+    foundations_unstable
+))]
 #[cfg_attr(
     docsrs,
-    doc(cfg(all(feature = "tokio-metrics", tokio_unstable, foundations_unstable)))
+    doc(cfg(all(
+        feature = "tokio-runtime-metrics",
+        tokio_unstable,
+        foundations_unstable
+    )))
 )]
-pub mod tokio;
+pub mod tokio_runtime_metrics;
 
 #[cfg(feature = "telemetry-server")]
 mod server;

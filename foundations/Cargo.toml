@@ -77,7 +77,7 @@ telemetry = [
     "telemetry-server",
 ]
 
-tokio-metrics = [
+tokio-runtime-metrics = [
     "tokio/rt",
     "metrics",
     "serde/rc",
