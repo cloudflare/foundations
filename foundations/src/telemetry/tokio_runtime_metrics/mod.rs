@@ -37,14 +37,12 @@
 //! ```no_run
 //! # use std::thread;
 //! # use std::time::Duration;
-//! # use foundations::telemetry::tokio_runtime_metrics::RuntimeMonitor;
+//! # use foundations::telemetry::tokio_runtime_metrics::{record_runtime_metrics_sample, register_runtime_with_monitor};
 //! // create and monitor 8 runtimes spawned on other threads, then poll in the background from this one
-//! let mut monitor = RuntimeMonitor::new();
-//!
 //! for i in 0..8 {
 //!     let r = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
 //!     
-//!     monitor.add_runtime(None, Some(i), r.handle());
+//!     register_runtime_with_monitor(None, Some(i), r.handle());
 //!
 //!     thread::spawn(move || r.block_on(async {
 //!         loop {
@@ -55,7 +53,7 @@
 //! }
 //!
 //! loop {
-//!     monitor.record_sample();
+//!     record_runtime_metrics_sample();
 //!
 //!     // record metrics roughly twice a second
 //!     std::thread::sleep(Duration::from_secs_f32(0.5));
@@ -63,54 +61,59 @@
 //! ```
 
 use crate::telemetry::tokio_runtime_metrics::runtime_handle::RuntimeHandle;
+use parking_lot::Mutex;
 use std::sync::Arc;
 use tokio::runtime::Handle;
 
 mod metrics;
 mod runtime_handle;
 
-/// Monitors a set of runtimes, allowing metrics to be periodically collected for each tracked runtime.
+static MONITOR: Mutex<RuntimeMonitor> = Mutex::new(RuntimeMonitor::new());
+
+/// Add a runtime to the monitor, optionally with a name and/or id in case you are monitoring multiple runtimes.
+///
+/// Runtimes should be uniquely identifiable by both label and id.
+pub fn register_runtime_with_monitor(
+    runtime_name: Option<Arc<str>>,
+    runtime_id: Option<usize>,
+    handle: &Handle,
+) {
+    let mut monitor = MONITOR.lock();
+
+    assert!(
+        monitor
+            .runtimes
+            .iter()
+            .all(|handle| (handle.runtime_name.as_ref(), handle.runtime_id)
+                != (runtime_name.as_ref(), runtime_id)),
+        "Runtime name and index tuples must be unique"
+    );
+
+    monitor.runtimes.push(RuntimeHandle {
+        runtime_name,
+        runtime_id,
+        handle: handle.clone(),
+    });
+}
+
+/// Record a sample of runtime metrics for each tracked runtime.
+pub fn record_runtime_metrics_sample() {
+    MONITOR
+        .lock()
+        .runtimes
+        .iter_mut()
+        .for_each(RuntimeHandle::record_sample)
+}
+
 #[derive(Default)]
-pub struct RuntimeMonitor {
+struct RuntimeMonitor {
     runtimes: Vec<RuntimeHandle>,
 }
 
 impl RuntimeMonitor {
-    /// Construct a new runtime monitor which initially monitors no runtimes.
-    pub fn new() -> Self {
+    const fn new() -> Self {
         Self {
             runtimes: Vec::new(),
         }
-    }
-
-    /// Add a runtime to the monitor, optionally with a name and/or id in case you are monitoring multiple runtimes.
-    ///
-    /// Runtimes should be uniquely identifiable by both label and id.
-    pub fn add_runtime(
-        &mut self,
-        runtime_name: Option<Arc<str>>,
-        runtime_id: Option<usize>,
-        handle: &Handle,
-    ) {
-        assert!(
-            self.runtimes
-                .iter()
-                .all(|handle| (handle.runtime_name.as_ref(), handle.runtime_id)
-                    != (runtime_name.as_ref(), runtime_id)),
-            "Runtime name and index tuples must be unique"
-        );
-
-        self.runtimes.push(RuntimeHandle {
-            runtime_name,
-            runtime_id,
-            handle: handle.clone(),
-        });
-    }
-
-    /// Record a sample of runtime metrics for each tracked runtime.
-    pub fn record_sample(&mut self) {
-        self.runtimes
-            .iter_mut()
-            .for_each(RuntimeHandle::record_sample)
     }
 }
