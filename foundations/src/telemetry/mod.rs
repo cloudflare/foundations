@@ -4,6 +4,7 @@
 //! * distributed tracing (backed by [Jaeger])
 //! * metrics (backed by [Prometheus])
 //! * memory profiling (backed by [jemalloc])
+//! * monitoring tokio runtimes
 //!
 //! The library strives to minimize the bootstrap code required to set up basic telemetry for a
 //! service and provide ergonomic API for telemetry-related operations.
