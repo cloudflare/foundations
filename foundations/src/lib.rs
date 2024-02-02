@@ -41,6 +41,13 @@
 //! - **cli**: Enables command line interface (CLI) functionality. Implicitly enabled **settings**
 //! feature.
 //!
+//! # Unstable Features
+//! Foundations has unstable features which are gated behind `--cfg foundations_unstable`:
+//!
+//! - **tokio-runtime-metrics**: Enables runtime metrics for Tokio runtimes. Implicitly enables the **metrics** feature. [Also requires tokio_unstable](https://docs.rs/tokio/latest/tokio/#unstable-features).
+//!
+//! To enable these, you must add `--cfg foundations_unstable` to your RUSTFLAGS environment variable.
+//!
 //! [Cargo features]: https://doc.rust-lang.org/stable/cargo/reference/features.html#the-features-section
 //! [seccomp]: https://en.wikipedia.org/wiki/Seccomp
 //! [jemalloc]: https://github.com/jemalloc/jemalloc
