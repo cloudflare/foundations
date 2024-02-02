@@ -43,6 +43,12 @@ pub fn set_verbosity(level: Level) -> Result<()> {
     Ok(())
 }
 
+/// Gets the current log's verbosity.
+pub fn verbosity() -> LogVerbosity {
+    let harness = LogHarness::get();
+    harness.settings.verbosity
+}
+
 /// Returns current log as a raw [slog] crate's `Logger` used by Foundations internally.
 ///
 /// Can be used to propagate the logging context to libraries that don't use Foundations'
