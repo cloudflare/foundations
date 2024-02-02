@@ -1,9 +1,7 @@
-//! Tokio runtime metrics helper API.
+//! Toolkit for monitoring tokio runtimes using the [`foundations metrics api`].
 //!
-//! Foundations provides a helper API for monitoring Tokio runtimes using the
-//! [`foundations metrics api`](crate::telemetry::metrics).
-//! This helper API allows users to track one or more runtimes using a [`RuntimeMonitor`] object and collect their
-//! metrics periodically using [`RuntimeMonitor::record_sample`].
+//! Foundations provides a simple toolkit for registering tokio runtimes with a monitor and collecting runtime metrics
+//! for registered runtimes.
 //!
 //! # Note
 //! This is currently an [unstable API](https://docs.rs/foundations/latest/foundations/index.html#features).
@@ -59,6 +57,8 @@
 //!     std::thread::sleep(Duration::from_secs_f32(0.5));
 //! }
 //! ```
+//!
+//! [`foundations metrics api`]: crate::telemetry::metrics
 
 use crate::telemetry::tokio_runtime_metrics::runtime_handle::RuntimeHandle;
 use parking_lot::Mutex;
@@ -70,9 +70,9 @@ mod runtime_handle;
 
 static MONITOR: Mutex<RuntimeMonitor> = Mutex::new(RuntimeMonitor::new());
 
-/// Add a runtime to the monitor, optionally with a name and/or id in case you are monitoring multiple runtimes.
+/// Add a runtime to the global monitor, optionally with a name and/or id in case you are monitoring multiple runtimes.
 ///
-/// Runtimes should be uniquely identifiable by both label and id.
+/// Runtimes should be uniquely identifiable by label/id tuple.
 pub fn register_runtime_with_monitor(
     runtime_name: Option<Arc<str>>,
     runtime_id: Option<usize>,
