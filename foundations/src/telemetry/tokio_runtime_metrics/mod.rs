@@ -4,7 +4,7 @@
 //! for registered runtimes.
 //!
 //! # Note
-//! This is currently an [unstable API](https://docs.rs/foundations/latest/foundations/index.html#features).
+//! This is currently an [unstable API](https://docs.rs/foundations/latest/foundations/index.html#unstable-features).
 //!
 //! # Metrics
 //! | Metric                                           | Source                                                              | Labels (? indicates optional)          |
