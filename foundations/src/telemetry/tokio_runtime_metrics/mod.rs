@@ -5,7 +5,10 @@
 //! This helper API allows users to track one or more runtimes using a [`RuntimeMonitor`] object and collect their
 //! metrics periodically using [`RuntimeMonitor::record_sample`].
 //!
-//! ## Metrics
+//! # Note
+//! This is currently an [unstable API](https://docs.rs/foundations/latest/foundations/index.html#features).
+//!
+//! # Metrics
 //! | Metric                                           | Source                                                              | Labels (? indicates optional)          |
 //! |:-------------------------------------------------|:--------------------------------------------------------------------|:---------------------------------------|
 //! | tokio_runtime_workers                            | [`tokio::runtime::RuntimeMetrics::num_workers`]                     | runtime_name?, runtime_id?             |
@@ -30,7 +33,7 @@
 //! | tokio_runtime_worker_local_queue_depth           | [`tokio::runtime::RuntimeMetrics::worker_local_queue_depth`]        | runtime_name?, runtime_id?, worker_idx |
 //! | tokio_runtime_worker_mean_poll_time_micros       | [`tokio::runtime::RuntimeMetrics::worker_mean_poll_time`]           | runtime_name?, runtime_id?, worker_idx |
 //!
-//! ## Example
+//! # Example
 //! ```no_run
 //! # use std::thread;
 //! # use std::time::Duration;
