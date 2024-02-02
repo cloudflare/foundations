@@ -1,4 +1,4 @@
-//! Tokio Runtime Metrics
+//! Tokio runtime metrics helper API.
 //!
 //! Foundations provides a helper API for monitoring Tokio runtimes using the
 //! [`foundations metrics api`](crate::telemetry::metrics).
