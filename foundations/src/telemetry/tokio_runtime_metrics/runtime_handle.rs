@@ -1,4 +1,4 @@
-use crate::telemetry::tokio_runtime_metrics::metrics::{tokio_runtime, tokio_runtime_worker};
+use crate::telemetry::tokio_runtime_metrics::metrics::{tokio_runtime_core, tokio_runtime_worker};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use tokio::runtime::{Handle, RuntimeMetrics};
@@ -21,42 +21,42 @@ impl RuntimeHandle {
     }
 
     fn record_global_metrics(&mut self, metrics: &RuntimeMetrics) {
-        tokio_runtime::workers(&self.runtime_name, self.runtime_id)
+        tokio_runtime_core::workers(&self.runtime_name, self.runtime_id)
             .set(metrics.num_workers() as u64);
 
-        tokio_runtime::blocking_threads(&self.runtime_name, self.runtime_id)
+        tokio_runtime_core::blocking_threads(&self.runtime_name, self.runtime_id)
             .set(metrics.num_blocking_threads() as u64);
 
-        tokio_runtime::active_tasks(&self.runtime_name, self.runtime_id)
+        tokio_runtime_core::active_tasks(&self.runtime_name, self.runtime_id)
             .set(metrics.active_tasks_count() as u64);
 
-        tokio_runtime::idle_blocking_threads(&self.runtime_name, self.runtime_id)
+        tokio_runtime_core::idle_blocking_threads(&self.runtime_name, self.runtime_id)
             .set(metrics.num_idle_blocking_threads() as u64);
 
-        tokio_runtime::remote_schedules_total(&self.runtime_name, self.runtime_id)
+        tokio_runtime_core::remote_schedules_total(&self.runtime_name, self.runtime_id)
             .inner()
             .store(metrics.remote_schedule_count(), Ordering::SeqCst);
 
-        tokio_runtime::budget_forced_yields_total(&self.runtime_name, self.runtime_id)
+        tokio_runtime_core::budget_forced_yields_total(&self.runtime_name, self.runtime_id)
             .inner()
             .store(metrics.budget_forced_yield_count(), Ordering::SeqCst);
 
-        tokio_runtime::io_driver_fd_registrations_total(&self.runtime_name, self.runtime_id)
+        tokio_runtime_core::io_driver_fd_registrations_total(&self.runtime_name, self.runtime_id)
             .inner()
             .store(metrics.io_driver_fd_registered_count(), Ordering::SeqCst);
 
-        tokio_runtime::io_driver_fd_deregistrations_total(&self.runtime_name, self.runtime_id)
+        tokio_runtime_core::io_driver_fd_deregistrations_total(&self.runtime_name, self.runtime_id)
             .inner()
             .store(metrics.io_driver_fd_deregistered_count(), Ordering::SeqCst);
 
-        tokio_runtime::io_driver_fd_readies_total(&self.runtime_name, self.runtime_id)
+        tokio_runtime_core::io_driver_fd_readies_total(&self.runtime_name, self.runtime_id)
             .inner()
             .store(metrics.io_driver_ready_count(), Ordering::SeqCst);
 
-        tokio_runtime::injection_queue_depth(&self.runtime_name, self.runtime_id)
+        tokio_runtime_core::injection_queue_depth(&self.runtime_name, self.runtime_id)
             .set(metrics.injection_queue_depth() as u64);
 
-        tokio_runtime::blocking_queue_depth(&self.runtime_name, self.runtime_id)
+        tokio_runtime_core::blocking_queue_depth(&self.runtime_name, self.runtime_id)
             .set(metrics.blocking_queue_depth() as u64);
     }
 

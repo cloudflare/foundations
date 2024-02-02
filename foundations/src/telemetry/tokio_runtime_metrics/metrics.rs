@@ -2,7 +2,7 @@ use crate::telemetry::metrics::{metrics, Counter, Gauge};
 use std::sync::Arc;
 
 #[metrics(crate_path = "crate")]
-pub(super) mod tokio_runtime {
+pub(super) mod tokio_runtime_core {
     /// Number of worker threads in use by the runtime.
     ///
     /// This number shouldn't change during execution.
