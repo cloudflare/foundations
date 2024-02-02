@@ -92,19 +92,13 @@ impl RuntimeMonitor {
         runtime_id: Option<usize>,
         handle: &Handle,
     ) {
-        if self.runtimes.iter().any(|handle| {
-            (handle.runtime_name.is_some() != runtime_name.is_some())
-                || (handle.runtime_id.is_some() != runtime_id.is_some())
-        }) {
-            panic!("If you specify a runtime name or ID for one runtime, that setting must be specified for all");
-        }
-
-        if self.runtimes.iter().any(|handle| {
-            (handle.runtime_name.is_some() && handle.runtime_name == runtime_name)
-                || (handle.runtime_id.is_some() && handle.runtime_id == runtime_id)
-        }) {
-            panic!("Any runtime names or IDs provided to the RuntimeMonitor must be unique");
-        }
+        assert!(
+            self.runtimes
+                .iter()
+                .all(|handle| (handle.runtime_name.as_ref(), handle.runtime_id)
+                    != (runtime_name.as_ref(), runtime_id)),
+            "Runtime name and index tuples must be unique"
+        );
 
         self.runtimes.push(RuntimeHandle {
             runtime_name,
