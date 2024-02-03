@@ -1,13 +1,10 @@
 use crate::telemetry::settings::rate_limit::RateLimitingSettings;
 use crate::utils::feature_use;
 
-use std::ops::Deref;
 use std::path::PathBuf;
 
 feature_use!(cfg(feature = "settings"), {
-    use crate::settings::{settings, Settings};
-    use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
-    use std::str::FromStr;
+    use crate::settings::settings;
 });
 
 // NOTE: we technically don't need a feature gate here, but if we don't add it then docs don't
@@ -66,21 +63,52 @@ pub enum LogFormat {
     Json,
 }
 
-/// Verbosity level of the log.
-#[derive(Clone, Debug, Copy)]
-pub struct LogVerbosity(pub Level);
+/// Log verbosity levels which match 1:1 with [`slog::Level`].
+#[cfg_attr(
+    feature = "settings",
+    settings(crate_path = "crate", impl_default = false)
+)]
+#[cfg_attr(not(feature = "settings"), derive(Clone, Debug))]
+#[derive(Copy, Default)]
+pub enum LogVerbosity {
+    /// See [`slog::Level::Critical`].
+    Critical,
+    /// See [`slog::Level::Error`].
+    Error,
+    /// See [`slog::Level::Warning`].
+    Warning,
+    /// See [`slog::Level::Info`].
+    #[default]
+    Info,
+    /// See [`slog::Level::Debug`].
+    Debug,
+    /// See [`slog::Level::Trace`].
+    Trace,
+}
 
-impl Default for LogVerbosity {
-    fn default() -> Self {
-        Self(Level::Info)
+impl From<slog::Level> for LogVerbosity {
+    fn from(level: slog::Level) -> Self {
+        match level {
+            Level::Critical => Self::Critical,
+            Level::Warning => Self::Warning,
+            Level::Error => Self::Error,
+            Level::Info => Self::Info,
+            Level::Debug => Self::Debug,
+            Level::Trace => Self::Trace,
+        }
     }
 }
 
-impl Deref for LogVerbosity {
-    type Target = Level;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
+impl From<LogVerbosity> for slog::Level {
+    fn from(level: LogVerbosity) -> Self {
+        match level {
+            LogVerbosity::Critical => Self::Critical,
+            LogVerbosity::Warning => Self::Warning,
+            LogVerbosity::Error => Self::Error,
+            LogVerbosity::Info => Self::Info,
+            LogVerbosity::Debug => Self::Debug,
+            LogVerbosity::Trace => Self::Trace,
+        }
     }
 }
 
