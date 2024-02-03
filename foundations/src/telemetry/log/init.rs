@@ -147,7 +147,7 @@ where
         drain,
         FieldRedactFilterFactory::new(settings.redact_keys.clone()),
     );
-    let drain = drain.filter_level(*settings.verbosity);
+    let drain = drain.filter_level(settings.verbosity.into());
 
     RateLimitingDrain::new(drain, settings)
 }
