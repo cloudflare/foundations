@@ -71,6 +71,7 @@ use tokio::runtime::Handle;
 
 static MONITOR: Mutex<Slab<RuntimeHandle>> = Mutex::new(Slab::new());
 
+/// Key for removing runtimes registered with the global monitor.
 pub struct Key(usize);
 
 /// Add a runtime to the global monitor, optionally with a name and/or id in case you are monitoring multiple runtimes.
