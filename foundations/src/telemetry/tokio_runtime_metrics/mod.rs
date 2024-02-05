@@ -35,12 +35,12 @@
 //! ```no_run
 //! # use std::thread;
 //! # use std::time::Duration;
-//! # use foundations::telemetry::tokio_runtime_metrics::{record_runtime_metrics_sample, register_runtime_with_monitor};
+//! # use foundations::telemetry::tokio_runtime_metrics::{record_runtime_metrics_sample, register_runtime};
 //! // create and monitor 8 runtimes spawned on other threads, then poll in the background from this one
 //! for i in 0..8 {
 //!     let r = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
 //!     
-//!     register_runtime_with_monitor(None, Some(i), r.handle());
+//!     register_runtime(None, Some(i), r.handle());
 //!
 //!     thread::spawn(move || r.block_on(async {
 //!         loop {
@@ -60,60 +60,57 @@
 //!
 //! [`foundations metrics api`]: crate::telemetry::metrics
 
-use crate::telemetry::tokio_runtime_metrics::runtime_handle::RuntimeHandle;
-use parking_lot::Mutex;
-use std::sync::Arc;
-use tokio::runtime::Handle;
-
 mod metrics;
 mod runtime_handle;
 
-static MONITOR: Mutex<RuntimeMonitor> = Mutex::new(RuntimeMonitor::new());
+use crate::telemetry::tokio_runtime_metrics::runtime_handle::RuntimeHandle;
+use parking_lot::Mutex;
+use slab::Slab;
+use std::sync::Arc;
+use tokio::runtime::Handle;
+
+static MONITOR: Mutex<Slab<RuntimeHandle>> = Mutex::new(Slab::new());
+
+pub struct Key(usize);
 
 /// Add a runtime to the global monitor, optionally with a name and/or id in case you are monitoring multiple runtimes.
 ///
 /// Runtimes should be uniquely identifiable by label/id tuple.
-pub fn register_runtime_with_monitor(
+///
+/// You can use IDs as either unique IDs among all runtimes or unique IDs within a namespace based on the runtime name.
+///
+/// This function returns a key which can later be used to remove the registered runtime.
+pub fn register_runtime(
     runtime_name: Option<Arc<str>>,
     runtime_id: Option<usize>,
     handle: &Handle,
-) {
+) -> Key {
     let mut monitor = MONITOR.lock();
 
     assert!(
-        monitor
-            .runtimes
-            .iter()
-            .all(|handle| (handle.runtime_name.as_ref(), handle.runtime_id)
-                != (runtime_name.as_ref(), runtime_id)),
+        monitor.iter().all(
+            |(_, handle)| (handle.runtime_name.as_ref(), handle.runtime_id)
+                != (runtime_name.as_ref(), runtime_id)
+        ),
         "Runtime name and index tuples must be unique"
     );
 
-    monitor.runtimes.push(RuntimeHandle {
+    Key(monitor.insert(RuntimeHandle {
         runtime_name,
         runtime_id,
         handle: handle.clone(),
-    });
+    }))
+}
+
+/// Try and deregister a runtime, returning true if a runtime is tracked for the specified key, and false otherwise.
+pub fn deregister_runtime(key: Key) -> bool {
+    MONITOR.lock().try_remove(key.0).is_some()
 }
 
 /// Record a sample of runtime metrics for each tracked runtime.
 pub fn record_runtime_metrics_sample() {
     MONITOR
         .lock()
-        .runtimes
         .iter_mut()
-        .for_each(RuntimeHandle::record_sample)
-}
-
-#[derive(Default)]
-struct RuntimeMonitor {
-    runtimes: Vec<RuntimeHandle>,
-}
-
-impl RuntimeMonitor {
-    const fn new() -> Self {
-        Self {
-            runtimes: Vec::new(),
-        }
-    }
+        .for_each(|(_, h)| h.record_sample())
 }

@@ -81,6 +81,7 @@ tokio-runtime-metrics = [
     "tokio/rt",
     "metrics",
     "serde/rc",
+    "dep:slab",
 ]
 
 # Enables a subset of telemetry features suitable for usage in clients.
@@ -174,6 +175,7 @@ serde = { workspace = true, optional = true, features = ["derive"] }
 serde_path_to_error = { workspace = true, optional = true }
 serde_yaml = { workspace = true, optional = true }
 serde_with = { workspace = true, optional = true }
+slab = { workspace = true, optional = true }
 slog = { workspace = true, optional = true, features = ["max_level_trace"] }
 slog-async = { workspace = true, optional = true }
 slog-json = { workspace = true, optional = true }
