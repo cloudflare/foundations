@@ -42,7 +42,8 @@ jobs:
         run: |
           cargo doc --lib --no-deps --all-features --document-private-items
         env:
-          RUSTDOCFLAGS: -Dwarnings
+          RUSTDOCFLAGS: -Dwarnings --cfg tokio_unstable --cfg foundations_unstable
+          RUSTFLAGS: -Dwarnings --cfg tokio_unstable --cfg foundations_unstable
 
   deny:
     name: Cargo deny checks
@@ -78,6 +79,8 @@ jobs:
             -D unreachable_pub \
             -D clippy::await_holding_lock \
             -D clippy::clone_on_ref_ptr
+        env:
+          RUSTFLAGS: -Dwarnings --cfg tokio_unstable --cfg foundations_unstable
 
   fmt:
     name: fmt
@@ -119,6 +122,39 @@ jobs:
       - name: Check
         run: ./scripts/check-features.sh
         shell: bash
+
+  check-tokio-unstable:
+    name: Check unstable
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: "recursive"
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install cargo hack
+        uses: taiki-e/install-action@cargo-hack
+      - name: Check unstable
+        run: cargo hack check --no-dev-deps
+        env:
+          RUSTFLAGS: -Dwarnings --cfg tokio_unstable --cfg foundations_unstable
+
+  test-tokio-unstable:
+    name: Test unstable
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: "recursive"
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Test unstable
+        run: cargo test --all-features
+        env:
+          RUSTFLAGS: -Dwarnings --cfg tokio_unstable --cfg foundations_unstable
+          _RJEM_MALLOC_CONF: prof:true
 
   test:
     name: Test

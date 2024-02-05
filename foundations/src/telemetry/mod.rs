@@ -4,6 +4,7 @@
 //! * distributed tracing (backed by [Jaeger])
 //! * metrics (backed by [Prometheus])
 //! * memory profiling (backed by [jemalloc])
+//! * monitoring tokio runtimes
 //!
 //! The library strives to minimize the bootstrap code required to set up basic telemetry for a
 //! service and provide ergonomic API for telemetry-related operations.
@@ -62,6 +63,21 @@ pub mod tracing;
 mod memory_profiler;
 
 pub mod settings;
+
+#[cfg(all(
+    feature = "tokio-runtime-metrics",
+    tokio_unstable,
+    foundations_unstable
+))]
+#[cfg_attr(
+    docsrs,
+    doc(cfg(all(
+        feature = "tokio-runtime-metrics",
+        tokio_unstable,
+        foundations_unstable
+    )))
+)]
+pub mod tokio_runtime_metrics;
 
 #[cfg(feature = "telemetry-server")]
 mod server;
