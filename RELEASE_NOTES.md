@@ -1,3 +1,11 @@
+3.2.0
+- 2024-02-05 telemetry: add tokio runtime metrics (#12)
+- 2024-02-02 telemetry: make logger verbosity public
+- 2024-02-01 ci: cleanup actions config
+- 2024-02-01 Disable `default-features` for dependency `prometheus`
+- 2024-01-31 ci: add macos to features check ci
+- 2024-01-31 Enable feature `all` on socket2, should address #5
+
 3.1.1
 - 2024-01-26 Add check for missing seccomp sources to ensure that they are always published
 - 2024-01-26 Release 3.1.0
