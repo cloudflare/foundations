@@ -21,8 +21,13 @@ use self::internal::current_log;
 use crate::telemetry::log::init::build_log_with_drain;
 use crate::telemetry::settings::LogVerbosity;
 use crate::Result;
+use log::Level as std_level;
 use slog::{Level, Logger, OwnedKV};
+use slog_scope::{set_global_logger, GlobalLoggerGuard};
 use std::sync::Arc;
+
+static mut GLOBAL_LOGGER_GUARD: Option<GlobalLoggerGuard> = None;
+static GLOBAL_LOGGER_CAPTURE: parking_lot::Once = parking_lot::Once::new();
 
 #[cfg(any(test, feature = "testing"))]
 pub use self::testing::TestLogRecord;
@@ -57,6 +62,58 @@ pub fn verbosity() -> LogVerbosity {
 /// [slog]: https://crates.io/crates/slog
 pub fn slog_logger() -> Arc<parking_lot::RwLock<Logger>> {
     current_log()
+}
+
+/// Capture logs from the [`log`](https://docs.rs/log/latest/log/) crate by forwarding them into
+/// the current [`slog::Drain`]. Due to the intricacies and subtleties of this method, **you should
+/// be very careful when using it**. Note also that this method can only be called once.
+///
+/// # Note
+///
+/// After calling this method, all `log` logs will be forwarded to the [`slog::Drain`] in use for
+/// the rest of the program's lifetime.
+///
+/// # Examples
+/// ```
+/// use foundations::telemetry::TelemetryContext;
+/// use foundations::telemetry::log::capture_global_log_logs;
+/// use log::warn as log_warn;
+///
+/// let cx = TelemetryContext::test();
+/// capture_global_log_logs();
+/// for i in 0..16 {
+///     log_warn!("{}", i);
+/// }
+///
+/// assert_eq!(cx.log_records().len(), 16);
+/// ```
+pub fn capture_global_log_logs() {
+    unsafe {
+        // SAFETY: mutating a `static mut` is generally unsafe, but since we're guarding it behind
+        // a call_once, we should be fine.
+        GLOBAL_LOGGER_CAPTURE.call_once(|| {
+            let curr_logger = Arc::clone(&slog_logger()).read().clone();
+            let scope_guard = set_global_logger(curr_logger);
+
+            // Convert slog::Level from Foundations settings to log::Level
+            let normalized_level = match verbosity().0 {
+                Level::Critical | Level::Error => std_level::Error,
+                Level::Warning => std_level::Warn,
+                Level::Info => std_level::Info,
+                Level::Debug => std_level::Debug,
+                Level::Trace => std_level::Trace,
+            };
+
+            slog_stdlog::init_with_level(normalized_level).unwrap();
+
+            // Storing the scope guard in a static global guard means that logs will be forwarded
+            // to the slog::Drain for the entirety of the program's lifetime. This prevents users
+            // from accidentally calling the method twice and triggering log::SetLoggerErrors, or
+            // attempting to log messages after dropping the guard and triggering
+            // slog_scope::NoLoggerSet.
+            GLOBAL_LOGGER_GUARD = Some(scope_guard);
+        });
+    }
 }
 
 // NOTE: `#[doc(hidden)]` + `#[doc(inline)]` for `pub use` trick is used to prevent these macros
