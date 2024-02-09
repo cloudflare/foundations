@@ -49,7 +49,6 @@ jobs:
   # based on tokio minver cbecm
   minimal-versions:
     name: minimal-versions
-    needs: basics
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
