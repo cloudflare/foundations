@@ -68,3 +68,7 @@ thread_local = "1.1"
 tikv-jemallocator = "0.5"
 tikv-jemalloc-ctl = "0.5"
 yaml-merge-keys = "0.5"
+
+# needed for minver
+local-ip-address = "0.5.7"
+thiserror = "1.0.56"

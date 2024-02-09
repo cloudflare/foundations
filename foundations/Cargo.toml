@@ -192,6 +192,11 @@ yaml-merge-keys = { workspace = true, optional = true, features = [
     "serde_yaml",
 ] }
 
+# needed for minver purposes
+local-ip-address = { workspace = true, optional = true }
+regex = { workspace = true, optional = true }
+thiserror = { workspace = true, optional = true }
+
 [target.'cfg(target_os = "linux")'.dependencies]
 tikv-jemalloc-ctl = { workspace = true, optional = true, features = [
     "use_std",
