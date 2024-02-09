@@ -193,8 +193,8 @@ yaml-merge-keys = { workspace = true, optional = true, features = [
 ] }
 
 # needed for minver purposes
-autocfg = { workspace = true, optional = true }
 local-ip-address = { workspace = true, optional = true }
+lock_api = { workspace = true, optional = true }
 log = { workspace = true, optional = true }
 neli = { workspace = true, optional = true }
 neli-proc-macros = { workspace = true, optional = true }
