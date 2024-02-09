@@ -70,6 +70,7 @@ tikv-jemalloc-ctl = "0.5"
 yaml-merge-keys = "0.5"
 
 # needed for minver
+autocfg = "1.1.0"
 local-ip-address = "0.5.7"
 log = "0.4.20"
 neli = "0.6.4"
