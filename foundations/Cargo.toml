@@ -195,6 +195,8 @@ yaml-merge-keys = { workspace = true, optional = true, features = [
 # needed for minver purposes
 local-ip-address = { workspace = true, optional = true }
 log = { workspace = true, optional = true }
+neli = { workspace = true, optional = true }
+neli-proc-macros = { workspace = true, optional = true }
 regex = { workspace = true, optional = true }
 thiserror = { workspace = true, optional = true }
 
