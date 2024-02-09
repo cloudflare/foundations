@@ -157,7 +157,7 @@ pub struct ServiceInfo {
 
 /// Creates [`ServiceInfo`] from the information in `Cargo.toml` manifest of the service.
 ///
-/// [`ServiceInfo::name_in_metrics`] is the same as the package name, with hypens (`-`) replaced
+/// [`ServiceInfo::name_in_metrics`] is the same as the package name, with hyphens (`-`) replaced
 /// by underscores (`_`).
 #[macro_export]
 macro_rules! service_info {
