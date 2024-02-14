@@ -171,7 +171,7 @@ routerify = { workspace = true, optional = true }
 rand = { workspace = true, optional = true }
 rustracing = { workspace = true, optional = true }
 rustracing_jaeger = { workspace = true, optional = true }
-serde = { workspace = true, optional = true, features = ["derive"] }
+serde = { workspace = true, optional = true, features = ["derive", "rc"] }
 serde_path_to_error = { workspace = true, optional = true }
 serde_yaml = { workspace = true, optional = true }
 serde_with = { workspace = true, optional = true }
