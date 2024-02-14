@@ -6,7 +6,7 @@
 //! cargo run --example http_server -- --help
 //! ```
 //!
-//! for the usage info.
+//! from the repo root for the usage info.
 
 mod metrics;
 mod settings;
