@@ -99,6 +99,7 @@ fn link_new_trace_with_current(
 ) {
     let current_span_lock = current_span.inner.read();
     let mut new_trace_ref_span = create_fork_ref_span(root_span_name, &current_span_lock);
+
     if let Some(trace_id) = span_trace_id(&*new_trace_root_span) {
         new_trace_ref_span.set_tag(|| {
             Tag::new(
@@ -109,8 +110,6 @@ fn link_new_trace_with_current(
 
         new_trace_ref_span.set_tag(|| Tag::new("trace_id", trace_id));
     }
-
-    let current_span_lock = current_span.inner.read();
 
     if let Some(trace_id) = span_trace_id(&current_span_lock) {
         new_trace_root_span.set_tag(|| Tag::new("trace_id", trace_id));
