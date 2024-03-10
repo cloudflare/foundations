@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::process::Command;
 
 const GLIBC_REPO: &str = "https://sourceware.org/git/glibc.git";
-const DST_DIR_REL_PATH: &str = "../../foundations/src/seccomp/syscalls";
+const DST_DIR_REL_PATH: &str = "../../foundations/src/security/syscalls";
 
 const SYSCALL_SRC_DST: &[(&str, &str)] = &[
     (
@@ -38,7 +38,11 @@ fn fetch_glibc_sources() -> PathBuf {
     println!("Fetching glibc sources...");
     println!("=========================");
 
-    let target_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("target");
+    let target_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../target")
+        .canonicalize()
+        .unwrap();
+
     let glibc_dir = target_dir.as_path().join("glibc");
 
     let _ = fs::remove_dir_all(&glibc_dir);
