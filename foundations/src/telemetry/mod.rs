@@ -1,3 +1,5 @@
+//! Service telemetry.
+//!
 //! Foundations provides telemetry functionality for:
 //!
 //! * logging
@@ -46,6 +48,8 @@
 
 #[cfg(any(feature = "logging", feature = "tracing"))]
 mod scope;
+
+mod driver;
 
 #[cfg(feature = "testing")]
 mod testing;
@@ -112,9 +116,9 @@ pub use self::testing::TestTelemetryContext;
 pub use self::memory_profiler::MemoryProfiler;
 
 #[cfg(feature = "telemetry-server")]
-pub use self::server::{
-    TelemetryRouteHandler, TelemetryRouteHandlerFuture, TelemetryServerFuture, TelemetryServerRoute,
-};
+pub use self::server::{TelemetryRouteHandler, TelemetryRouteHandlerFuture, TelemetryServerRoute};
+
+pub use self::driver::TelemetryDriver;
 
 /// A macro that enables telemetry testing in `#[test]` and `#[tokio::test]`.
 ///
@@ -657,6 +661,22 @@ impl TelemetryContext {
     }
 }
 
+/// Telemetry configuration that is passed to [`init`].
+pub struct TelemetryConfig<'c> {
+    /// Service information that is used in telemetry reporting.
+    ///
+    /// Can be obtained using [`crate::service_info`] macro.
+    pub service_info: &'c ServiceInfo,
+
+    /// Telemetry settings.
+    pub settings: &'c TelemetrySettings,
+
+    /// Custom telemetry server routes.
+    ///
+    /// Refer to the [`init`] documentation to learn more about the telemetry server.
+    pub custom_server_routes: Vec<TelemetryServerRoute>,
+}
+
 /// Initializes service telemetry.
 ///
 /// The function sets up telemetry collection endpoints and other relevant settings. The function
@@ -665,7 +685,24 @@ impl TelemetryContext {
 ///
 /// The function should be called once on service initialization. Consequent calls to the function
 /// don't have any effect.
-pub fn init(service_info: &ServiceInfo, settings: &TelemetrySettings) -> BootstrapResult<()> {
+///
+/// # Telemetry server
+///
+/// Foundations can expose optional server endpoint to serve telemetry-related information if
+/// [`TelemetryServerSettings::enabled`] is set to `true`.
+///
+/// The server exposes the following URL paths:
+/// - `/health` - telemetry server healtcheck endpoint, returns `200 OK` response if server is functional.
+/// - `/metrics` - returns service metrics in [Prometheus text format] (requires **metrics** feature).
+/// - `/pprof/heap` - returns [jemalloc] heap profile (requires **memory-profiling** feature).
+/// - `/pprof/heap_stats` returns [jemalloc] heap stats (requires **memory-profiling** feature).
+///
+/// Additional custom routes can be added via [`TelemetryConfig::custom_server_routes`].
+///
+/// [Prometheus text format]: https://prometheus.io/docs/instrumenting/exposition_formats/#text-based-format
+/// [jemalloc]: https://github.com/jemalloc/jemalloc
+/// [`TelemetryServerSettings::enabled`]: `crate::telemetry::settings::TelemetryServerSettings::enabled`
+pub fn init(config: TelemetryConfig) -> BootstrapResult<TelemetryDriver> {
     #[cfg(all(
         not(feature = "metrics"),
         not(feature = "logging"),
@@ -677,36 +714,23 @@ pub fn init(service_info: &ServiceInfo, settings: &TelemetrySettings) -> Bootstr
     let _ = settings;
 
     #[cfg(feature = "logging")]
-    self::log::init::init(service_info, &settings.logging)?;
+    self::log::init::init(config.service_info, &config.settings.logging)?;
 
     #[cfg(feature = "tracing")]
-    self::tracing::init::init(service_info, &settings.tracing)?;
+    self::tracing::init::init(config.service_info, &config.settings.tracing)?;
 
     #[cfg(feature = "metrics")]
-    self::metrics::init::init(service_info, &settings.metrics);
+    self::metrics::init::init(config.service_info, &config.settings.metrics);
 
-    Ok(())
-}
+    let tele_futures = Default::default();
 
-/// Initializes service telemetry and returns a HTTP server to be driven by the caller.
-///
-/// The server exposes the following URL paths:
-/// - `/health` - telemetry server healtcheck endpoint, returns `200 OK` response if server is functional.
-/// - `/metrics` - returns service metrics in [Prometheus text format] (requires **metrics** feature).
-/// - `/pprof/heap` - returns [jemalloc] heap profile (requires **memory-profiling** feature).
-/// - `/pprof/heap_stats` returns [jemalloc] heap stats (requires **memory-profiling** feature).
-///
-/// Additional custom routes can be added via `custom_routes` parameter.
-///
-/// [Prometheus text format]: https://prometheus.io/docs/instrumenting/exposition_formats/#text-based-format
-/// [jemalloc]: https://github.com/jemalloc/jemalloc
-#[cfg(feature = "telemetry-server")]
-pub fn init_with_server(
-    service_info: &ServiceInfo,
-    settings: &TelemetrySettings,
-    custom_routes: Vec<TelemetryServerRoute>,
-) -> BootstrapResult<TelemetryServerFuture> {
-    init(service_info, settings)?;
+    #[cfg(feature = "telemetry-server")]
+    {
+        let server_fut = self::server::init(config.settings.clone(), config.custom_server_routes)?;
 
-    self::server::init(settings.clone(), custom_routes)
+        Ok(TelemetryDriver::new(server_fut, tele_futures))
+    }
+
+    #[cfg(not(feature = "telemetry-server"))]
+    Ok(TelemetryDriver::new(tele_futures))
 }

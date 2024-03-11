@@ -75,6 +75,7 @@ telemetry = [
     "metrics",
     "tracing",
     "telemetry-server",
+    "dep:tokio"
 ]
 
 tokio-runtime-metrics = [
