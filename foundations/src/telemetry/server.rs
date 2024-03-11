@@ -4,76 +4,15 @@ use super::settings::TelemetrySettings;
 use crate::{BootstrapResult, Result};
 use anyhow::anyhow;
 use futures_util::future::BoxFuture;
-use futures_util::ready;
-use futures_util::FutureExt;
 use hyper::server::conn::AddrIncoming;
 use hyper::{header, Body, Method, Request, Response, Server, StatusCode};
 use routerify::{Router, RouterService};
 use socket2::{Domain, SockAddr, Socket, Type};
 use std::convert::Infallible;
-use std::future::Future;
 use std::net::{SocketAddr, TcpListener};
-use std::pin::Pin;
 use std::sync::Arc;
-use std::task::{Context, Poll};
 
-/// Telemetry server future returned by [`crate::telemetry::init_with_server`].
-///
-/// This future drives a HTTP server as configured by [`TelemetryServerSettings`].
-///
-/// [`TelemetryServerSettings`]: `crate::telemetry::settings::TelemetryServerSettings`
-pub struct TelemetryServerFuture {
-    pub(super) inner: Option<Server<AddrIncoming, RouterService<Body, Infallible>>>,
-}
-
-/// Transformation of [`TelemetryServerFuture`] when that server is instructed to perform a
-/// graceful shutdown with [`TelemetryServerFuture::with_graceful_shutdown`].
-///
-/// Similarly to the original one, this should also be used to drive the HTTP server forward.
-type TelemetryServerFutureWithGracefulShutdown = BoxFuture<'static, BootstrapResult<()>>;
-
-impl TelemetryServerFuture {
-    /// Address of the telemetry server.
-    ///
-    /// Returns `None` if the server wasn't spawned.
-    pub fn server_addr(&self) -> Option<SocketAddr> {
-        self.inner.as_ref().map(Server::local_addr)
-    }
-
-    /// Instructs the telemetry server to perform an orderly shutdown when the given future `signal`
-    /// completes.
-    ///
-    /// The yielded future should be polled to drive the telemetry server forward.
-    /// If telemetry is disabled, the given signal is still awaited for in the yielded future.
-    pub fn with_graceful_shutdown(
-        self,
-        signal: impl Future<Output = ()> + Send + Sync + 'static,
-    ) -> TelemetryServerFutureWithGracefulShutdown {
-        async move {
-            match self.inner {
-                Some(server) => Ok(server.with_graceful_shutdown(signal).await?),
-                None => {
-                    signal.await;
-                    Ok(())
-                }
-            }
-        }
-        .boxed()
-    }
-}
-
-impl Future for TelemetryServerFuture {
-    type Output = BootstrapResult<()>;
-
-    #[inline]
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        if let Some(server) = &mut self.inner {
-            Poll::Ready(Ok(ready!(Pin::new(server).poll(cx))?))
-        } else {
-            Poll::Pending
-        }
-    }
-}
+pub(super) type TelemetryServerFuture = Server<AddrIncoming, RouterService<Body, Infallible>>;
 
 /// Future returned by [`TelemetryServerRoute::handler`].
 pub type TelemetryRouteHandlerFuture =
@@ -102,9 +41,9 @@ pub struct TelemetryServerRoute {
 pub(super) fn init(
     settings: TelemetrySettings,
     custom_routes: Vec<TelemetryServerRoute>,
-) -> BootstrapResult<TelemetryServerFuture> {
+) -> BootstrapResult<Option<TelemetryServerFuture>> {
     if !settings.server.enabled {
-        return Ok(TelemetryServerFuture { inner: None });
+        return Ok(None);
     }
 
     let settings = Arc::new(settings);
@@ -118,9 +57,7 @@ pub(super) fn init(
     let builder = Server::from_tcp(socket)?;
     let service = RouterService::new(router).map_err(|err| anyhow!(err))?;
 
-    Ok(TelemetryServerFuture {
-        inner: Some(builder.serve(service)),
-    })
+    Ok(Some(builder.serve(service)))
 }
 
 fn bind_socket(addr: SocketAddr) -> BootstrapResult<Socket> {
