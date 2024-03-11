@@ -3,10 +3,11 @@
 #[doc(hidden)]
 pub mod internal;
 
+pub(crate) mod init;
 #[cfg(any(test, feature = "testing"))]
 pub(crate) mod testing;
 
-pub(crate) mod init;
+mod jaeger_thrift_udp_exporter;
 mod rate_limit;
 
 use self::init::TracingHarness;
