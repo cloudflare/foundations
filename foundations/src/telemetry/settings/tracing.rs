@@ -20,15 +20,8 @@ pub struct TracingSettings {
     /// Enables tracing.
     pub enabled: bool,
 
-    /// The address of the Jaeger Thrift (UDP) agent.
-    pub jaeger_tracing_server_addr: SocketAddr,
-
-    /// Overrides the bind address for the reporter API.
-    /// By default, the reporter API is only exposed on the loopback
-    /// interface. This won't work in environments where the
-    /// Jaeger agent is on another host (for example, Docker).
-    /// Must have the same address family as `jaeger_tracing_server_addr`.
-    pub jaeger_reporter_bind_addr: Option<SocketAddr>,
+    /// The exporter for the collected traces.
+    pub exporter: TracesExporter,
 
     /// Sampling ratio.
     ///
@@ -42,19 +35,62 @@ pub struct TracingSettings {
 
 impl Default for TracingSettings {
     fn default() -> Self {
-        // NOTE: default Jaeger UDP agent address.
-        // See: https://www.jaegertracing.io/docs/1.31/getting-started/#all-in-one
-        let jaeger_tracing_server_addr: std::net::SocketAddr = (Ipv4Addr::LOCALHOST, 6831).into();
-
-        #[cfg(feature = "settings")]
-        let jaeger_tracing_server_addr = jaeger_tracing_server_addr.into();
-
         Self {
             enabled: true,
-            jaeger_tracing_server_addr,
-            jaeger_reporter_bind_addr: None,
+            exporter: Default::default(),
             sampling_ratio: 1.0,
             rate_limit: Default::default(),
+        }
+    }
+}
+
+/// The exporter for the collected traces.
+#[cfg_attr(
+    feature = "settings",
+    settings(crate_path = "crate", impl_default = false)
+)]
+#[cfg_attr(not(feature = "settings"), derive(Clone, Debug))]
+pub enum TracesExporter {
+    /// Jaeger Thrift (UDP) traces exporter.
+    JaegerThriftUdp(JaegerThriftUdpExporterSettings),
+}
+
+impl Default for TracesExporter {
+    fn default() -> Self {
+        Self::JaegerThriftUdp(Default::default())
+    }
+}
+
+/// Jaeger Thrift (UDP) traces exporter settings.
+#[cfg_attr(
+    feature = "settings",
+    settings(crate_path = "crate", impl_default = false)
+)]
+#[cfg_attr(not(feature = "settings"), derive(Clone, Debug))]
+pub struct JaegerThriftUdpExporterSettings {
+    /// The address of the Jaeger Thrift (UDP) agent.
+    pub server_addr: SocketAddr,
+
+    /// Overrides the bind address for the reporter API.
+    /// By default, the reporter API is only exposed on the loopback
+    /// interface. This won't work in environments where the
+    /// Jaeger agent is on another host (for example, Docker).
+    /// Must have the same address family as `jaeger_tracing_server_addr`.
+    pub reporter_bind_addr: Option<SocketAddr>,
+}
+
+impl Default for JaegerThriftUdpExporterSettings {
+    fn default() -> Self {
+        // NOTE: default Jaeger UDP agent address.
+        // See: https://www.jaegertracing.io/docs/1.31/getting-started/#all-in-one
+        let server_addr: std::net::SocketAddr = (Ipv4Addr::LOCALHOST, 6831).into();
+
+        #[cfg(feature = "settings")]
+        let server_addr = server_addr.into();
+
+        Self {
+            server_addr,
+            reporter_bind_addr: None,
         }
     }
 }
