@@ -1,5 +1,5 @@
 use super::internal::FinishedSpan;
-use crate::telemetry::settings::JaegerThriftUdpExporterSettings;
+use crate::telemetry::settings::JaegerThriftUdpOutputSettings;
 use crate::{BootstrapResult, ServiceInfo};
 use anyhow::bail;
 use crossbeam_channel::Receiver;
@@ -14,7 +14,7 @@ use crate::telemetry::log;
 
 pub(super) fn start(
     service_info: &ServiceInfo,
-    settings: &JaegerThriftUdpExporterSettings,
+    settings: &JaegerThriftUdpOutputSettings,
     span_rx: Receiver<FinishedSpan>,
 ) -> BootstrapResult<()> {
     const REPORTER_COOLDOWN_PERIOD: Duration = Duration::from_secs(2);
