@@ -21,7 +21,7 @@ pub struct TracingSettings {
     pub enabled: bool,
 
     /// The exporter for the collected traces.
-    pub exporter: TracesExporter,
+    pub output: TracesOutput,
 
     /// Sampling ratio.
     ///
@@ -37,7 +37,7 @@ impl Default for TracingSettings {
     fn default() -> Self {
         Self {
             enabled: true,
-            exporter: Default::default(),
+            output: Default::default(),
             sampling_ratio: 1.0,
             rate_limit: Default::default(),
         }
@@ -50,28 +50,29 @@ impl Default for TracingSettings {
     settings(crate_path = "crate", impl_default = false)
 )]
 #[cfg_attr(not(feature = "settings"), derive(Clone, Debug))]
-pub enum TracesExporter {
-    /// Jaeger Thrift (UDP) traces exporter.
-    JaegerThriftUdp(JaegerThriftUdpExporterSettings),
+pub enum TracesOutput {
+    /// Sends traces to the collector in the Jaeger Thrift (UDP) format.
+    JaegerThriftUdp(JaegerThriftUdpOutputSettings),
 }
 
-impl Default for TracesExporter {
+impl Default for TracesOutput {
     fn default() -> Self {
         Self::JaegerThriftUdp(Default::default())
     }
 }
 
-/// Jaeger Thrift (UDP) traces exporter settings.
+/// Jaeger Thrift (UDP) traces output settings.
 #[cfg_attr(
     feature = "settings",
     settings(crate_path = "crate", impl_default = false)
 )]
 #[cfg_attr(not(feature = "settings"), derive(Clone, Debug))]
-pub struct JaegerThriftUdpExporterSettings {
+pub struct JaegerThriftUdpOutputSettings {
     /// The address of the Jaeger Thrift (UDP) agent.
     pub server_addr: SocketAddr,
 
     /// Overrides the bind address for the reporter API.
+    ///
     /// By default, the reporter API is only exposed on the loopback
     /// interface. This won't work in environments where the
     /// Jaeger agent is on another host (for example, Docker).
@@ -79,7 +80,7 @@ pub struct JaegerThriftUdpExporterSettings {
     pub reporter_bind_addr: Option<SocketAddr>,
 }
 
-impl Default for JaegerThriftUdpExporterSettings {
+impl Default for JaegerThriftUdpOutputSettings {
     fn default() -> Self {
         // NOTE: default Jaeger UDP agent address.
         // See: https://www.jaegertracing.io/docs/1.31/getting-started/#all-in-one

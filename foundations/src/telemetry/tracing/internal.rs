@@ -77,6 +77,7 @@ pub(crate) fn start_trace(
             if should_sample(ratio) { 1 } else { 0 },
         ));
     }
+
     let mut current_span = match current_span() {
         Some(current_span) if current_span.is_sampled => current_span,
         _ => return span_builder.start(),

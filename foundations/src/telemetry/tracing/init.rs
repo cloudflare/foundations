@@ -1,7 +1,7 @@
 use super::internal::{FinishedSpan, SharedSpan, Tracer};
-use super::jaeger_thrift_udp_exporter;
+use super::jaeger_thrift_udp_output;
 use crate::telemetry::scope::ScopeStack;
-use crate::telemetry::settings::{TracesExporter, TracingSettings};
+use crate::telemetry::settings::{TracesOutput, TracingSettings};
 use crate::{BootstrapResult, ServiceInfo};
 use crossbeam_channel::Receiver;
 use once_cell::sync::{Lazy, OnceCell};
@@ -75,9 +75,9 @@ pub(crate) fn init(service_info: &ServiceInfo, settings: &TracingSettings) -> Bo
     if settings.enabled {
         let (tracer, span_rx) = create_tracer_and_span_rx(settings, false)?;
 
-        match &settings.exporter {
-            TracesExporter::JaegerThriftUdp(exporter_settings) => {
-                jaeger_thrift_udp_exporter::start(service_info, exporter_settings, span_rx)?
+        match &settings.output {
+            TracesOutput::JaegerThriftUdp(output_settings) => {
+                jaeger_thrift_udp_output::start(service_info, output_settings, span_rx)?
             }
         }
 
