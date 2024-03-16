@@ -5,7 +5,7 @@ telemetry:
   tracing:
     # Enables tracing.
     enabled: true
-    # The exporter for the collected traces.
+    # The output for the collected traces.
     output:
       jaeger_thrift_udp:
         server_addr: "127.0.0.1:6831"

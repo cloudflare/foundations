@@ -8,6 +8,7 @@ pub(crate) mod init;
 pub(crate) mod testing;
 
 mod jaeger_thrift_udp_output;
+mod otlp_grpc_output;
 mod rate_limit;
 
 use self::init::TracingHarness;

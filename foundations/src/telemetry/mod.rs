@@ -50,6 +50,7 @@
 mod scope;
 
 mod driver;
+mod otlp_conversion;
 
 #[cfg(feature = "testing")]
 mod testing;

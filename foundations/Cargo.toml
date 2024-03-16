@@ -106,6 +106,7 @@ tracing = [
     "dep:rand",
     "dep:rustracing_jaeger",
     "dep:rustracing",
+    "dep:opentelemetry-proto",
     "dep:thread_local",
     "dep:futures-util",
 ]
@@ -167,6 +168,7 @@ hyper = { workspace = true, optional = true, features = [
 ] }
 indexmap = { workspace = true, optional = true, features = ["serde"] }
 once_cell = { workspace = true, optional = true }
+opentelemetry-proto = { workspace = true, optional = true, features = ["gen-tonic-messages", "trace"] }
 parking_lot = { workspace = true, optional = true }
 prometheus = { workspace = true, optional = true, features = ["process"] }
 prometheus-client = { workspace = true, optional = true }
