@@ -20,7 +20,7 @@ pub struct TracingSettings {
     /// Enables tracing.
     pub enabled: bool,
 
-    /// The exporter for the collected traces.
+    /// The output for the collected traces.
     pub output: TracesOutput,
 
     /// Sampling ratio.
@@ -44,7 +44,7 @@ impl Default for TracingSettings {
     }
 }
 
-/// The exporter for the collected traces.
+/// The output for the collected traces.
 #[cfg_attr(
     feature = "settings",
     settings(crate_path = "crate", impl_default = false)
