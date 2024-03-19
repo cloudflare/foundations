@@ -99,7 +99,10 @@ fn new_registry(
     service_name_format: &ServiceNameFormat,
 ) -> RwLock<Registry> {
     RwLock::new(match service_name_format {
-        ServiceNameFormat::MetricPrefix => Registry::with_prefix(service_name_in_metrics),
+        ServiceNameFormat::MetricPrefix => match service_name_in_metrics {
+            "" => Registry::default(),
+            _ => Registry::with_prefix(service_name_in_metrics),
+        },
         // FIXME(nox): Due to prometheus-client 0.18 not supporting the creation of
         // registries with specific label values, we use this service identifier
         // format directly in `Registries::get_main` and `Registries::get_optional`.
