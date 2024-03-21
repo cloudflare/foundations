@@ -27,7 +27,7 @@ where
     T: Send + Clone + 'static,
 {
     pub(crate) fn current(&self) -> Option<T> {
-        self.0.get_or_default().borrow().last().map(Clone::clone)
+        self.0.get_or_default().borrow().last().cloned()
     }
 }
 
