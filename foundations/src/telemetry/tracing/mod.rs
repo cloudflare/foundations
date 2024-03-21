@@ -121,7 +121,7 @@ pub use foundations_macros::span_fn;
 ///
 /// Scope ends when the handle is dropped.
 #[must_use]
-pub struct SpanScope(Scope<SharedSpan>);
+pub struct SpanScope(#[allow(dead_code)] Scope<SharedSpan>);
 
 impl SpanScope {
     #[inline]

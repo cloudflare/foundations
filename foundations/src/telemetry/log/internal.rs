@@ -8,7 +8,7 @@ use std::sync::Arc;
 pub(crate) type SharedLog = Arc<parking_lot::RwLock<Logger>>;
 
 #[must_use]
-pub(crate) struct LogScope(Scope<SharedLog>);
+pub(crate) struct LogScope(#[allow(dead_code)] Scope<SharedLog>);
 
 impl LogScope {
     #[inline]

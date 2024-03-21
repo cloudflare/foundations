@@ -147,7 +147,7 @@ pub struct TestTraceOptions {
 }
 
 #[must_use]
-pub(crate) struct TestTracerScope(Scope<Tracer>);
+pub(crate) struct TestTracerScope(#[allow(dead_code)] Scope<Tracer>);
 
 impl TestTracerScope {
     #[inline]
