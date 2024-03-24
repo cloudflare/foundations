@@ -21,7 +21,7 @@ use self::internal::current_log;
 use crate::telemetry::log::init::build_log_with_drain;
 use crate::telemetry::settings::LogVerbosity;
 use crate::Result;
-use slog::{Level, Logger, OwnedKV};
+use slog::{Logger, OwnedKV};
 use std::sync::Arc;
 
 #[cfg(any(test, feature = "testing"))]
@@ -30,11 +30,11 @@ pub use self::testing::TestLogRecord;
 /// Sets current log's verbosity, overriding the settings used in [`init`].
 ///
 /// [`init`]: crate::telemetry::init
-pub fn set_verbosity(level: Level) -> Result<()> {
+pub fn set_verbosity(verbosity: LogVerbosity) -> Result<()> {
     let harness = LogHarness::get();
 
     let mut settings = harness.settings.clone();
-    settings.verbosity = LogVerbosity(level);
+    settings.verbosity = verbosity;
 
     let kv = OwnedKV(current_log().read().list().clone());
     let logger = build_log_with_drain(&settings, kv, Arc::clone(&harness.root_drain));
