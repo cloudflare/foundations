@@ -1,5 +1,5 @@
 use foundations::telemetry::settings::{TelemetryServerSettings, TelemetrySettings};
-use foundations::telemetry::TelemetryServerRoute;
+use foundations::telemetry::{TelemetryConfig, TelemetryServerRoute};
 use futures_util::FutureExt;
 use hyper::{Method, Response};
 use std::net::{Ipv4Addr, SocketAddr};
@@ -36,17 +36,17 @@ async fn telemetry_server() {
     );
 
     tokio::spawn(
-        foundations::telemetry::init_with_server(
-            &foundations::service_info!(),
-            &settings,
-            vec![TelemetryServerRoute {
+        foundations::telemetry::init(TelemetryConfig {
+            service_info: &foundations::service_info!(),
+            settings: &settings,
+            custom_server_routes: vec![TelemetryServerRoute {
                 path: "/custom-route".into(),
                 methods: vec![Method::GET],
                 handler: Box::new(|_, _| {
                     async { Ok(Response::builder().body("Hello".into()).unwrap()) }.boxed()
                 }),
             }],
-        )
+        })
         .unwrap(),
     );
 

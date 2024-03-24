@@ -8,7 +8,6 @@
 //! - Use [telemetry server] to expose a metrics endpoint.
 //!
 //! [Prometheus]: https://prometheus.io/
-//! [telemetry server]: crate::telemetry::init_with_server
 
 use super::settings::MetricsSettings;
 use crate::Result;
@@ -261,8 +260,6 @@ pub use foundations_macros::metrics;
 /// ```
 /// use foundations::telemetry::metrics::{info_metric, report_info};
 ///
-/// foundations::telemetry::init(&foundations::service_info!(), &Default::default());
-///
 /// /// Build information
 /// #[info_metric(name = "build_info")]
 /// struct BuildInformation {
@@ -279,8 +276,6 @@ pub use foundations_macros::metrics;
 /// can be explicitly specified for the macro to workaround that:
 ///
 /// ```
-/// foundations::telemetry::init(&foundations::service_info!(), &Default::default());
-///
 /// # mod rustdoc_workaround {
 /// mod reexport {
 ///     pub use foundations::*;
@@ -314,8 +309,6 @@ pub trait InfoMetric: Serialize + Send + Sync + 'static {
 ///
 /// ```
 /// use foundations::telemetry::metrics::{info_metric, report_info};
-///
-/// foundations::telemetry::init(&foundations::service_info!(), &Default::default());
 ///
 /// /// Build information
 /// #[info_metric]

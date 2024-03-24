@@ -5,19 +5,22 @@ telemetry:
   tracing:
     # Enables tracing.
     enabled: true
-    # The address of the Jaeger Thrift (UDP) agent.
-    jaeger_tracing_server_addr: "127.0.0.1:6831"
-    # Overrides the bind address for the reporter API.
-    # By default, the reporter API is only exposed on the loopback
-    # interface. This won't work in environments where the
-    # Jaeger agent is on another host (for example, Docker).
-    # Must have the same address family as `jaeger_tracing_server_addr`.
-    jaeger_reporter_bind_addr: ~
+    # The exporter for the collected traces.
+    output:
+      jaeger_thrift_udp:
+        server_addr: "127.0.0.1:6831"
+        reporter_bind_addr: ~
     # Sampling ratio.
     #
     # This can be any fractional value between `0.0` and `1.0`.
     # Where `1.0` means "sample everything", and `0.0` means "don't sample anything".
     sampling_ratio: 1.0
+    # Settings for rate limiting emission of traces
+    rate_limit:
+      # Whether to enable rate limiting of events
+      enabled: false
+      # Maximum number of events that can be emitted per second
+      max_events_per_second: 0
   # Logging settings.
   logging:
     # Specifies log output.
@@ -29,8 +32,18 @@ telemetry:
     # A list of field keys to redact when emitting logs.
     #
     # This might be useful to hide certain fields in production logs as they may
-    # contain sensative information, but allow them in testing environment.
+    # contain sensitive information, but allow them in testing environment.
     redact_keys: []
+    # Settings for rate limiting emission of log events
+    rate_limit:
+      # Whether to enable rate limiting of events
+      enabled: false
+      # Maximum number of events that can be emitted per second
+      max_events_per_second: 0
+    # Configure log volume metrics.
+    log_volume_metrics:
+      # Whether to enable log volume metrics
+      enabled: false
   # Metrics settings.
   metrics:
     # How the metrics service identifier defined in `ServiceInfo` is used

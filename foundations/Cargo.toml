@@ -45,19 +45,6 @@ platform-common-default = [
 # that can be used either way.
 server-client-common-default = ["settings", "client-telemetry", "testing"]
 
-# Enables metrics functionality.
-metrics = [
-    "dep:foundations-macros",
-    "dep:erased-serde",
-    "dep:once_cell",
-    "dep:parking_lot",
-    "dep:prometheus-client",
-    "dep:prometheus",
-    "dep:prometools",
-    "dep:serde_with",
-    "dep:serde",
-]
-
 # Enables serializable documented settings functionality.
 settings = [
     "dep:foundations-macros",
@@ -75,24 +62,25 @@ telemetry = [
     "metrics",
     "tracing",
     "telemetry-server",
+    "dep:futures-util",
 ]
 
+# Enables a subset of telemetry features suitable for usage in clients.
+client-telemetry = ["logging", "metrics", "tracing", "dep:futures-util"]
+
+# Enables the telemetry server.
+telemetry-server = [
+    "dep:hyper",
+    "dep:routerify",
+    "dep:socket2",
+]
+
+# Enables experimental tokio runtime metrics
 tokio-runtime-metrics = [
     "tokio/rt",
     "metrics",
     "serde/rc",
     "dep:slab",
-]
-
-# Enables a subset of telemetry features suitable for usage in clients.
-client-telemetry = ["logging", "metrics", "tracing"]
-
-# Enables the telemetry server.
-telemetry-server = [
-    "dep:futures-util",
-    "dep:hyper",
-    "dep:routerify",
-    "dep:socket2",
 ]
 
 # Enables logging functionality.
@@ -105,6 +93,7 @@ logging = [
     "dep:slog-term",
     "dep:slog",
     "dep:thread_local",
+    "dep:futures-util",
 ]
 
 # Enables distributed tracing functionality.
@@ -118,6 +107,21 @@ tracing = [
     "dep:rustracing_jaeger",
     "dep:rustracing",
     "dep:thread_local",
+    "dep:futures-util",
+]
+
+# Enables metrics functionality.
+metrics = [
+    "dep:foundations-macros",
+    "dep:erased-serde",
+    "dep:once_cell",
+    "dep:parking_lot",
+    "dep:prometheus-client",
+    "dep:prometheus",
+    "dep:prometools",
+    "dep:serde_with",
+    "dep:serde",
+    "dep:futures-util",
 ]
 
 # Enables memory profiling features (require `jemalloc` feature to be enabled)

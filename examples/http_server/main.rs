@@ -15,7 +15,7 @@ use self::settings::{EndpointSettings, HttpServerSettings, ResponseSettings};
 use anyhow::anyhow;
 use foundations::cli::{Arg, ArgAction, Cli};
 use foundations::settings::collections::Map;
-use foundations::telemetry::{init_with_server, log, tracing, TelemetryContext};
+use foundations::telemetry::{self, log, tracing, TelemetryConfig, TelemetryContext};
 use foundations::BootstrapResult;
 use futures_util::stream::{FuturesUnordered, StreamExt};
 use hyper::server::conn::Http;
@@ -47,10 +47,14 @@ async fn main() -> BootstrapResult<()> {
     }
 
     // Initialize telemetry with the settings obtained from the config. Don't drive the telemetry
-    // server yet - we have some extra security-related steps to do.
-    let tele_serv_fut = init_with_server(&service_info, &cli.settings.telemetry, vec![])?;
+    // yet - we have some extra security-related steps to do.
+    let tele_driver = telemetry::init(TelemetryConfig {
+        service_info: &service_info,
+        settings: &cli.settings.telemetry,
+        custom_server_routes: vec![],
+    })?;
 
-    if let Some(tele_serv_addr) = tele_serv_fut.server_addr() {
+    if let Some(tele_serv_addr) = tele_driver.server_addr() {
         log::info!("Telemetry server is listening on http://{}", tele_serv_addr);
     }
 
@@ -84,7 +88,7 @@ async fn main() -> BootstrapResult<()> {
         r = endpoint_futures.next() => {
             r.ok_or_else(|| anyhow!("server should have at least one endpoint specified"))??
         },
-        r = tele_serv_fut => { r? }
+        r = tele_driver => { r? }
     }
 
     unreachable!("server should never terminate without an error");
