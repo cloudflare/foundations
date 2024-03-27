@@ -2,7 +2,7 @@
 use super::metrics;
 use super::settings::TelemetrySettings;
 use crate::{BootstrapResult, Result};
-use anyhow::anyhow;
+use anyhow::{anyhow, Context as _};
 use futures_util::future::BoxFuture;
 use futures_util::ready;
 use futures_util::FutureExt;
@@ -114,7 +114,9 @@ pub(super) fn init(
     #[cfg(feature = "settings")]
     let addr = SocketAddr::from(addr);
 
-    let socket = TcpListener::from(bind_socket(addr)?);
+    let socket = TcpListener::from(
+        bind_socket(addr).with_context(|| format!("binding to socket {addr:?}"))?,
+    );
     let builder = Server::from_tcp(socket)?;
     let service = RouterService::new(router).map_err(|err| anyhow!(err))?;
 
