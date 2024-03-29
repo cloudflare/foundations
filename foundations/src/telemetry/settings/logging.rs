@@ -121,9 +121,3 @@ mod with_settings_feature {
 
     impl Settings for LogVerbosity {}
 }
-
-fn _assert_traits_implemented_for_all_features() {
-    fn assert<S: std::fmt::Debug + Clone + Default>() {}
-
-    assert::<LoggingSettings>();
-}

@@ -1,8 +1,5 @@
-use crate::utils::feature_use;
-
-feature_use!(cfg(feature = "settings"), {
-    use crate::settings::settings;
-});
+#[cfg(feature = "settings")]
+use crate::settings::settings;
 
 /// Rate limiting settings for events
 #[cfg_attr(feature = "settings", settings(crate_path = "crate"))]
