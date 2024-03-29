@@ -79,6 +79,7 @@ pub(crate) fn init(service_info: &ServiceInfo, settings: &TracingSettings) -> Bo
             TracesOutput::JaegerThriftUdp(output_settings) => {
                 jaeger_thrift_udp_output::start(service_info, output_settings, span_rx)?
             }
+            TracesOutput::OpenTelemetry(_) => todo!(),
         }
 
         let harness = TracingHarness {

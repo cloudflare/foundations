@@ -47,7 +47,7 @@ pub(super) fn start(
         while let Ok(span) = span_rx.recv() {
             if let Err(e) = reporter.report(&[span][..]) {
                 #[cfg(feature = "logging")]
-                log::warn!("failed to send a tracing span to the agent"; "error" => %e);
+                log::error!("failed to send a tracing span to the agent"; "error" => %e);
 
                 #[cfg(not(feature = "logging"))]
                 drop(e);

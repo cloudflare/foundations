@@ -50,6 +50,8 @@
 mod scope;
 
 mod driver;
+
+#[cfg(feature = "tracing")]
 mod otlp_conversion;
 
 #[cfg(feature = "testing")]

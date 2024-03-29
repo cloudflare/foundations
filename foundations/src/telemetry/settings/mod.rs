@@ -1,6 +1,9 @@
 //! Telemetry settings.
 
 #[cfg(feature = "tracing")]
+mod otlp_output;
+
+#[cfg(feature = "tracing")]
 mod tracing;
 
 #[cfg(feature = "logging")]
@@ -12,10 +15,14 @@ mod metrics;
 #[cfg(all(target_os = "linux", feature = "memory-profiling"))]
 mod memory_profiler;
 
+#[cfg(any(feature = "logging", feature = "tracing" ))]
 mod rate_limit;
 
 #[cfg(feature = "telemetry-server")]
 mod server;
+
+#[cfg(feature = "tracing")]
+pub use self::otlp_output::*;
 
 #[cfg(feature = "tracing")]
 pub use self::tracing::*;
@@ -29,6 +36,7 @@ pub use self::metrics::*;
 #[cfg(all(target_os = "linux", feature = "memory-profiling"))]
 pub use self::memory_profiler::*;
 
+#[cfg(any(feature = "logging", feature = "tracing" ))]
 pub use self::rate_limit::RateLimitingSettings;
 
 #[cfg(feature = "telemetry-server")]

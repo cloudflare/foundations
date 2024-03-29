@@ -2,10 +2,7 @@
 use crate::settings::settings;
 
 /// Memory profiler settings.
-#[cfg_attr(
-    feature = "settings",
-    settings(crate_path = "crate", impl_default = false)
-)]
+#[cfg_attr(feature = "settings", settings(crate_path = "crate"))]
 #[cfg_attr(not(feature = "settings"), derive(Clone, Debug))]
 pub struct MemoryProfilerSettings {
     /// Enables memory profiling
@@ -18,6 +15,10 @@ pub struct MemoryProfilerSettings {
     /// computational overhead.
     ///
     /// The default is `19` (2 ^ 19 = 512KiB).
+    #[cfg_attr(
+        feature = "settings",
+        serde(default = "MemoryProfilerSettings::default_sample_interval")
+    )]
     pub sample_interval: u8,
 
     /// Enables [seccomp] sandboxing of syscalls made by [jemalloc] during heap profile collection.
@@ -25,17 +26,33 @@ pub struct MemoryProfilerSettings {
     /// [seccomp]: https://en.wikipedia.org/wiki/Seccomp
     /// [jemalloc]: https://github.com/jemalloc/jemalloc
     #[cfg(feature = "security")]
+    #[cfg_attr(
+        feature = "settings",
+        serde(default = "MemoryProfilerSettings::default_sandbox_profiling_syscalls")
+    )]
     pub sandbox_profiling_syscalls: bool,
 }
 
+#[cfg(not(feature = "settings"))]
 impl Default for MemoryProfilerSettings {
     fn default() -> Self {
         Self {
             enabled: false,
-            sample_interval: 19,
+            sample_interval: MemoryProfilerSettings::default_sample_interval(),
 
             #[cfg(feature = "security")]
-            sandbox_profiling_syscalls: true,
+            sandbox_profiling_syscalls: MemoryProfilerSettings::default_sandbox_profiling_syscalls(
+            ),
         }
+    }
+}
+
+impl MemoryProfilerSettings {
+    fn default_sample_interval() -> u8 {
+        19
+    }
+
+    fn default_sandbox_profiling_syscalls() -> bool {
+        true
     }
 }
