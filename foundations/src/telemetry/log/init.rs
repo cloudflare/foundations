@@ -29,13 +29,15 @@ type FilteredDrain<D> = LevelFilter<
 
 static HARNESS: OnceCell<LogHarness> = OnceCell::new();
 
-static NOOP_HARNESS: Lazy<LogHarness> = Lazy::new(|| {
-    let root_drain = Arc::new(Discard);
-    let noop_log = Logger::root(Arc::clone(&root_drain), slog::o!());
+static PRE_INIT_HARNESS: Lazy<LogHarness> = Lazy::new(|| {
+    let base_drain = get_base_drain(&LoggingSettings::default())
+        .unwrap_or_else(|_| AsyncDrain::new(Discard).build());
+    let root_drain = Arc::new(base_drain.fuse());
+    let pre_init_log = Logger::root(Arc::clone(&root_drain), slog::o!());
 
     LogHarness {
         root_drain,
-        root_log: Arc::new(parking_lot::RwLock::new(noop_log)),
+        root_log: Arc::new(parking_lot::RwLock::new(pre_init_log)),
         settings: Default::default(),
         log_scope_stack: Default::default(),
     }
@@ -50,7 +52,7 @@ pub(crate) struct LogHarness {
 
 impl LogHarness {
     pub(crate) fn get() -> &'static Self {
-        HARNESS.get().unwrap_or(&NOOP_HARNESS)
+        HARNESS.get().unwrap_or(&PRE_INIT_HARNESS)
     }
 
     #[cfg(any(test, feature = "testing"))]
@@ -66,32 +68,7 @@ pub(crate) fn init(service_info: &ServiceInfo, settings: &LoggingSettings) -> Bo
         return Ok(());
     }
 
-    // NOTE: OXY-178, default is 128 (https://docs.rs/slog-async/2.7.0/src/slog_async/lib.rs.html#251)
-    const CHANNEL_SIZE: usize = 1024;
-
-    let base_drain = match (&settings.output, &settings.format) {
-        (LogOutput::Terminal, LogFormat::Text) => {
-            let drain = TextDrain::new(TermDecorator::new().stdout().build())
-                .build()
-                .fuse();
-            AsyncDrain::new(drain).chan_size(CHANNEL_SIZE).build()
-        }
-        (LogOutput::Terminal, LogFormat::Json) => {
-            let drain = build_json_log_drain(io::stdout());
-            AsyncDrain::new(drain).chan_size(CHANNEL_SIZE).build()
-        }
-        (LogOutput::File(file), LogFormat::Text) => {
-            let drain = TextDrain::new(PlainDecorator::new(File::create(file)?))
-                .build()
-                .fuse();
-            AsyncDrain::new(drain).chan_size(CHANNEL_SIZE).build()
-        }
-        (LogOutput::File(file), LogFormat::Json) => {
-            let drain = build_json_log_drain(File::create(file)?);
-            AsyncDrain::new(drain).chan_size(CHANNEL_SIZE).build()
-        }
-    };
-
+    let base_drain = get_base_drain(settings)?;
     let root_drain = get_root_drain(settings, Arc::new(base_drain.fuse()));
     let root_kv = slog::o!(
         "module" => FnValue(|record| {
@@ -112,6 +89,33 @@ pub(crate) fn init(service_info: &ServiceInfo, settings: &LoggingSettings) -> Bo
     let _ = HARNESS.set(harness);
 
     Ok(())
+}
+
+fn get_base_drain(settings: &LoggingSettings) -> Result<AsyncDrain, anyhow::Error> {
+    // NOTE: OXY-178, default is 128 (https://docs.rs/slog-async/2.7.0/src/slog_async/lib.rs.html#251)
+    const CHANNEL_SIZE: usize = 1024;
+    Ok(match (&settings.output, &settings.format) {
+        (LogOutput::Terminal, LogFormat::Text) => {
+            let drain = TextDrain::new(TermDecorator::new().stdout().build())
+                .build()
+                .fuse();
+            AsyncDrain::new(drain).chan_size(CHANNEL_SIZE).build()
+        }
+        (LogOutput::Terminal, LogFormat::Json) => {
+            let drain = build_json_log_drain(io::stdout());
+            AsyncDrain::new(drain).chan_size(CHANNEL_SIZE).build()
+        }
+        (LogOutput::File(file), LogFormat::Text) => {
+            let drain = TextDrain::new(PlainDecorator::new(File::create(file)?))
+                .build()
+                .fuse();
+            AsyncDrain::new(drain).chan_size(CHANNEL_SIZE).build()
+        }
+        (LogOutput::File(file), LogFormat::Json) => {
+            let drain = build_json_log_drain(File::create(file)?);
+            AsyncDrain::new(drain).chan_size(CHANNEL_SIZE).build()
+        }
+    })
 }
 
 fn get_root_drain(

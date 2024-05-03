@@ -1,8 +1,13 @@
 use foundations::settings::collections::Map;
 use foundations::settings::net::SocketAddr;
-use foundations::settings::{settings, to_yaml_string};
+use foundations::settings::{from_yaml_str, settings, to_yaml_string};
+use foundations::telemetry::log::TestLogRecord;
+use foundations::telemetry::TestTelemetryContext;
+use foundations_macros::with_test_telemetry;
+use slog::Level;
 
 #[settings]
+#[derive(PartialEq)]
 struct NestedStruct {
     /// A field, which is named the same as another field.
     a: usize,
@@ -14,6 +19,12 @@ struct NestedStruct {
     c: u32,
 }
 
+#[settings]
+struct NestedStructMissingB {
+    a: usize,
+    c: u32,
+}
+
 impl NestedStruct {
     fn default_b() -> u32 {
         0xb
@@ -21,11 +32,18 @@ impl NestedStruct {
 }
 
 #[settings]
+#[derive(PartialEq)]
 struct SimpleStruct {
     /// The documentation of NestedStruct
     /// will be added to the keys of `inner`
     inner: NestedStruct,
     /// Another important field
+    x: u32,
+}
+
+#[settings]
+struct SimpleStructWithInnerMissingB {
+    inner: NestedStructMissingB,
     x: u32,
 }
 
@@ -255,4 +273,50 @@ fn vec() {
     };
 
     assert_ser_eq!(s, "data/with_vec.yaml");
+}
+
+#[test]
+fn deserialize_from_yaml_str() {
+    let deserialized: SimpleStruct =
+        from_yaml_str(include_str!("data/settings_nested_struct.yaml")).unwrap();
+
+    assert_eq!(
+        SimpleStruct {
+            inner: NestedStruct { a: 0, b: 11, c: 0 },
+            x: 0,
+        },
+        deserialized
+    );
+}
+
+#[with_test_telemetry(test)]
+fn warns_on_unused_key(ctx: TestTelemetryContext) {
+    let _: SimpleStructWithInnerMissingB =
+        from_yaml_str(include_str!("data/settings_nested_struct.yaml")).unwrap();
+
+    assert_eq!(
+        *ctx.log_records(),
+        vec![TestLogRecord {
+            level: Level::Warning,
+            message: "Unused key in settings".into(),
+            fields: vec![("path".into(), "inner.b".into())]
+        }]
+    );
+}
+
+#[with_test_telemetry(test)]
+fn warns_on_unused_key_inside_merge_key(ctx: TestTelemetryContext) {
+    let _: SimpleStruct = from_yaml_str(include_str!(
+        "data/settings_nested_struct_using_merge_keys.yaml"
+    ))
+    .unwrap();
+
+    assert_eq!(
+        *ctx.log_records(),
+        vec![TestLogRecord {
+            level: Level::Warning,
+            message: "Unused key in settings".into(),
+            fields: vec![("path".into(), "inner.d".into())]
+        }]
+    )
 }

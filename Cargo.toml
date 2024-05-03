@@ -54,6 +54,7 @@ routerify = "3"
 socket2 = { version = "0.5.3", features = [ "all" ] }
 syn = "1"
 serde = "1"
+serde_ignored = "0.1.10"
 serde_path_to_error = "0.1.15"
 serde_yaml = "0.8.26"
 serde_with = "3.3.0"

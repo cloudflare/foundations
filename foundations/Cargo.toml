@@ -64,6 +64,7 @@ settings = [
     "dep:serde_path_to_error",
     "dep:serde_yaml",
     "dep:serde",
+    "dep:serde_ignored",
     "dep:yaml-merge-keys",
     "dep:indexmap",
 ]
@@ -172,6 +173,7 @@ rand = { workspace = true, optional = true }
 rustracing = { workspace = true, optional = true }
 rustracing_jaeger = { workspace = true, optional = true }
 serde = { workspace = true, optional = true, features = ["derive", "rc"] }
+serde_ignored = { workspace = true, optional = true }
 serde_path_to_error = { workspace = true, optional = true }
 serde_yaml = { workspace = true, optional = true }
 serde_with = { workspace = true, optional = true }

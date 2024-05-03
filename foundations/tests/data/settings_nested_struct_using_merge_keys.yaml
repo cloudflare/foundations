@@ -1,0 +1,10 @@
+---
+MERGE_ME_ALLOW_UNUSED: &MERGE_ME
+  a: 4
+  b: 5
+  c: 6
+  d: "extraneous"
+
+inner:
+  << : *MERGE_ME
+x: 0
