@@ -1,11 +1,11 @@
 use super::common::{convert_service_info, convert_time};
-use crate::telemetry::tracing::internal::FinishedSpan;
 use crate::ServiceInfo;
+use cf_rustracing::log::Log;
+use cf_rustracing::span::SpanReference;
+use cf_rustracing::tag::{Tag, TagValue};
+use cf_rustracing_jaeger::span::FinishedSpan;
+use cf_rustracing_jaeger::span::SpanContextState;
 use opentelemetry_proto::tonic as otlp;
-use rustracing::log::Log;
-use rustracing::span::SpanReference;
-use rustracing::tag::{Tag, TagValue};
-use rustracing_jaeger::span::SpanContextState;
 
 fn convert_trace_id(span_state: &SpanContextState) -> Vec<u8> {
     span_state

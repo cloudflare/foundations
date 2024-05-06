@@ -27,6 +27,7 @@
 //!   Useful for libraries that can be used either way.
 //! - **settings**: Enables serializable documented settings functionality.
 //! - **telemetry**: Enables all the telemetry-related features (**metrics**, **logging**, **tracing**, **telemetry-server**).
+//! - **telemetry-otlp-grpc**: Enables [OpenTelemetry] reporting via [gRPC].
 //! - **telemetry-server**: Enables the telemetry server.
 //! - **client-telemetry**: Enables a subset of telemetry features suitable for usage in clients (e.g. on mobile devices).
 //! - **metrics**: Enables metrics functionality.
@@ -52,6 +53,8 @@
 //! [seccomp]: https://en.wikipedia.org/wiki/Seccomp
 //! [jemalloc]: https://github.com/jemalloc/jemalloc
 //! [examples]: https://github.com/cloudflare/foundations/tree/main/examples
+//! [OpenTelemetry]: https://opentelemetry.io/
+//! [gRPC]: https://grpc.io/
 
 #![warn(missing_docs)]
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
@@ -82,6 +85,8 @@ pub mod security;
 
 #[doc(hidden)]
 pub mod reexports_for_macros {
+    #[cfg(feature = "tracing")]
+    pub use cf_rustracing;
     #[cfg(any(feature = "metrics", feature = "security"))]
     pub use once_cell;
     #[cfg(feature = "metrics")]
@@ -90,8 +95,6 @@ pub mod reexports_for_macros {
     pub use prometheus_client;
     #[cfg(feature = "metrics")]
     pub use prometools;
-    #[cfg(feature = "tracing")]
-    pub use rustracing;
     #[cfg(any(feature = "metrics", feature = "settings"))]
     pub use serde;
     #[cfg(feature = "metrics")]

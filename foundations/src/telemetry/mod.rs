@@ -92,6 +92,7 @@ mod server;
 use self::settings::TelemetrySettings;
 use crate::utils::feature_use;
 use crate::{BootstrapResult, ServiceInfo};
+use futures_util::stream::FuturesUnordered;
 use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context, Poll};
@@ -427,7 +428,7 @@ impl TelemetryContext {
     /// #[tokio::main]
     /// async fn main() {
     ///     // Test context is used for demonstration purposes to show the resulting traces.
-    ///     let ctx = TelemetryContext::test();
+    ///     let mut ctx = TelemetryContext::test();
     ///
     ///     {
     ///         let _scope = ctx.scope();
@@ -539,7 +540,7 @@ impl TelemetryContext {
     /// #[tokio::main]
     /// async fn main() {
     ///     // Test context is used for demonstration purposes to show the resulting traces.
-    ///     let ctx = TelemetryContext::test();
+    ///     let mut ctx = TelemetryContext::test();
     ///
     ///     {
     ///         let _scope = ctx.scope();
@@ -707,16 +708,22 @@ pub struct TelemetryConfig<'c> {
 /// [jemalloc]: https://github.com/jemalloc/jemalloc
 /// [`TelemetryServerSettings::enabled`]: `crate::telemetry::settings::TelemetryServerSettings::enabled`
 pub fn init(config: TelemetryConfig) -> BootstrapResult<TelemetryDriver> {
+    let tele_futures: FuturesUnordered<_> = Default::default();
+
     #[cfg(feature = "logging")]
     self::log::init::init(config.service_info, &config.settings.logging)?;
 
     #[cfg(feature = "tracing")]
-    self::tracing::init::init(config.service_info, &config.settings.tracing)?;
+    {
+        if let Some(reporter_fut) =
+            self::tracing::init::init(config.service_info.clone(), &config.settings.tracing)?
+        {
+            tele_futures.push(reporter_fut);
+        }
+    }
 
     #[cfg(feature = "metrics")]
     self::metrics::init::init(config.service_info, &config.settings.metrics);
-
-    let tele_futures = Default::default();
 
     #[cfg(feature = "telemetry-server")]
     {

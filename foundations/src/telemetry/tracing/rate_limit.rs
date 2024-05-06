@@ -1,11 +1,11 @@
 use crate::telemetry::settings::TracingSettings;
+use cf_rustracing::sampler::Sampler;
+use cf_rustracing::span::CandidateSpan;
+use cf_rustracing::{sampler::ProbabilisticSampler, Result};
 use governor::clock::DefaultClock;
 use governor::middleware::NoOpMiddleware;
 use governor::state::{InMemoryState, NotKeyed};
 use governor::{Quota, RateLimiter};
-use rustracing::sampler::Sampler;
-use rustracing::span::CandidateSpan;
-use rustracing::{sampler::ProbabilisticSampler, Result};
 
 #[derive(Debug)]
 pub(crate) struct RateLimitingProbabilisticSampler {

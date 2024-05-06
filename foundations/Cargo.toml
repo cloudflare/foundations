@@ -62,6 +62,8 @@ telemetry = [
     "metrics",
     "tracing",
     "telemetry-server",
+    "client-telemetry",
+    "telemetry-otlp-grpc",
     "dep:futures-util",
 ]
 
@@ -74,6 +76,9 @@ telemetry-server = [
     "dep:routerify",
     "dep:socket2",
 ]
+
+# Enables telemetry reporting over gRPC
+telemetry-otlp-grpc = ["dep:tonic", "dep:tokio"]
 
 # Enables experimental tokio runtime metrics
 tokio-runtime-metrics = [
@@ -94,21 +99,23 @@ logging = [
     "dep:slog",
     "dep:thread_local",
     "dep:futures-util",
+    "dep:serde",
 ]
 
 # Enables distributed tracing functionality.
 tracing = [
     "dep:foundations-macros",
-    "dep:crossbeam-channel",
     "dep:governor",
     "dep:once_cell",
     "dep:parking_lot",
     "dep:rand",
-    "dep:rustracing_jaeger",
-    "dep:rustracing",
+    "dep:cf-rustracing-jaeger",
+    "dep:cf-rustracing",
     "dep:opentelemetry-proto",
     "dep:thread_local",
     "dep:futures-util",
+    "dep:tokio",
+    "dep:serde",
 ]
 
 # Enables metrics functionality.
@@ -156,9 +163,10 @@ rustc-args = ["--cfg", "tokio_unstable", "--cfg", "foundations_unstable"]
 [dependencies]
 anyhow = { workspace = true, features = ["backtrace", "std"] }
 foundations-macros = { workspace = true, optional = true }
-crossbeam-channel = { workspace = true, optional = true }
-erased-serde = { workspace = true, optional = true }
+cf-rustracing = { workspace = true, optional = true }
+cf-rustracing-jaeger = { workspace = true, optional = true }
 clap = { workspace = true, optional = true }
+erased-serde = { workspace = true, optional = true }
 futures-util = { workspace = true, optional = true }
 governor = { workspace = true, optional = true }
 hyper = { workspace = true, optional = true, features = [
@@ -175,8 +183,6 @@ prometheus-client = { workspace = true, optional = true }
 prometools = { workspace = true, optional = true, features = ["serde"] }
 routerify = { workspace = true, optional = true }
 rand = { workspace = true, optional = true }
-rustracing = { workspace = true, optional = true }
-rustracing_jaeger = { workspace = true, optional = true }
 serde = { workspace = true, optional = true, features = ["derive", "rc"] }
 serde_path_to_error = { workspace = true, optional = true }
 serde_yaml = { workspace = true, optional = true }
@@ -189,6 +195,7 @@ slog-term = { workspace = true, optional = true }
 socket2 = { workspace = true, optional = true }
 thread_local = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true, features = ["sync", "rt"] }
+tonic = { workspace = true, optional = true, features = ["channel", "transport"] }
 tikv-jemallocator = { workspace = true, optional = true, features = [
     "profiling",
     "stats",

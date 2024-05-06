@@ -1,4 +1,4 @@
-use crate::telemetry::settings::{OpenTelemetryOutputSettings, RateLimitingSettings};
+use crate::telemetry::settings::RateLimitingSettings;
 use crate::utils::feature_use;
 use std::net::Ipv4Addr;
 
@@ -7,18 +7,18 @@ feature_use!(cfg(feature = "settings"), {
     use crate::settings::settings;
 });
 
+#[cfg(feature = "telemetry-otlp-grpc")]
+use crate::telemetry::settings::OpenTelemetryGrpcOutputSettings;
+
 #[cfg(not(feature = "settings"))]
 use std::net::SocketAddr;
 
 /// Distributed tracing settings.
 #[cfg_attr(feature = "settings", settings(crate_path = "crate"))]
-#[cfg_attr(not(feature = "settings"), derive(Clone, Debug))]
+#[cfg_attr(not(feature = "settings"), derive(Clone, Debug, serde::Deserialize))]
 pub struct TracingSettings {
     /// Enables tracing.
-    #[cfg_attr(
-        feature = "settings",
-        serde(default = "TracingSettings::default_enabled")
-    )]
+    #[serde(default = "TracingSettings::default_enabled")]
     pub enabled: bool,
 
     /// The output for the collected traces.
@@ -28,10 +28,7 @@ pub struct TracingSettings {
     ///
     /// This can be any fractional value between `0.0` and `1.0`.
     /// Where `1.0` means "sample everything", and `0.0` means "don't sample anything".
-    #[cfg_attr(
-        feature = "settings",
-        serde(default = "TracingSettings::default_sampling_ratio")
-    )]
+    #[serde(default = "TracingSettings::default_sampling_ratio")]
     pub sampling_ratio: f64,
 
     /// Settings for rate limiting emission of traces
@@ -65,22 +62,24 @@ impl TracingSettings {
     feature = "settings",
     settings(crate_path = "crate", impl_default = false)
 )]
-#[cfg_attr(not(feature = "settings"), derive(Clone, Debug))]
+#[cfg_attr(not(feature = "settings"), derive(Clone, Debug, serde::Deserialize))]
 pub enum TracesOutput {
     /// Sends traces to the collector in the [Jaeger Thrift (UDP)] format.
     ///
     /// [Jaeger Thrift (UDP)]: https://www.jaegertracing.io/docs/1.55/apis/#thrift-over-udp-stable
     JaegerThriftUdp(JaegerThriftUdpOutputSettings),
 
-    /// Sends traces to the collector in the [Open Telemetry] format.
+    /// Sends traces to the collector in the [Open Telemetry] format over [gRPC].
     ///
     /// [Jaeger Thrift (UDP)]: https://opentelemetry.io/
-    OpenTelemetry(OpenTelemetryOutputSettings),
+    /// [gRPC]: https://grpc.io/
+    #[cfg(feature = "telemetry-otlp-grpc")]
+    OpenTelemetryGrpc(OpenTelemetryGrpcOutputSettings),
 }
 
 impl Default for TracesOutput {
     fn default() -> Self {
-        Self::OpenTelemetry(Default::default())
+        Self::JaegerThriftUdp(Default::default())
     }
 }
 
@@ -88,16 +87,13 @@ impl Default for TracesOutput {
 ///
 /// [Jaeger Thrift (UDP)]: https://www.jaegertracing.io/docs/1.55/apis/#thrift-over-udp-stable
 #[cfg_attr(feature = "settings", settings(crate_path = "crate"))]
-#[cfg_attr(not(feature = "settings"), derive(Clone, Debug))]
+#[cfg_attr(not(feature = "settings"), derive(Clone, Debug, serde::Deserialize))]
 pub struct JaegerThriftUdpOutputSettings {
     /// The address of the Jaeger Thrift (UDP) agent.
     ///
     /// The default value is the default Jaeger UDP server address.
     /// See: https://www.jaegertracing.io/docs/1.31/getting-started/#all-in-one
-    #[cfg_attr(
-        feature = "settings",
-        serde(default = "JaegerThriftUdpOutputSettings::default_server_addr")
-    )]
+    #[serde(default = "JaegerThriftUdpOutputSettings::default_server_addr")]
     pub server_addr: SocketAddr,
 
     /// Overrides the bind address for the reporter API.

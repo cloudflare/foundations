@@ -7,20 +7,23 @@ pub(crate) mod init;
 #[cfg(any(test, feature = "testing"))]
 pub(crate) mod testing;
 
-mod jaeger_thrift_udp_output;
-mod otlp_grpc_output;
+mod output_jaeger_thrift_udp;
 mod rate_limit;
 
+#[cfg(feature = "telemetry-otlp-grpc")]
+mod output_otlp_grpc;
+
 use self::init::TracingHarness;
-use self::internal::{create_span, current_span, span_trace_id, SharedSpan, Span};
+use self::internal::{create_span, current_span, span_trace_id, SharedSpan};
 use super::scope::Scope;
+use cf_rustracing_jaeger::Span;
 use std::borrow::Cow;
 use std::sync::Arc;
 
 #[cfg(any(test, feature = "testing"))]
 pub use self::testing::{TestSpan, TestTrace, TestTraceIterator, TestTraceOptions};
 
-pub use rustracing_jaeger::span::SpanContextState as SerializableTraceState;
+pub use cf_rustracing_jaeger::span::SpanContextState as SerializableTraceState;
 
 /// A macro that wraps function body with a tracing span that is active as long as the function
 /// call lasts.
@@ -391,7 +394,7 @@ macro_rules! __add_span_tags {
     ( $( $name:expr => $val:expr ),+ ) => {
         $crate::telemetry::tracing::internal::write_current_span(|span| {
             span.set_tags(|| {
-                vec![ $($crate::reexports_for_macros::rustracing::tag::Tag::new($name, $val)),+ ]
+                vec![ $($crate::reexports_for_macros::cf_rustracing::tag::Tag::new($name, $val)),+ ]
             });
         });
     };
@@ -402,7 +405,7 @@ macro_rules! __add_span_tags {
                 $tags
                     .into_iter()
                     .map(|(name, val)| {
-                        $crate::reexports_for_macros::rustracing::tag::Tag::new(name, val)
+                        $crate::reexports_for_macros::cf_rustracing::tag::Tag::new(name, val)
                     })
             });
         });

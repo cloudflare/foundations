@@ -8,20 +8,14 @@ use std::net::SocketAddr;
 
 /// Telemetry server settings.
 #[cfg_attr(feature = "settings", settings(crate_path = "crate"))]
-#[cfg_attr(not(feature = "settings"), derive(Clone, Debug))]
+#[cfg_attr(not(feature = "settings"), derive(Clone, Debug, serde::Deserialize))]
 pub struct TelemetryServerSettings {
     /// Enables telemetry server
-    #[cfg_attr(
-        feature = "settings",
-        serde(default = "TelemetryServerSettings::default_enabled")
-    )]
+    #[serde(default = "TelemetryServerSettings::default_enabled")]
     pub enabled: bool,
 
     /// Telemetry server address.
-    #[cfg_attr(
-        feature = "settings",
-        serde(default = "TelemetryServerSettings::default_addr")
-    )]
+    #[serde(default = "TelemetryServerSettings::default_addr")]
     pub addr: SocketAddr,
 }
 

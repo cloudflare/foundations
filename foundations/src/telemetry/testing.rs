@@ -104,7 +104,7 @@ impl TestTelemetryContext {
 
     /// Returns all the traces produced in the test context.
     #[cfg(feature = "tracing")]
-    pub fn traces(&self, options: TestTraceOptions) -> Vec<TestTrace> {
+    pub fn traces(&mut self, options: TestTraceOptions) -> Vec<TestTrace> {
         self.traces_sink.traces(options)
     }
 }
