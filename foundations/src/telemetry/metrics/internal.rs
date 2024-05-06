@@ -2,7 +2,6 @@ use super::{info_metric, InfoMetric};
 use crate::telemetry::settings::{MetricsSettings, ServiceNameFormat};
 use crate::{Result, ServiceInfo};
 use once_cell::sync::OnceCell;
-use parking_lot::{RwLock, RwLockWriteGuard};
 use prometheus_client::encoding::text::{encode, EncodeMetric};
 use prometheus_client::registry::Registry;
 use prometools::serde::InfoGauge;
@@ -14,9 +13,11 @@ static REGISTRIES: OnceCell<Registries> = OnceCell::new();
 
 #[doc(hidden)]
 pub struct Registries {
-    main: RwLock<Registry>,
-    opt: RwLock<Registry>,
-    pub(super) info: RwLock<HashMap<TypeId, Box<dyn ErasedInfoMetric>>>,
+    // NOTE: we intentionally use a lock without poisoning here to not
+    // panic the threads if they just share telemetry with failed thread.
+    main: parking_lot::RwLock<Registry>,
+    opt: parking_lot::RwLock<Registry>,
+    pub(super) info: parking_lot::RwLock<HashMap<TypeId, Box<dyn ErasedInfoMetric>>>,
     extra_label: Option<(String, String)>,
 }
 
@@ -97,8 +98,8 @@ impl Registries {
 fn new_registry(
     service_name_in_metrics: &str,
     service_name_format: &ServiceNameFormat,
-) -> RwLock<Registry> {
-    RwLock::new(match service_name_format {
+) -> parking_lot::RwLock<Registry> {
+    parking_lot::RwLock::new(match service_name_format {
         ServiceNameFormat::MetricPrefix => match service_name_in_metrics {
             "" => Registry::default(),
             _ => Registry::with_prefix(service_name_in_metrics),
@@ -111,11 +112,11 @@ fn new_registry(
 }
 
 fn get_subsystem<'a>(
-    registry: RwLockWriteGuard<'a, Registry>,
+    registry: parking_lot::RwLockWriteGuard<'a, Registry>,
     subsystem: &str,
     extra_label: Option<(String, String)>,
 ) -> impl DerefMut<Target = Registry> + 'a {
-    RwLockWriteGuard::map(registry, move |mut registry| {
+    parking_lot::RwLockWriteGuard::map(registry, move |mut registry| {
         if let Some((name, value)) = extra_label {
             registry = registry.sub_registry_with_label((name.into(), value.into()));
         }

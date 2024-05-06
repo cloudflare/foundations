@@ -2,7 +2,7 @@ use foundations::telemetry::tracing::{self, test_trace};
 use foundations::telemetry::{with_test_telemetry, TestTelemetryContext};
 
 #[with_test_telemetry(tokio::test)]
-async fn wrap_tokio_test(mut ctx: TestTelemetryContext) {
+async fn wrap_tokio_test(ctx: TestTelemetryContext) {
     {
         let _span = tracing::span("span1");
     }
@@ -27,7 +27,7 @@ async fn wrap_tokio_test(mut ctx: TestTelemetryContext) {
 }
 
 #[with_test_telemetry(test)]
-fn wrap_rust_test(mut ctx: TestTelemetryContext) {
+fn wrap_rust_test(ctx: TestTelemetryContext) {
     {
         let _span = tracing::span("root");
     }

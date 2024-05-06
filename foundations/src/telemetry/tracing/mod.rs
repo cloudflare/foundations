@@ -23,6 +23,7 @@ use std::sync::Arc;
 #[cfg(any(test, feature = "testing"))]
 pub use self::testing::{TestSpan, TestTrace, TestTraceIterator, TestTraceOptions};
 
+pub use cf_rustracing::tag::TagValue;
 pub use cf_rustracing_jaeger::span::SpanContextState as SerializableTraceState;
 
 /// A macro that wraps function body with a tracing span that is active as long as the function
@@ -630,8 +631,7 @@ macro_rules! __set_span_finish_time {
 /// sorts the provided log records this way during expansion.
 ///
 /// ```
-/// use foundations::telemetry::tracing::{test_trace, TestSpan, TestTrace};
-/// use rustracing::tag::TagValue;
+/// use foundations::telemetry::tracing::{test_trace, TagValue, TestSpan, TestTrace};
 /// use std::time::SystemTime;
 ///
 /// let trace = test_trace! {
