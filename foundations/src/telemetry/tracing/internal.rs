@@ -3,14 +3,12 @@ use super::StartTraceOptions;
 use rand::{self, Rng};
 
 use crate::telemetry::tracing::rate_limit::RateLimitingProbabilisticSampler;
-use rustracing::tag::Tag;
-use rustracing_jaeger::span::{SpanContext, SpanContextState};
+use cf_rustracing::tag::Tag;
+use cf_rustracing_jaeger::span::{Span, SpanContext, SpanContextState};
 use std::borrow::Cow;
 use std::sync::Arc;
 
-pub(crate) type Span = rustracing::span::Span<SpanContextState>;
-pub(crate) type FinishedSpan = rustracing::span::FinishedSpan<SpanContextState>;
-pub(crate) type Tracer = rustracing::Tracer<RateLimitingProbabilisticSampler, SpanContextState>;
+pub(crate) type Tracer = cf_rustracing::Tracer<RateLimitingProbabilisticSampler, SpanContextState>;
 
 #[derive(Debug, Clone)]
 pub(crate) struct SharedSpan {

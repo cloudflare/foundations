@@ -1,10 +1,10 @@
 use super::init::{create_tracer_and_span_rx, TracingHarness};
-use super::internal::{FinishedSpan, Tracer};
+use super::internal::Tracer;
 use crate::telemetry::scope::Scope;
 use crate::telemetry::settings::TracingSettings;
-use crossbeam_channel::Receiver;
-use rustracing::span::SpanReference;
-use rustracing::tag::TagValue;
+use cf_rustracing::span::SpanReference;
+use cf_rustracing::tag::TagValue;
+use cf_rustracing_jaeger::span::{FinishedSpan, SpanReceiver};
 use std::collections::HashMap;
 use std::iter::{FusedIterator, Iterator};
 use std::sync::Mutex;
@@ -44,7 +44,7 @@ impl TestTrace {
     ///     }
     /// }
     ///
-    /// fn is_foo_called(ctx: TestTelemetryContext) -> bool {
+    /// fn is_foo_called(mut ctx: TestTelemetryContext) -> bool {
     ///     ctx
     ///         .traces(Default::default())[0]
     ///         .iter()
@@ -160,12 +160,12 @@ impl TestTracerScope {
 }
 
 pub(crate) struct TestTracesSink {
-    span_rx: Receiver<FinishedSpan>,
+    span_rx: SpanReceiver,
     raw_spans: Mutex<HashMap<ParentId, Vec<FinishedSpan>>>,
 }
 
 impl TestTracesSink {
-    pub(crate) fn traces(&self, options: TestTraceOptions) -> Vec<TestTrace> {
+    pub(crate) fn traces(&mut self, options: TestTraceOptions) -> Vec<TestTrace> {
         let mut raw_spans = self.raw_spans.lock().unwrap();
 
         while let Ok(span) = self.span_rx.try_recv() {
@@ -256,8 +256,8 @@ pub(crate) fn current_test_tracer() -> Option<Tracer> {
 }
 
 pub(crate) fn create_test_tracer(settings: &TracingSettings) -> (Tracer, TestTracesSink) {
-    let (tracer, span_rx) = create_tracer_and_span_rx(settings, true)
-        .expect("should create tracer with default settings");
+    let (tracer, span_rx) =
+        create_tracer_and_span_rx(settings).expect("should create tracer with default settings");
 
     let sink = TestTracesSink {
         span_rx,
@@ -299,9 +299,9 @@ mod tests {
         let _root2_child1 = root2.child("root2_child1", |o| o.start());
     }
 
-    #[test]
-    fn span_tree() {
-        let (tracer, sink) = create_test_tracer(&Default::default());
+    #[tokio::test]
+    async fn span_tree() {
+        let (tracer, mut sink) = create_test_tracer(&Default::default());
 
         make_test_spans(&tracer);
 
@@ -326,9 +326,9 @@ mod tests {
         );
     }
 
-    #[test]
-    fn span_iterator() {
-        let (tracer, sink) = create_test_tracer(&Default::default());
+    #[tokio::test]
+    async fn span_iterator() {
+        let (tracer, mut sink) = create_test_tracer(&Default::default());
 
         make_test_spans(&tracer);
 
