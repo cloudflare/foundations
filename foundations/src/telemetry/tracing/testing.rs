@@ -7,7 +7,6 @@ use cf_rustracing::tag::TagValue;
 use cf_rustracing_jaeger::span::{FinishedSpan, SpanReceiver};
 use std::collections::HashMap;
 use std::iter::{FusedIterator, Iterator};
-use std::sync::Mutex;
 use std::time::SystemTime;
 
 type ParentId = Option<u64>;
@@ -44,7 +43,7 @@ impl TestTrace {
     ///     }
     /// }
     ///
-    /// fn is_foo_called(mut ctx: TestTelemetryContext) -> bool {
+    /// fn is_foo_called(ctx: TestTelemetryContext) -> bool {
     ///     ctx
     ///         .traces(Default::default())[0]
     ///         .iter()
@@ -161,25 +160,23 @@ impl TestTracerScope {
 
 pub(crate) struct TestTracesSink {
     span_rx: SpanReceiver,
-    raw_spans: Mutex<HashMap<ParentId, Vec<FinishedSpan>>>,
+    raw_spans: HashMap<ParentId, Vec<FinishedSpan>>,
 }
 
 impl TestTracesSink {
     pub(crate) fn traces(&mut self, options: TestTraceOptions) -> Vec<TestTrace> {
-        let mut raw_spans = self.raw_spans.lock().unwrap();
-
         while let Ok(span) = self.span_rx.try_recv() {
-            add_raw_span(span, &mut raw_spans);
+            add_raw_span(span, &mut self.raw_spans);
         }
 
-        for spans in raw_spans.values_mut() {
+        for spans in self.raw_spans.values_mut() {
             spans.sort_by_key(FinishedSpan::start_time);
         }
 
-        match raw_spans.get(&None) {
+        match self.raw_spans.get(&None) {
             Some(roots) => roots
                 .iter()
-                .map(|root| TestTrace(create_test_span(root, &raw_spans, options)))
+                .map(|root| TestTrace(create_test_span(root, &self.raw_spans, options)))
                 .collect(),
             None => vec![],
         }

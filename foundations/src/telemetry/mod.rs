@@ -428,7 +428,7 @@ impl TelemetryContext {
     /// #[tokio::main]
     /// async fn main() {
     ///     // Test context is used for demonstration purposes to show the resulting traces.
-    ///     let mut ctx = TelemetryContext::test();
+    ///     let ctx = TelemetryContext::test();
     ///
     ///     {
     ///         let _scope = ctx.scope();
@@ -540,7 +540,7 @@ impl TelemetryContext {
     /// #[tokio::main]
     /// async fn main() {
     ///     // Test context is used for demonstration purposes to show the resulting traces.
-    ///     let mut ctx = TelemetryContext::test();
+    ///     let ctx = TelemetryContext::test();
     ///
     ///     {
     ///         let _scope = ctx.scope();

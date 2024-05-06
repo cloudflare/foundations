@@ -19,15 +19,21 @@ pub(super) fn start(
     settings: &JaegerThriftUdpOutputSettings,
     span_rx: SpanReceiver,
 ) -> BootstrapResult<BoxFuture<'static, BootstrapResult<()>>> {
-    let reporter_bind_addr = get_reporter_bind_addr(settings)?;
     let server_addr = settings.server_addr.into();
+    let reporter_bind_addr = get_reporter_bind_addr(settings)?;
 
     // NOTE: do socket binding as early as possible. It's a good practice to disable binding
     // with seccomp after the service initialisaion.
+    let socket = std::net::UdpSocket::bind(reporter_bind_addr)?;
+
+    socket.set_nonblocking(true)?;
 
     Ok(async move {
-        let mut reporter =
-            JaegerCompactReporter::new(service_info.name, server_addr, reporter_bind_addr).await?;
+        let mut reporter = JaegerCompactReporter::new_with_transport(
+            service_info.name,
+            server_addr,
+            tokio::net::UdpSocket::from_std(socket)?,
+        )?;
 
         reporter.add_service_tag(Tag::new("app.version", service_info.version));
 

@@ -38,8 +38,10 @@ feature_use!(cfg(feature = "tracing"), {
 pub struct TestTelemetryContext {
     inner: TelemetryContext,
 
+    // NOTE: we intentionally use a mutex without poisoning here to not
+    // panic the threads if they just share telemetry with failed thread.
     #[cfg(feature = "tracing")]
-    traces_sink: TestTracesSink,
+    traces_sink: parking_lot::Mutex<TestTracesSink>,
 
     #[cfg(feature = "logging")]
     log_records: TestLogRecords,
@@ -71,7 +73,7 @@ impl TestTelemetryContext {
             },
 
             #[cfg(feature = "tracing")]
-            traces_sink,
+            traces_sink: parking_lot::Mutex::new(traces_sink),
 
             #[cfg(feature = "logging")]
             log_records,
@@ -93,7 +95,7 @@ impl TestTelemetryContext {
     pub fn set_tracing_settings(&mut self, tracing_settings: TracingSettings) {
         let (tracer, traces_sink) = { create_test_tracer(&tracing_settings) };
         self.inner.test_tracer = Some(tracer);
-        self.traces_sink = traces_sink;
+        *self.traces_sink.lock() = traces_sink;
     }
 
     /// Returns all the log records produced in the test context.
@@ -104,8 +106,8 @@ impl TestTelemetryContext {
 
     /// Returns all the traces produced in the test context.
     #[cfg(feature = "tracing")]
-    pub fn traces(&mut self, options: TestTraceOptions) -> Vec<TestTrace> {
-        self.traces_sink.traces(options)
+    pub fn traces(&self, options: TestTraceOptions) -> Vec<TestTrace> {
+        self.traces_sink.lock().traces(options)
     }
 }
 

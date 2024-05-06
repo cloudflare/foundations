@@ -64,12 +64,11 @@ mod metrics;
 mod runtime_handle;
 
 use crate::telemetry::tokio_runtime_metrics::runtime_handle::RuntimeHandle;
-use parking_lot::Mutex;
 use slab::Slab;
 use std::sync::Arc;
 use tokio::runtime::Handle;
 
-static MONITOR: Mutex<Slab<RuntimeHandle>> = Mutex::new(Slab::new());
+static MONITOR: parking_lot::Mutex<Slab<RuntimeHandle>> = parking_lot::Mutex::new(Slab::new());
 
 /// Key for removing runtimes registered with the global monitor.
 pub struct Key(usize);
