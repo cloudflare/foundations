@@ -46,6 +46,7 @@ impl MemoryProfilerSettings {
         19
     }
 
+    #[cfg(feature = "security")]
     fn default_sandbox_profiling_syscalls() -> bool {
         true
     }

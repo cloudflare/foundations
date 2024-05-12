@@ -11,7 +11,7 @@ pub struct OpenTelemetryGrpcOutputSettings {
     ///
     /// # Default
     /// Default value is the standard gRPC endpoints URL: `http://localhost:4317`.
-    /// See: https://opentelemetry.io/docs/languages/sdk-configuration/otlp-exporter/#otel_exporter_otlp_endpoint
+    /// See: <https://opentelemetry.io/docs/languages/sdk-configuration/otlp-exporter/#otel_exporter_otlp_endpoint>
     #[serde(default = "OpenTelemetryGrpcOutputSettings::default_endpoint_url")]
     pub endpoint_url: String,
 
@@ -24,6 +24,14 @@ pub struct OpenTelemetryGrpcOutputSettings {
     /// Default value is `10` seconds.
     #[serde(default = "OpenTelemetryGrpcOutputSettings::default_request_timeout_seconds")]
     pub request_timeout_seconds: u64,
+
+    /// Maximum number of entries to be batched together and sent in one request.
+    ///
+    /// # Default
+    ///
+    /// Default value is `512`.
+    #[serde(default = "OpenTelemetryGrpcOutputSettings::default_max_batch_size")]
+    pub max_batch_size: usize,
 }
 
 #[cfg(not(feature = "settings"))]
@@ -33,6 +41,7 @@ impl Default for OpenTelemetryGrpcOutputSettings {
             endpoint_url: OpenTelemetryGrpcOutputSettings::default_endpoint_url(),
             request_timeout_seconds:
                 OpenTelemetryGrpcOutputSettings::default_request_timeout_seconds(),
+            max_batch_size: OpenTelemetryGrpcOutputSettings::default_max_batch_size(),
         }
     }
 }
@@ -44,5 +53,9 @@ impl OpenTelemetryGrpcOutputSettings {
 
     fn default_request_timeout_seconds() -> u64 {
         10
+    }
+
+    fn default_max_batch_size() -> usize {
+        512
     }
 }

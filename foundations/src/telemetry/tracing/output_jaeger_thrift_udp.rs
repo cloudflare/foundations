@@ -8,8 +8,6 @@ use futures_util::future::{BoxFuture, FutureExt as _};
 use std::net::SocketAddr;
 use std::net::{Ipv4Addr, Ipv6Addr};
 use std::sync::Arc;
-use std::thread;
-use std::time::Duration;
 
 #[cfg(feature = "logging")]
 use crate::telemetry::log;
@@ -63,8 +61,6 @@ fn get_reporter_bind_addr(settings: &JaegerThriftUdpOutputSettings) -> Bootstrap
 }
 
 async fn do_export(reporter: JaegerCompactReporter, mut span_rx: SpanReceiver) {
-    const REPORTER_COOLDOWN_PERIOD: Duration = Duration::from_secs(2);
-
     let reporter = Arc::new(reporter);
 
     while let Some(span) = span_rx.recv().await {
@@ -79,8 +75,6 @@ async fn do_export(reporter: JaegerCompactReporter, mut span_rx: SpanReceiver) {
 
                     #[cfg(not(feature = "logging"))]
                     drop(e);
-
-                    thread::sleep(REPORTER_COOLDOWN_PERIOD);
                 }
             }
         });

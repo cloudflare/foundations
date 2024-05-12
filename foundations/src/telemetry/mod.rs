@@ -51,7 +51,7 @@ mod scope;
 
 mod driver;
 
-#[cfg(feature = "tracing")]
+#[cfg(all(feature = "tracing", feature = "telemetry-otlp-grpc"))]
 mod otlp_conversion;
 
 #[cfg(feature = "testing")]
