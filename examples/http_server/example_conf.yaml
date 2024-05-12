@@ -7,9 +7,8 @@ telemetry:
     enabled: true
     # The output for the collected traces.
     output:
-      jaeger_thrift_udp:
-        server_addr: "127.0.0.1:6831"
-        reporter_bind_addr: ~
+      open_telemetry_grpc:
+        endpoint_url: "http://localhost:4317"
     # Sampling ratio.
     #
     # This can be any fractional value between `0.0` and `1.0`.

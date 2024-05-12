@@ -92,7 +92,7 @@ pub struct JaegerThriftUdpOutputSettings {
     /// The address of the Jaeger Thrift (UDP) agent.
     ///
     /// The default value is the default Jaeger UDP server address.
-    /// See: https://www.jaegertracing.io/docs/1.31/getting-started/#all-in-one
+    /// See: <https://www.jaegertracing.io/docs/1.31/getting-started/#all-in-one>
     #[serde(default = "JaegerThriftUdpOutputSettings::default_server_addr")]
     pub server_addr: SocketAddr,
 

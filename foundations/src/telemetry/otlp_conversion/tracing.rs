@@ -1,4 +1,6 @@
-use super::common::{convert_service_info, convert_time};
+use super::common::{
+    convert_service_info_to_instrumentation_scope, convert_service_info_to_resource, convert_time,
+};
 use crate::ServiceInfo;
 use cf_rustracing::log::Log;
 use cf_rustracing::span::SpanReference;
@@ -13,7 +15,7 @@ fn convert_trace_id(span_state: &SpanContextState) -> Vec<u8> {
         .high
         .to_be_bytes()
         .into_iter()
-        .chain(span_state.trace_id().low.to_be_bytes().into_iter())
+        .chain(span_state.trace_id().low.to_be_bytes())
         .collect()
 }
 
@@ -103,11 +105,11 @@ pub(crate) fn convert_span(
     let (status_code, attributes) = convert_tags(&span);
 
     otlp::trace::v1::ResourceSpans {
-        resource: None,
+        resource: Some(convert_service_info_to_resource(service_info)),
         schema_url: Default::default(),
         scope_spans: vec![otlp::trace::v1::ScopeSpans {
             schema_url: Default::default(),
-            scope: Some(convert_service_info(service_info)),
+            scope: Some(convert_service_info_to_instrumentation_scope(service_info)),
             spans: vec![otlp::trace::v1::Span {
                 trace_id: convert_trace_id(span_state),
                 span_id: span_state.span_id().to_be_bytes().to_vec(),

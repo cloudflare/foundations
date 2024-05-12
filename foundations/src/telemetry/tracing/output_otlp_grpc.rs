@@ -4,15 +4,27 @@ use crate::{BootstrapResult, ServiceInfo};
 use anyhow::Context as _;
 use cf_rustracing_jaeger::span::SpanReceiver;
 use futures_util::future::{BoxFuture, FutureExt as _};
+use hyper::http::uri::PathAndQuery;
+use opentelemetry_proto::tonic::collector::trace::v1::{
+    ExportTraceServiceRequest, ExportTraceServiceResponse,
+};
+use opentelemetry_proto::tonic::trace::v1::ResourceSpans;
 use std::time::Duration;
 use tonic::client::Grpc;
+use tonic::codec::ProstCodec;
 use tonic::transport::Channel;
+use tonic::{GrpcMethod, Request};
+
+static COLLECTOR_PATH: &str = "/opentelemetry.proto.collector.trace.v1.TraceService/Export";
+static TRACE_SERVICE: &str = "opentelemetry.proto.collector.trace.v1.TraceService";
 
 pub(super) fn start(
     service_info: ServiceInfo,
     settings: &OpenTelemetryGrpcOutputSettings,
     span_rx: SpanReceiver,
 ) -> BootstrapResult<BoxFuture<'static, BootstrapResult<()>>> {
+    let max_batch_size = settings.max_batch_size;
+
     let grpc_channel = Channel::from_shared(format!("{}/v1/traces", settings.endpoint_url))?
         .timeout(Duration::from_secs(settings.request_timeout_seconds));
 
@@ -25,17 +37,55 @@ pub(super) fn start(
 
         let client = Grpc::new(grpc_channel);
 
-        do_export(client, service_info, span_rx).await
+        do_export(client, service_info, span_rx, max_batch_size).await
     }
     .boxed())
 }
 
 async fn do_export(
-    client: Grpc<Channel>,
+    mut client: Grpc<Channel>,
     service_info: ServiceInfo,
-    span_rx: SpanReceiver,
+    mut span_rx: SpanReceiver,
+    max_batch_size: usize,
 ) -> BootstrapResult<()> {
-    todo!();
+    let mut batch = Vec::with_capacity(max_batch_size);
+
+    loop {
+        let received = span_rx.recv_many(&mut batch, max_batch_size).await;
+
+        if received == 0 {
+            break;
+        }
+
+        let resource_spans = batch
+            .drain(..)
+            .map(|span| convert_span(span, &service_info))
+            .collect();
+
+        client
+            .ready()
+            .await
+            .context("lost gRPC connection to the trace service")?;
+
+        client
+            .unary::<_, ExportTraceServiceResponse, _>(
+                create_request(resource_spans),
+                PathAndQuery::from_static(COLLECTOR_PATH),
+                ProstCodec::default(),
+            )
+            .await
+            .context("failed to send gRPC request to the trace service")?;
+    }
 
     Ok(())
+}
+
+fn create_request(resource_spans: Vec<ResourceSpans>) -> Request<ExportTraceServiceRequest> {
+    let mut request = Request::new(ExportTraceServiceRequest { resource_spans });
+
+    request
+        .extensions_mut()
+        .insert(GrpcMethod::new(TRACE_SERVICE, "Export"));
+
+    request
 }

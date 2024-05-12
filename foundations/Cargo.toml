@@ -78,7 +78,7 @@ telemetry-server = [
 ]
 
 # Enables telemetry reporting over gRPC
-telemetry-otlp-grpc = ["dep:tonic", "dep:tokio"]
+telemetry-otlp-grpc = ["dep:tonic", "dep:tokio", "dep:hyper"]
 
 # Enables experimental tokio runtime metrics
 tokio-runtime-metrics = [
@@ -206,6 +206,7 @@ yaml-merge-keys = { workspace = true, optional = true, features = [
 ] }
 
 # needed for minver purposes
+async-stream = { workspace = true, optional = true }
 local-ip-address = { workspace = true, optional = true }
 lock_api = { workspace = true, optional = true }
 log = { workspace = true, optional = true }

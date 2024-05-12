@@ -5,6 +5,7 @@ use slog::{Drain, Never, OwnedKVList, Record, SendSyncRefUnwindSafeDrain};
 
 #[crate::telemetry::metrics::metrics(crate_path = "crate")]
 mod foundations {
+    /// The number of produced log entries.
     pub fn log_record_count(level: &'static str) -> Counter;
 }
 
