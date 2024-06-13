@@ -63,7 +63,7 @@ impl TestTelemetryContext {
         TestTelemetryContext {
             inner: TelemetryContext {
                 #[cfg(feature = "logging")]
-                log: Arc::new(parking_lot::RwLock::new(log)),
+                log: Arc::new(log),
 
                 #[cfg(feature = "tracing")]
                 span: None,
@@ -85,7 +85,7 @@ impl TestTelemetryContext {
     #[cfg(feature = "logging")]
     pub fn set_logging_settings(&mut self, logging_settings: LoggingSettings) {
         let (log, log_records) = { create_test_log(&logging_settings) };
-        *self.inner.log.write() = log;
+        self.inner.log.overwrite_from(log);
         self.log_records = log_records;
     }
 

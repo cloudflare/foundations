@@ -1,7 +1,7 @@
 use super::field_dedup::FieldDedupFilterFactory;
 use super::field_filtering::FieldFilteringDrain;
 use super::field_redact::FieldRedactFilterFactory;
-use super::internal::SharedLog;
+use super::internal::{LogContext, SharedLog};
 
 #[cfg(feature = "metrics")]
 use crate::telemetry::log::log_volume::LogVolumeMetricsDrain;
@@ -31,11 +31,11 @@ static HARNESS: OnceCell<LogHarness> = OnceCell::new();
 
 static NOOP_HARNESS: Lazy<LogHarness> = Lazy::new(|| {
     let root_drain = Arc::new(Discard);
-    let noop_log = Logger::root(Arc::clone(&root_drain), slog::o!());
+    let noop_log = LogContext::new(Logger::root(Arc::clone(&root_drain), slog::o!()));
 
     LogHarness {
         root_drain,
-        root_log: Arc::new(parking_lot::RwLock::new(noop_log)),
+        root_log: Arc::new(noop_log),
         settings: Default::default(),
         log_scope_stack: Default::default(),
     }
@@ -104,7 +104,7 @@ pub(crate) fn init(service_info: &ServiceInfo, settings: &LoggingSettings) -> Bo
     let root_log = build_log_with_drain(settings, root_kv, Arc::clone(&root_drain));
     let harness = LogHarness {
         root_drain,
-        root_log: Arc::new(parking_lot::RwLock::new(root_log)),
+        root_log: Arc::new(LogContext::new(root_log)),
         settings: settings.clone(),
         log_scope_stack: Default::default(),
     };
