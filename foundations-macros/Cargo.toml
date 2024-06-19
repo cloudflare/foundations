@@ -8,6 +8,9 @@ authors = { workspace = true }
 license = { workspace = true }
 readme = "../README.md"
 
+[features]
+settings-deny-unknown-fields = []
+
 [lib]
 proc-macro = true
 

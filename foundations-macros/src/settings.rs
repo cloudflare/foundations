@@ -178,6 +178,9 @@ fn add_default_attrs(options: &Options, attrs: &mut Vec<Attribute>) {
     }
 
     attrs.push(parse_quote!(#[serde(crate = #serde_path)]));
+
+    #[cfg(feature = "settings-deny-unknown-fields")]
+    attrs.push(parse_quote!(#[serde(deny_unknown_fields)]));
 }
 
 fn impl_settings_trait(options: &Options, item: &ItemStruct) -> Result<proc_macro2::TokenStream> {
@@ -396,6 +399,9 @@ mod tests {
             }
         };
 
+        #[cfg(feature = "settings-deny-unknown-fields")]
+        let expected = add_deny_unknown_fields_attr(expected);
+
         assert_eq!(actual, expected);
     }
 
@@ -476,6 +482,9 @@ mod tests {
             }
         };
 
+        #[cfg(feature = "settings-deny-unknown-fields")]
+        let expected = add_deny_unknown_fields_attr(expected);
+
         assert_eq!(actual, expected);
     }
 
@@ -540,6 +549,9 @@ mod tests {
             }
         };
 
+        #[cfg(feature = "settings-deny-unknown-fields")]
+        let expected = add_deny_unknown_fields_attr(expected);
+
         assert_eq!(actual, expected);
     }
 
@@ -595,6 +607,9 @@ mod tests {
             }
         };
 
+        #[cfg(feature = "settings-deny-unknown-fields")]
+        let expected = add_deny_unknown_fields_attr(expected);
+
         assert_eq!(actual, expected);
     }
 
@@ -624,6 +639,9 @@ mod tests {
             impl ::foundations::settings::Settings for TestStruct { }
         };
 
+        #[cfg(feature = "settings-deny-unknown-fields")]
+        let expected = add_deny_unknown_fields_attr(expected);
+
         assert_eq!(actual, expected);
     }
 
@@ -652,6 +670,9 @@ mod tests {
             impl ::foundations::settings::Settings for TestStruct { }
         };
 
+        #[cfg(feature = "settings-deny-unknown-fields")]
+        let expected = add_deny_unknown_fields_attr(expected);
+
         assert_eq!(actual, expected);
     }
 
@@ -679,6 +700,9 @@ mod tests {
 
             impl ::foundations::settings::Settings for TestStruct { }
         };
+
+        #[cfg(feature = "settings-deny-unknown-fields")]
+        let expected = add_deny_unknown_fields_attr(expected);
 
         assert_eq!(actual, expected);
     }
@@ -718,6 +742,9 @@ mod tests {
             impl ::foundations::settings::Settings for TestEnum { }
         };
 
+        #[cfg(feature = "settings-deny-unknown-fields")]
+        let expected = add_deny_unknown_fields_attr(expected);
+
         assert_eq!(actual, expected);
     }
 
@@ -752,6 +779,9 @@ mod tests {
 
             impl ::foundations::settings::Settings for TestEnum { }
         };
+
+        #[cfg(feature = "settings-deny-unknown-fields")]
+        let expected = add_deny_unknown_fields_attr(expected);
 
         assert_eq!(actual, expected);
     }
@@ -883,6 +913,26 @@ mod tests {
             }
         };
 
+        #[cfg(feature = "settings-deny-unknown-fields")]
+        let expected = add_deny_unknown_fields_attr(expected);
+
         assert_eq!(actual, expected);
+    }
+
+    #[cfg(feature = "settings-deny-unknown-fields")]
+    fn add_deny_unknown_fields_attr(mut code: String) -> String {
+        let attr = code_str! {
+            #[serde(deny_unknown_fields)]
+        };
+
+        let start_index = code.find("# [serde (crate = ");
+        let closing_brace_offset = code[start_index.unwrap()..].find(']');
+
+        code.insert_str(
+            start_index.unwrap() + closing_brace_offset.unwrap() + 1,
+            &format!(" {attr}"),
+        );
+
+        code
     }
 }
