@@ -1,3 +1,6 @@
+// See: https://github.com/cloudflare/foundations/issues/50
+#![allow(clippy::manual_unwrap_or_default)]
+
 use crate::common::Result;
 use darling::FromMeta;
 use proc_macro::TokenStream;
