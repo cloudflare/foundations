@@ -55,9 +55,6 @@ settings = [
     "dep:indexmap",
 ]
 
-# Adds #[serde(deny_unknown_fields)] to all settings containers using #[settings]
-settings-deny-unknown-fields = ["foundations-macros?/settings-deny-unknown-fields"]
-
 # Enables all the telemetry-related features ("logging", "metrics", "tracing", "telemetry-server").
 telemetry = [
     "logging",

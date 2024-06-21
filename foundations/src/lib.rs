@@ -26,8 +26,6 @@
 //! - **server-client-common-default**: A subset of features that can be used both on server and client sides.
 //!   Useful for libraries that can be used either way.
 //! - **settings**: Enables serializable documented settings functionality.
-//! - **settings-deny-unknown-fields**: Enables strict checks that all settings keys map to
-//! known rust fields during deserialization.
 //! - **telemetry**: Enables all the telemetry-related features (**metrics**, **logging**, **tracing**, **telemetry-server**).
 //! - **telemetry-otlp-grpc**: Enables [OpenTelemetry] reporting via [gRPC].
 //! - **telemetry-server**: Enables the telemetry server.
