@@ -156,6 +156,10 @@ fn expand_from_parsed(args: MacroArgs, extern_: Mod) -> proc_macro2::TokenStream
                     }
                 });
 
+            pub fn collect() -> #foundations::Result<String> {
+                #foundations::telemetry::metrics::internal::Registries::collect_subsystem(::std::stringify!(#mod_name))
+            }
+
             #(#metric_fns)*
         }
     }

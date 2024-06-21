@@ -85,6 +85,16 @@ impl Registries {
         )
     }
 
+    pub fn collect_subsystem(subsystem: &str) -> Result<String> {
+        let mut buffer = Vec::with_capacity(128);
+
+        encode_registry(&mut buffer, &Self::get_opt_subsystem(subsystem))?;
+        encode_registry(&mut buffer, &Self::get_main_subsystem(subsystem))?;
+
+        buffer.extend_from_slice(b"# EOF\n");
+        Ok(String::from_utf8(buffer)?)
+    }
+
     pub(super) fn get() -> &'static Registries {
         REGISTRIES.get_or_init(|| Registries {
             main: new_registry("undefined", &ServiceNameFormat::MetricPrefix),
