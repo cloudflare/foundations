@@ -1,4 +1,17 @@
+4.0.0
+- 2024-06-13 ZTC-1478: track the number of times a logger has been replaced with a child logger (#47)
+- 2024-05-12 Implement gRPC export for traces
+- 2024-05-06 Re-introduce interior mutability for TestTelemetryContext::traces()
+- 2024-05-06 Shape new tracing output API.
+- 2024-03-29 Implement OTLP output settings. Make serde aware of defaults for settings
+- 2024-03-16 Implement conversion of span data to OTLP format
+- 2024-03-14 Use term "output" instead of "exporter" for tracing to be consistent with logging settings
+- 2024-03-11 Introduce TelemetryDriver
+- 2024-03-11 Make tracer exporters configurable
+- 2024-03-26 Improve metrics bind error message
+
 3.3.0
+- 2024-03-21 Release 3.3.0
 - 2024-03-21 Fix new lints
 - 2024-03-19 Construct metrics registry with default() when name_in_metrics is empty
 - 2024-03-10 Fix paths in gen-syscall-enum tool
