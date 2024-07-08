@@ -22,6 +22,7 @@ use crate::telemetry::log::init::build_log_with_drain;
 use crate::telemetry::settings::LogVerbosity;
 use crate::Result;
 use slog::{Level, Logger, OwnedKV};
+use std::ops::Deref;
 use std::sync::Arc;
 
 #[cfg(any(test, feature = "testing"))]
@@ -36,9 +37,14 @@ pub fn set_verbosity(level: Level) -> Result<()> {
     let mut settings = harness.settings.clone();
     settings.verbosity = LogVerbosity(level);
 
-    let kv = OwnedKV(current_log().read().list().clone());
+    let current_log = current_log();
+    let mut current_log_lock = current_log.write();
+
+    let kv = OwnedKV(current_log_lock.list().clone());
     let logger = build_log_with_drain(&settings, kv, Arc::clone(&harness.root_drain));
-    *current_log().write() = logger;
+
+    current_log_lock.inc_nesting();
+    current_log_lock.inner = logger;
 
     Ok(())
 }
@@ -55,7 +61,7 @@ pub fn verbosity() -> LogVerbosity {
 /// telemetry.
 ///
 /// [slog]: https://crates.io/crates/slog
-pub fn slog_logger() -> Arc<parking_lot::RwLock<Logger>> {
+pub fn slog_logger() -> Arc<parking_lot::RwLock<impl Deref<Target = Logger>>> {
     current_log()
 }
 

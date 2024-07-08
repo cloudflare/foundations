@@ -1,11 +1,10 @@
-use super::field_dedup::FieldDedupFilterFactory;
-use super::field_filtering::FieldFilteringDrain;
-use super::field_redact::FieldRedactFilterFactory;
-use super::internal::SharedLog;
-
 #[cfg(feature = "metrics")]
 use crate::telemetry::log::log_volume::LogVolumeMetricsDrain;
 
+use super::field_dedup::FieldDedupFilterFactory;
+use super::field_filtering::FieldFilteringDrain;
+use super::field_redact::FieldRedactFilterFactory;
+use super::internal::{LoggerWithNestingTracking, SharedLog};
 use crate::telemetry::log::rate_limit::RateLimitingDrain;
 use crate::telemetry::scope::ScopeStack;
 use crate::telemetry::settings::{LogFormat, LogOutput, LoggingSettings};
@@ -31,7 +30,11 @@ static HARNESS: OnceCell<LogHarness> = OnceCell::new();
 
 static NOOP_HARNESS: Lazy<LogHarness> = Lazy::new(|| {
     let root_drain = Arc::new(Discard);
-    let noop_log = Logger::root(Arc::clone(&root_drain), slog::o!());
+
+    let noop_log = LoggerWithNestingTracking {
+        inner: Logger::root(Arc::clone(&root_drain), slog::o!()),
+        nesting_level: 0,
+    };
 
     LogHarness {
         root_drain,
@@ -104,7 +107,10 @@ pub(crate) fn init(service_info: &ServiceInfo, settings: &LoggingSettings) -> Bo
     let root_log = build_log_with_drain(settings, root_kv, Arc::clone(&root_drain));
     let harness = LogHarness {
         root_drain,
-        root_log: Arc::new(parking_lot::RwLock::new(root_log)),
+        root_log: Arc::new(parking_lot::RwLock::new(LoggerWithNestingTracking {
+            inner: root_log,
+            nesting_level: 0,
+        })),
         settings: settings.clone(),
         log_scope_stack: Default::default(),
     };
