@@ -310,6 +310,23 @@ use std::path::Path;
 /// }
 /// ```
 ///
+/// # Deny unknown fields
+///
+/// By default, this macro will automatically annotate types with `#[serde(deny_unknown_fields)]`.
+/// This means any keys in the config file that don't map directly to fields in the type will
+/// lead to a panic on deserialization.
+///
+/// This can be disabled using the `deny_unknown_fields` attribute:
+///
+/// ```
+/// use foundations::settings::settings;
+///
+/// #[settings(deny_unknown_fields = false)]
+/// struct Hello {
+///     who: String
+/// }
+/// ```
+///
 /// [`Settings`]: crate::settings::Settings
 pub use foundations_macros::settings;
 
