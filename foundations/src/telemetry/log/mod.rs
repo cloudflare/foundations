@@ -22,6 +22,7 @@ use crate::telemetry::log::init::build_log_with_drain;
 use crate::telemetry::settings::LogVerbosity;
 use crate::Result;
 use slog::{Level, Logger, OwnedKV};
+use std::ops::Deref;
 use std::sync::Arc;
 
 #[cfg(any(test, feature = "testing"))]
@@ -29,14 +30,13 @@ pub use self::testing::TestLogRecord;
 
 /// Sets current log's verbosity, overriding the settings used in [`init`].
 ///
-/// For reasons related to the current implementation of `set_verbosity()`,
-/// there is a danger of stack overflow if it is called an extremely large
-/// number of times on the same logger. To protect against the possibility of
-/// stack overflow, there is an internal counter which will trigger a panic if a
-/// a limit of (currently) 1000 calls on a single logger is reached.
+/// For reasons related to the current implementation of `set_verbosity()`, there is a danger of
+/// stack overflow if it is called an extremely large number of times on the same logger. To
+/// protect against the possibility of stack overflow, there is an internal counter which will
+/// trigger a panic if a limit of (currently) 1000 calls on a single logger is reached.
 ///
-/// To avoid this panic, only call `set_verbosity()` when there is an actual
-/// change to the verbosity level.
+/// To avoid this panic, only call `set_verbosity()` when there is an actual change to the
+/// verbosity level.
 ///
 /// [`init`]: crate::telemetry::init
 pub fn set_verbosity(level: Level) -> Result<()> {
@@ -45,10 +45,12 @@ pub fn set_verbosity(level: Level) -> Result<()> {
     let mut settings = harness.settings.clone();
     settings.verbosity = LogVerbosity(level);
 
-    current_log().update(|logger: &Logger| {
-        let kv = OwnedKV(logger.list().clone());
-        build_log_with_drain(&settings, kv, Arc::clone(&harness.root_drain))
-    });
+    let current_log = current_log();
+    let mut current_log_lock = current_log.write();
+
+    let kv = OwnedKV(current_log_lock.list().clone());
+    current_log_lock.inner = build_log_with_drain(&settings, kv, Arc::clone(&harness.root_drain));
+    current_log_lock.inc_nesting_level();
 
     Ok(())
 }
@@ -65,8 +67,8 @@ pub fn verbosity() -> LogVerbosity {
 /// telemetry.
 ///
 /// [slog]: https://crates.io/crates/slog
-pub fn slog_logger() -> Arc<parking_lot::RwLock<Logger>> {
-    Arc::clone(&current_log().logger)
+pub fn slog_logger() -> Arc<parking_lot::RwLock<impl Deref<Target = Logger>>> {
+    current_log()
 }
 
 // NOTE: `#[doc(hidden)]` + `#[doc(inline)]` for `pub use` trick is used to prevent these macros
@@ -74,17 +76,15 @@ pub fn slog_logger() -> Arc<parking_lot::RwLock<Logger>> {
 
 /// Adds fields to all the log records, making them context fields.
 ///
-/// Calling the method with same field name multiple times updates the key value.
-/// There is a small cost in performance if large numbers of the same field
-/// are added, which then must be deduplicated at runtime. For that reason, as
-/// well as the fact that there is a danger of stack overflow if `add_fields!`
-/// is called an extremely large number of times on the same logger, there is
-/// an internal counter which will trigger a panic if a limit of (currently)
-/// 1000 calls on a single logger is reached.
+/// Calling the method with same field name multiple times updates the key value. There is a small
+/// cost in performance if large numbers of the same field are added, which then must be
+/// deduplicated at runtime. For that reason, as well as the fact that there is a danger of stack
+/// overflow if `add_fields!` is called an extremely large number of times on the same logger,
+/// there is an internal counter which will trigger a panic if a limit of (currently) 1000 calls on
+/// a single logger is reached.
 ///
-/// To avoid this panic, make sure to only use `add_fields!` for fields that
-/// will remain relatively static (under 1000 updates over the lifetime of any
-/// given logger).
+/// To avoid this panic, make sure to only use `add_fields!` for fields that will remain relatively
+/// static (under 1000 updates over the lifetime of any given logger).
 ///
 /// Certain added fields may not be present in the resulting logs if
 /// [`LoggingSettings::redact_keys`] is used.
@@ -203,7 +203,7 @@ macro_rules! __add_fields {
 macro_rules! __error {
     ( $($args:tt)+ ) => {
         $crate::reexports_for_macros::slog::error!(
-            $crate::telemetry::log::internal::current_log().logger.read(),
+            $crate::telemetry::log::internal::current_log().read(),
             $($args)+
         );
     };
@@ -265,7 +265,7 @@ macro_rules! __error {
 macro_rules! __warn {
     ( $($args:tt)+ ) => {
         $crate::reexports_for_macros::slog::warn!(
-            $crate::telemetry::log::internal::current_log().logger.read(),
+            $crate::telemetry::log::internal::current_log().read(),
             $($args)+
         );
     };
@@ -327,7 +327,7 @@ macro_rules! __warn {
 macro_rules! __debug {
     ( $($args:tt)+ ) => {
         $crate::reexports_for_macros::slog::debug!(
-            $crate::telemetry::log::internal::current_log().logger.read(),
+            $crate::telemetry::log::internal::current_log().read(),
             $($args)+
         );
     };
@@ -389,7 +389,7 @@ macro_rules! __debug {
 macro_rules! __info {
     ( $($args:tt)+ ) => {
         $crate::reexports_for_macros::slog::info!(
-            $crate::telemetry::log::internal::current_log().logger.read(),
+            $crate::telemetry::log::internal::current_log().read(),
             $($args)+
         );
     };
@@ -451,7 +451,7 @@ macro_rules! __info {
 macro_rules! __trace {
     ( $($args:tt)+ ) => {
         $crate::reexports_for_macros::slog::trace!(
-            $crate::telemetry::log::internal::current_log().logger.read(),
+            $crate::telemetry::log::internal::current_log().read(),
             $($args)+
         );
     };
