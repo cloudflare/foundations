@@ -1,3 +1,4 @@
+use super::internal::reporter_error;
 use crate::telemetry::settings::JaegerThriftUdpOutputSettings;
 use crate::{BootstrapResult, ServiceInfo};
 use anyhow::bail;
@@ -8,9 +9,6 @@ use futures_util::future::{BoxFuture, FutureExt as _};
 use std::net::SocketAddr;
 use std::net::{Ipv4Addr, Ipv6Addr};
 use std::sync::Arc;
-
-#[cfg(feature = "logging")]
-use crate::telemetry::log;
 
 pub(super) fn start(
     service_info: ServiceInfo,
@@ -69,12 +67,8 @@ async fn do_export(reporter: JaegerCompactReporter, mut span_rx: SpanReceiver) {
             let reporter = Arc::clone(&reporter);
 
             async move {
-                if let Err(e) = reporter.report(&[span][..]).await {
-                    #[cfg(feature = "logging")]
-                    log::error!("failed to send a tracing span to the agent"; "error" => %e);
-
-                    #[cfg(not(feature = "logging"))]
-                    drop(e);
+                if let Err(err) = reporter.report(&[span][..]).await {
+                    reporter_error(err);
                 }
             }
         });
