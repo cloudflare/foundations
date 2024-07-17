@@ -198,16 +198,12 @@ fn init_profiler(settings: &MemoryProfilerSettings) -> BootstrapResult<Option<Me
 fn receive_profiling_thread_setup_msg(
     setup_complete_receiver: mpsc::Receiver<anyhow::Result<()>>,
 ) -> anyhow::Result<()> {
-    use std::sync::mpsc::RecvTimeoutError;
-
-    const PROFILING_THREAD_SETUP_TIMEOUT: Duration = Duration::from_secs(2);
-    match setup_complete_receiver.recv_timeout(PROFILING_THREAD_SETUP_TIMEOUT) {
+    match setup_complete_receiver.recv() {
         Ok(Ok(())) => {}
         Ok(Err(setup_err)) => {
             return Err(setup_err);
         }
-        Err(RecvTimeoutError::Timeout) => bail!("Profiling thread did not finish setup in time"),
-        Err(RecvTimeoutError::Disconnected) => {
+        Err(std::sync::mpsc::RecvError) => {
             bail!("Profiling thread disconnected before finishing setup")
         }
     }
