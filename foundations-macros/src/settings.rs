@@ -26,6 +26,8 @@ struct Options {
     impl_debug: bool,
     #[darling(default = "Options::default_crate_path")]
     crate_path: Path,
+    #[darling(default = "Options::default_deny_unknown_fields")]
+    deny_unknown_fields: bool,
 }
 
 impl Options {
@@ -40,6 +42,10 @@ impl Options {
     fn default_crate_path() -> Path {
         parse_quote!(::foundations)
     }
+
+    fn default_deny_unknown_fields() -> bool {
+        true
+    }
 }
 
 impl Default for Options {
@@ -48,6 +54,7 @@ impl Default for Options {
             impl_default: Options::default_impl_default(),
             impl_debug: Options::default_impl_debug(),
             crate_path: Options::default_crate_path(),
+            deny_unknown_fields: Options::default_deny_unknown_fields(),
         }
     }
 }
@@ -178,6 +185,10 @@ fn add_default_attrs(options: &Options, attrs: &mut Vec<Attribute>) {
     }
 
     attrs.push(parse_quote!(#[serde(crate = #serde_path)]));
+
+    if options.deny_unknown_fields {
+        attrs.push(parse_quote!(#[serde(deny_unknown_fields)]));
+    }
 }
 
 fn impl_settings_trait(options: &Options, item: &ItemStruct) -> Result<proc_macro2::TokenStream> {
@@ -361,6 +372,7 @@ mod tests {
             )]
             #[derive(Debug)]
             #[serde(crate = ":: foundations :: reexports_for_macros :: serde")]
+            #[serde(deny_unknown_fields)]
             #[serde(default)]
             struct TestStruct {
                 #[doc = r" A boolean value."]
@@ -428,6 +440,7 @@ mod tests {
             )]
             #[derive(Debug)]
             #[serde(crate = ":: foundations :: reexports_for_macros :: serde")]
+            #[serde(deny_unknown_fields)]
             #[serde(default)]
             struct TestStruct {
                 #[doc = r" A boolean value."]
@@ -505,6 +518,7 @@ mod tests {
             )]
             #[derive(Debug)]
             #[serde(crate = ":: custom :: path :: reexports_for_macros :: serde")]
+            #[serde(deny_unknown_fields)]
             #[serde(default)]
             struct TestStruct {
                 #[doc = r" A boolean value."]
@@ -569,6 +583,7 @@ mod tests {
             )]
             #[derive(Debug)]
             #[serde(crate = ":: foundations :: reexports_for_macros :: serde")]
+            #[serde(deny_unknown_fields)]
             #[serde(default)]
             struct TestStruct {
                 #[doc = r" A boolean value."]
@@ -599,6 +614,51 @@ mod tests {
     }
 
     #[test]
+    fn expand_structure_empty_no_deny_unknown_fields() {
+        let options = parse_attr! {
+            #[settings(deny_unknown_fields = false)]
+        };
+
+        let src = parse_quote! {
+            struct TestStruct {
+            }
+        };
+
+        let actual = expand_from_parsed(options, src).unwrap().to_string();
+
+        let expected = code_str! {
+            #[derive(
+                Clone,
+                ::foundations::reexports_for_macros::serde::Serialize,
+                ::foundations::reexports_for_macros::serde::Deserialize,
+            )]
+            #[derive(Debug)]
+            #[serde(crate = ":: foundations :: reexports_for_macros :: serde")]
+            #[serde(default)]
+            struct TestStruct {
+            }
+
+            impl ::foundations::settings::Settings for TestStruct {
+                fn add_docs(
+                    &self,
+                    parent_key: &[String],
+                    docs: &mut ::std::collections::HashMap<Vec<String>, &'static [&'static str]>
+                ) {
+                }
+            }
+
+            impl Default for TestStruct {
+                fn default() -> Self {
+                    Self {
+                    }
+                }
+            }
+        };
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
     fn expand_newtype_struct() {
         let options = parse_attr! {
             #[settings]
@@ -619,6 +679,7 @@ mod tests {
             )]
             #[derive(Debug)]
             #[serde(crate = ":: foundations :: reexports_for_macros :: serde")]
+            #[serde(deny_unknown_fields)]
             struct TestStruct(u64);
 
             impl ::foundations::settings::Settings for TestStruct { }
@@ -646,6 +707,36 @@ mod tests {
                 ::foundations::reexports_for_macros::serde::Serialize,
                 ::foundations::reexports_for_macros::serde::Deserialize,
             )]
+            #[serde(crate = ":: foundations :: reexports_for_macros :: serde")]
+            #[serde(deny_unknown_fields)]
+            struct TestStruct(u64);
+
+            impl ::foundations::settings::Settings for TestStruct { }
+        };
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn expand_newtype_no_deny_unknown_fields() {
+        let options = parse_attr! {
+            #[settings(deny_unknown_fields = false)]
+        };
+
+        let src = parse_quote! {
+            struct TestStruct(u64);
+        };
+
+        let actual = expand_from_parsed(options, src).unwrap().to_string();
+
+        let expected = code_str! {
+            #[derive(Default)]
+            #[derive(
+                Clone,
+                ::foundations::reexports_for_macros::serde::Serialize,
+                ::foundations::reexports_for_macros::serde::Deserialize,
+            )]
+            #[derive(Debug)]
             #[serde(crate = ":: foundations :: reexports_for_macros :: serde")]
             struct TestStruct(u64);
 
@@ -675,6 +766,7 @@ mod tests {
             )]
             #[derive(Debug)]
             #[serde(crate = ":: foundations :: reexports_for_macros :: serde")]
+            #[serde(deny_unknown_fields)]
             struct TestStruct(u64);
 
             impl ::foundations::settings::Settings for TestStruct { }
@@ -708,6 +800,7 @@ mod tests {
             )]
             #[derive(Debug)]
             #[serde(crate = ":: foundations :: reexports_for_macros :: serde")]
+            #[serde(deny_unknown_fields)]
             #[serde(rename_all="snake_case")]
             enum TestEnum {
                 #[default]
@@ -744,8 +837,47 @@ mod tests {
             )]
             #[derive(Debug)]
             #[serde(crate = ":: foundations :: reexports_for_macros :: serde")]
+            #[serde(deny_unknown_fields)]
             #[serde(rename_all="snake_case")]
             enum TestEnum {
+                UnitVariant,
+                NewTypeVariant(String)
+            }
+
+            impl ::foundations::settings::Settings for TestEnum { }
+        };
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn expand_enum_no_deny_unknown_fields() {
+        let options = parse_attr! {
+            #[settings(deny_unknown_fields = false)]
+        };
+
+        let src = parse_quote! {
+            enum TestEnum {
+                #[default]
+                UnitVariant,
+                NewTypeVariant(String)
+            }
+        };
+
+        let actual = expand_from_parsed(options, src).unwrap().to_string();
+
+        let expected = code_str! {
+            #[derive(Default)]
+            #[derive(
+                Clone,
+                ::foundations::reexports_for_macros::serde::Serialize,
+                ::foundations::reexports_for_macros::serde::Deserialize,
+            )]
+            #[derive(Debug)]
+            #[serde(crate = ":: foundations :: reexports_for_macros :: serde")]
+            #[serde(rename_all="snake_case")]
+            enum TestEnum {
+                #[default]
                 UnitVariant,
                 NewTypeVariant(String)
             }
@@ -850,6 +982,7 @@ mod tests {
             )]
             #[derive(Debug)]
             #[serde(crate = ":: foundations :: reexports_for_macros :: serde")]
+            #[serde(deny_unknown_fields)]
             #[serde(default)]
             struct TestStruct {
                 #[serde(default = "TestStruct::default_boolean")]
