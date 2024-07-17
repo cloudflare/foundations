@@ -314,7 +314,12 @@ use std::path::Path;
 ///
 /// By default, this macro will automatically annotate types with `#[serde(deny_unknown_fields)]`.
 /// This means any keys in the config file that don't map directly to fields in the type will
-/// lead to a panic on deserialization.
+/// lead to an error on deserialization.
+///
+/// Unknown fields in a configuration may indicate that a service has been updated without
+/// a corresponding update in its configuration (for example, when renaming a config key).
+/// In this case, it's preferable for the service to fail early during bootstrap rather
+/// than running misconfigured.
 ///
 /// This can be disabled using the `deny_unknown_fields` attribute:
 ///
