@@ -1,16 +1,19 @@
 use super::settings::MemoryProfilerSettings;
 use crate::utils::feature_use;
 use crate::{BootstrapError, BootstrapResult, Result};
+use anyhow::anyhow;
 use anyhow::bail;
 use once_cell::sync::{Lazy, OnceCell};
 use std::ffi::{CStr, CString};
 use std::fs::File;
 use std::io::Read;
 use std::os::raw::c_char;
-use std::thread;
+use std::sync::mpsc::{self};
+use std::sync::{Arc, Mutex};
+use std::thread::{spawn, JoinHandle};
+use std::time::Duration;
 use tempfile::NamedTempFile;
-use tokio::sync::Mutex as AsyncMutex;
-use tokio::task::spawn_blocking;
+use tokio::sync::{oneshot, Mutex as AsyncMutex};
 
 feature_use!(cfg(feature = "security"), {
     use crate::security::common_syscall_allow_lists::SERVICE_BASICS;
@@ -56,12 +59,12 @@ struct Seal;
 /// A safe interface for [jemalloc]'s memory profiling functionality.
 ///
 /// [jemalloc]: https://github.com/jemalloc/jemalloc
-#[derive(Copy, Clone)]
+#[derive(Clone)]
 pub struct MemoryProfiler {
     _seal: Seal,
 
-    #[cfg(feature = "security")]
-    sandbox_profiling_syscalls: bool,
+    request_heap_profile: mpsc::Sender<oneshot::Sender<anyhow::Result<String>>>,
+    _heap_profiling_thread_handle: Arc<Mutex<JoinHandle<()>>>,
 }
 
 impl MemoryProfiler {
@@ -83,7 +86,7 @@ impl MemoryProfiler {
 
         PROFILER
             .get_or_try_init(|| init_profiler(settings))
-            .copied()
+            .cloned()
     }
 
     /// Returns a heap profile.
@@ -115,24 +118,10 @@ impl MemoryProfiler {
             return Err("profiling is already in progress".into());
         };
 
-        #[cfg(feature = "security")]
-        let sandbox_profiling_syscalls = self.sandbox_profiling_syscalls;
+        let (response_sender, response_receiver) = oneshot::channel();
+        self.request_heap_profile.send(response_sender)?;
 
-        let collector_thread = thread::spawn(move || {
-            #[cfg(feature = "security")]
-            if sandbox_profiling_syscalls {
-                sandbox_jemalloc_syscalls()?;
-            }
-
-            collect_heap_profile()
-        });
-
-        spawn_blocking(move || {
-            collector_thread
-                .join()
-                .map_err(|_| "heap profile collector thread panicked")?
-        })
-        .await?
+        Ok(response_receiver.await??)
     }
 
     /// Returns heap statistics.
@@ -169,6 +158,24 @@ fn init_profiler(settings: &MemoryProfilerSettings) -> BootstrapResult<Option<Me
         return Ok(None);
     }
 
+    let (request_sender, request_receiver) = mpsc::channel();
+
+    #[cfg(feature = "security")]
+    let (setup_complete_sender, setup_complete_receiver) = mpsc::channel();
+
+    let sandbox_profiling_syscalls = settings.sandbox_profiling_syscalls;
+    let heap_profile_thread_handle = spawn(move || {
+        heap_profile_thread(
+            request_receiver,
+            #[cfg(feature = "security")]
+            setup_complete_sender,
+            sandbox_profiling_syscalls,
+        )
+    });
+
+    #[cfg(feature = "security")]
+    receive_profiling_thread_setup_msg(setup_complete_receiver)?;
+
     control::write(control::BACKGROUND_THREAD, true).map_err(|e| {
         BootstrapError::new(e).context("failed to activate background thread collection")
     })?;
@@ -182,26 +189,67 @@ fn init_profiler(settings: &MemoryProfilerSettings) -> BootstrapResult<Option<Me
     Ok(Some(MemoryProfiler {
         _seal: Seal,
 
-        #[cfg(feature = "security")]
-        sandbox_profiling_syscalls: settings.sandbox_profiling_syscalls,
+        request_heap_profile: request_sender,
+        _heap_profiling_thread_handle: Arc::new(Mutex::new(heap_profile_thread_handle)),
     }))
 }
 
-fn collect_heap_profile() -> Result<String> {
+#[cfg(feature = "security")]
+fn receive_profiling_thread_setup_msg(
+    setup_complete_receiver: mpsc::Receiver<anyhow::Result<()>>,
+) -> anyhow::Result<()> {
+    use std::sync::mpsc::RecvTimeoutError;
+
+    const PROFILING_THREAD_SETUP_TIMEOUT: Duration = Duration::from_secs(2);
+    match setup_complete_receiver.recv_timeout(PROFILING_THREAD_SETUP_TIMEOUT) {
+        Ok(Ok(())) => {}
+        Ok(Err(setup_err)) => {
+            return Err(setup_err);
+        }
+        Err(RecvTimeoutError::Timeout) => bail!("Profiling thread did not finish setup in time"),
+        Err(RecvTimeoutError::Disconnected) => {
+            bail!("Profiling thread disconnected before finishing setup")
+        }
+    }
+
+    Ok(())
+}
+
+fn heap_profile_thread(
+    receive_request: mpsc::Receiver<oneshot::Sender<anyhow::Result<String>>>,
+    #[cfg(feature = "security")] setup_complete: mpsc::Sender<anyhow::Result<()>>,
+    sandbox_profiling_syscalls: bool,
+) {
+    #[cfg(feature = "security")]
+    if sandbox_profiling_syscalls {
+        if let Err(_) = setup_complete.send(sandbox_jemalloc_syscalls()) {
+            return;
+        }
+    }
+
+    while let Ok(send_response) = receive_request.recv() {
+        if let Err(_) = send_response.send(collect_heap_profile()) {
+            break;
+        }
+    }
+}
+
+fn collect_heap_profile() -> anyhow::Result<String> {
     let out_file = NamedTempFile::new()?;
 
     let out_file_path = out_file
         .path()
         .to_str()
-        .ok_or("failed to obtain heap profile output file path")?;
+        .ok_or(anyhow!("failed to obtain heap profile output file path"))?;
 
     let mut out_file_path_c_str = CString::new(out_file_path)?.into_bytes_with_nul();
     let out_file_path_ptr = out_file_path_c_str.as_mut_ptr() as *mut c_char;
 
     control::write(control::PROF_DUMP, out_file_path_ptr).map_err(|e| {
-        format!(
+        anyhow!(
             "failed to dump jemalloc heap profile to {:?}: {}",
-            out_file_path, e
+            out_file_path,
+            e
         )
     })?;
 
@@ -213,7 +261,7 @@ fn collect_heap_profile() -> Result<String> {
 }
 
 #[cfg(feature = "security")]
-fn sandbox_jemalloc_syscalls() -> Result<()> {
+fn sandbox_jemalloc_syscalls() -> anyhow::Result<()> {
     #[cfg(target_arch = "x86_64")]
     allow_list! {
         static ALLOWED_SYSCALLS = [
@@ -244,7 +292,9 @@ fn sandbox_jemalloc_syscalls() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::telemetry::settings::MemoryProfilerSettings;
+    use crate::{
+        security::common_syscall_allow_lists::ASYNC, telemetry::settings::MemoryProfilerSettings,
+    };
 
     #[test]
     fn sample_interval_out_of_bounds() {
@@ -254,6 +304,30 @@ mod tests {
             ..Default::default()
         })
         .is_err());
+    }
+
+    #[tokio::test]
+    async fn profile_heap_with_profiling_sandboxed_after_previous_seccomp_init() {
+        let profiler = MemoryProfiler::get_or_init_with(&MemoryProfilerSettings {
+            enabled: true,
+            sandbox_profiling_syscalls: true,
+            ..Default::default()
+        })
+        .unwrap()
+        .unwrap_or_else(|| {
+            panic!("profiling should be enabled via `_RJEM_MALLOC_CONF=prof:true` env var");
+        });
+
+        allow_list! {
+           static ALLOW_PROFILING = [
+                ..SERVICE_BASICS,
+                ..ASYNC
+           ]
+        }
+        enable_syscall_sandboxing(ViolationAction::KillProcess, &ALLOW_PROFILING).unwrap();
+
+        let profile = profiler.heap_profile().await.unwrap();
+        assert!(!profile.is_empty());
     }
 
     // NOTE: `heap_profile` uses raw pointers, the test ensures that it doesn't affect the returned future
