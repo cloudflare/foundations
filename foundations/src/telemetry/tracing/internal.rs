@@ -6,6 +6,7 @@ use crate::telemetry::tracing::rate_limit::RateLimitingProbabilisticSampler;
 use cf_rustracing::tag::Tag;
 use cf_rustracing_jaeger::span::{Span, SpanContext, SpanContextState};
 use std::borrow::Cow;
+use std::error::Error;
 use std::sync::Arc;
 
 pub(crate) type Tracer = cf_rustracing::Tracer<RateLimitingProbabilisticSampler, SpanContextState>;
@@ -88,6 +89,14 @@ pub(crate) fn start_trace(
     link_new_trace_with_current(&mut current_span, &root_span_name, &mut new_trace_root_span);
 
     new_trace_root_span
+}
+
+pub(super) fn reporter_error(err: impl Error) {
+    #[cfg(feature = "logging")]
+    crate::telemetry::log::error!("failed to report traces to the traces sink"; "error" => %err);
+
+    #[cfg(not(feature = "logging"))]
+    drop(err);
 }
 
 // Link a newly created trace in the current span's ref span and vice-versa

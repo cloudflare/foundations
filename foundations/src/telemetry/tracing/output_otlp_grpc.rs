@@ -1,3 +1,4 @@
+use super::internal::reporter_error;
 use crate::telemetry::otlp_conversion::tracing::convert_span;
 use crate::telemetry::settings::OpenTelemetryGrpcOutputSettings;
 use crate::{BootstrapResult, ServiceInfo};
@@ -37,7 +38,9 @@ pub(super) fn start(
 
         let client = Grpc::new(grpc_channel);
 
-        do_export(client, service_info, span_rx, max_batch_size).await
+        do_export(client, service_info, span_rx, max_batch_size).await;
+
+        Ok(())
     }
     .boxed())
 }
@@ -47,7 +50,7 @@ async fn do_export(
     service_info: ServiceInfo,
     mut span_rx: SpanReceiver,
     max_batch_size: usize,
-) -> BootstrapResult<()> {
+) {
     let mut batch = Vec::with_capacity(max_batch_size);
 
     loop {
@@ -62,22 +65,23 @@ async fn do_export(
             .map(|span| convert_span(span, &service_info))
             .collect();
 
-        client
-            .ready()
-            .await
-            .context("lost gRPC connection to the trace service")?;
+        if let Err(err) = client.ready().await {
+            reporter_error(err);
+            continue;
+        }
 
-        client
+        let send_res = client
             .unary::<_, ExportTraceServiceResponse, _>(
                 create_request(resource_spans),
                 PathAndQuery::from_static(COLLECTOR_PATH),
                 ProstCodec::default(),
             )
-            .await
-            .context("failed to send gRPC request to the trace service")?;
-    }
+            .await;
 
-    Ok(())
+        if let Err(err) = send_res {
+            reporter_error(err);
+        }
+    }
 }
 
 fn create_request(resource_spans: Vec<ResourceSpans>) -> Request<ExportTraceServiceRequest> {
