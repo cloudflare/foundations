@@ -11,7 +11,6 @@ use std::os::raw::c_char;
 use std::sync::mpsc::{self};
 use std::sync::{Arc, Mutex};
 use std::thread::{spawn, JoinHandle};
-use std::time::Duration;
 use tempfile::NamedTempFile;
 use tokio::sync::{oneshot, Mutex as AsyncMutex};
 
