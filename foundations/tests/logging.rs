@@ -1,9 +1,8 @@
 use foundations::telemetry::log::internal::LoggerWithKvNestingTracking;
 use foundations::telemetry::log::{add_fields, set_verbosity, warn};
-use foundations::telemetry::settings::{LoggingSettings, RateLimitingSettings};
+use foundations::telemetry::settings::{LogVerbosity, LoggingSettings, RateLimitingSettings};
 use foundations::telemetry::TestTelemetryContext;
 use foundations_macros::with_test_telemetry;
-use slog::Level;
 
 #[with_test_telemetry(test)]
 fn test_rate_limiter(mut ctx: TestTelemetryContext) {
@@ -39,7 +38,7 @@ fn test_exceed_limit_kv_nesting(_ctx: TestTelemetryContext) {
     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         for _ in 0..((LoggerWithKvNestingTracking::MAX_NESTING / 2) + 1) {
             add_fields! { "key1" => "hello" }
-            set_verbosity(Level::Info).expect("set_verbosity");
+            set_verbosity(LogVerbosity::Info).expect("set_verbosity");
         }
     })) {
         Ok(_) => panic!("test case exceeded the maximum log KV nesting, but there was no panic"),
@@ -70,6 +69,6 @@ fn test_exceed_limit_kv_nesting(_ctx: TestTelemetryContext) {
 fn test_not_exceed_limit_kv_nesting(_ctx: TestTelemetryContext) {
     for _ in 0..((LoggerWithKvNestingTracking::MAX_NESTING / 2) - 5) {
         add_fields! { "key1" => "hello" }
-        set_verbosity(Level::Info).expect("set_verbosity");
+        set_verbosity(LogVerbosity::Info).expect("set_verbosity");
     }
 }

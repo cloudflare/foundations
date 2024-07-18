@@ -21,7 +21,7 @@ use self::internal::current_log;
 use crate::telemetry::log::init::build_log_with_drain;
 use crate::telemetry::settings::LogVerbosity;
 use crate::Result;
-use slog::{Level, Logger, OwnedKV};
+use slog::{Logger, OwnedKV};
 use std::ops::Deref;
 use std::sync::Arc;
 
