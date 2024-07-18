@@ -3,7 +3,7 @@ use crate::utils::feature_use;
 use crate::{BootstrapError, BootstrapResult, Result};
 use anyhow::anyhow;
 use anyhow::bail;
-use once_cell::sync::{Lazy, OnceCell};
+use once_cell::sync::OnceCell;
 use std::ffi::{CStr, CString};
 use std::fs::File;
 use std::io::Read;
@@ -12,7 +12,7 @@ use std::sync::mpsc::{self};
 use std::sync::{Arc, Mutex};
 use std::thread::{spawn, JoinHandle};
 use tempfile::NamedTempFile;
-use tokio::sync::{oneshot, Mutex as AsyncMutex};
+use tokio::sync::oneshot;
 
 feature_use!(cfg(feature = "security"), {
     use crate::security::common_syscall_allow_lists::SERVICE_BASICS;
@@ -20,7 +20,6 @@ feature_use!(cfg(feature = "security"), {
 });
 
 static PROFILER: OnceCell<Option<MemoryProfiler>> = OnceCell::new();
-static PROFILING_IN_PROGRESS_LOCK: Lazy<AsyncMutex<()>> = Lazy::new(Default::default);
 
 mod control {
     use super::*;
@@ -112,11 +111,6 @@ impl MemoryProfiler {
     /// }
     /// ```
     pub async fn heap_profile(&self) -> Result<String> {
-        // NOTE: we use tokio mutex here, so we can hold the lock across `await` points.
-        let Ok(_lock) = PROFILING_IN_PROGRESS_LOCK.try_lock() else {
-            return Err("profiling is already in progress".into());
-        };
-
         let (response_sender, response_receiver) = oneshot::channel();
         self.request_heap_profile.send(response_sender)?;
 
