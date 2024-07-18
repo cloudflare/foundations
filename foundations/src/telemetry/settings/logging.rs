@@ -122,30 +122,3 @@ pub struct LogVolumeMetricSettings {
     /// Whether to enable log volume metrics
     pub enabled: bool,
 }
-
-#[cfg(feature = "settings")]
-mod with_settings_feature {
-    use super::*;
-
-    impl<'de> Deserialize<'de> for LogVerbosity {
-        fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-        where
-            D: Deserializer<'de>,
-        {
-            Level::from_str(&String::deserialize(deserializer)?)
-                .map_err(|_| de::Error::custom("incorrect verbosity level"))
-                .map(LogVerbosity)
-        }
-    }
-
-    impl Serialize for LogVerbosity {
-        fn serialize<S>(&self, s: S) -> Result<S::Ok, S::Error>
-        where
-            S: Serializer,
-        {
-            s.serialize_str(self.0.as_str())
-        }
-    }
-
-    impl Settings for LogVerbosity {}
-}
