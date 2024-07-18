@@ -17,6 +17,10 @@
 //! begining of the `main` function) with the [`init`] function for it to be collected by the
 //! external sinks.
 //!
+//! If syscall sandboxing is also being used (see [`crate::security`] for more details), telemetry
+//! must be initialized prior to syscall sandboxing, since it uses syscalls during initialization
+//! that it will not use later.
+//!
 //! # Telemetry context
 //!
 //! Foundations' telemetry is designed to not interfere with the production code, so you usually don't
@@ -688,7 +692,7 @@ pub struct TelemetryConfig<'c> {
 /// doesn't need to be called in tests and any specified settings will be ignored in test
 /// environments. Instead, all the telemetry will be collected in the [`TestTelemetryContext`].
 ///
-/// The function should be called once on service initialization. Consequent calls to the function
+/// The function should be called once on service initialization (prior to any [syscall sandboxing]). Consequent calls to the function
 /// don't have any effect.
 ///
 /// # Telemetry server
@@ -707,6 +711,7 @@ pub struct TelemetryConfig<'c> {
 /// [Prometheus text format]: https://prometheus.io/docs/instrumenting/exposition_formats/#text-based-format
 /// [jemalloc]: https://github.com/jemalloc/jemalloc
 /// [`TelemetryServerSettings::enabled`]: `crate::telemetry::settings::TelemetryServerSettings::enabled`
+/// [syscall sandboxing]: `crate::security`
 pub fn init(config: TelemetryConfig) -> BootstrapResult<TelemetryDriver> {
     let tele_futures: FuturesUnordered<_> = Default::default();
 

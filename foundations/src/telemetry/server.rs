@@ -1,7 +1,6 @@
 #[cfg(feature = "metrics")]
 use super::metrics;
 use super::settings::TelemetrySettings;
-use crate::BootstrapError;
 use crate::{BootstrapResult, Result};
 use anyhow::{anyhow, Context as _};
 use futures_util::future::BoxFuture;
