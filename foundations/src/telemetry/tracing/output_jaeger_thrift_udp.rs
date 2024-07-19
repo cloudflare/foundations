@@ -8,7 +8,6 @@ use cf_rustracing_jaeger::span::SpanReceiver;
 use futures_util::future::{BoxFuture, FutureExt as _};
 use std::net::SocketAddr;
 use std::net::{Ipv4Addr, Ipv6Addr};
-use std::sync::Arc;
 
 pub(super) fn start(
     service_info: ServiceInfo,
@@ -59,18 +58,10 @@ fn get_reporter_bind_addr(settings: &JaegerThriftUdpOutputSettings) -> Bootstrap
 }
 
 async fn do_export(reporter: JaegerCompactReporter, mut span_rx: SpanReceiver) {
-    let reporter = Arc::new(reporter);
-
     while let Some(span) = span_rx.recv().await {
         // NOTE: we are limited with a UDP dgram size here, so doing batching is risky.
-        tokio::spawn({
-            let reporter = Arc::clone(&reporter);
-
-            async move {
-                if let Err(err) = reporter.report(&[span][..]).await {
-                    reporter_error(err);
-                }
-            }
-        });
+        if let Err(err) = reporter.report(&[span][..]).await {
+            reporter_error(err);
+        }
     }
 }

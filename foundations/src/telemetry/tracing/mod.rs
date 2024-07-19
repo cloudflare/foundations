@@ -16,6 +16,7 @@ mod output_otlp_grpc;
 use self::init::TracingHarness;
 use self::internal::{create_span, current_span, span_trace_id, SharedSpan};
 use super::scope::Scope;
+use super::TelemetryContext;
 use cf_rustracing_jaeger::Span;
 use std::borrow::Cow;
 use std::sync::Arc;
@@ -86,6 +87,16 @@ pub use cf_rustracing_jaeger::span::SpanContextState as SerializableTraceState;
 /// );
 /// ```
 ///
+/// # Using with `async fn`'s that produce `!Send` futures.
+/// ```
+/// use foundations::telemetry::tracing;
+///
+/// #[tracing::span_fn("foo", async_local = true)]
+/// async fn foo() {
+///     // Does something that produces `!Send`` future...
+/// }
+/// ```
+///
 /// # Renamed or reexported crate
 ///
 /// The macro will fail to compile if `foundations` crate is reexported. However, the crate path
@@ -127,12 +138,68 @@ pub use foundations_macros::span_fn;
 ///
 /// Scope ends when the handle is dropped.
 #[must_use]
-pub struct SpanScope(#[allow(dead_code)] Scope<SharedSpan>);
+pub struct SpanScope {
+    span: SharedSpan,
+    _inner: Scope<SharedSpan>,
+}
 
 impl SpanScope {
     #[inline]
     pub(crate) fn new(span: SharedSpan) -> Self {
-        Self(Scope::new(&TracingHarness::get().span_scope_stack, span))
+        Self {
+            span: span.clone(),
+            _inner: Scope::new(&TracingHarness::get().span_scope_stack, span),
+        }
+    }
+
+    /// Converts the span scope to [`TelemetryContext`] that can be a applied to a future.
+    ///
+    /// This is effectively a shorthand for calling [`TelemetryContext::current`] with the span
+    /// being in scope.
+    ///
+    /// # Examples
+    /// ```
+    /// use foundations::telemetry::TelemetryContext;
+    /// use foundations::telemetry::tracing::{self, test_trace};
+    ///
+    /// #[tokio::main]
+    /// async fn main() {
+    ///     // Test context is used for demonstration purposes to show the resulting traces.
+    ///     let ctx = TelemetryContext::test();
+    ///
+    ///     {
+    ///         let _scope = ctx.scope();
+    ///         let _root = tracing::span("root");
+    ///
+    ///         let handle = tokio::spawn(
+    ///             tracing::span("future").into_context().apply(async {
+    ///                 let _child = tracing::span("child");
+    ///             })
+    ///         );
+    ///
+    ///         handle.await;
+    ///     }
+    ///
+    ///     assert_eq!(
+    ///         ctx.traces(Default::default()),
+    ///         vec![
+    ///             test_trace! {
+    ///                 "root" => {
+    ///                     "future" => {
+    ///                         "child"
+    ///                     }
+    ///                 }
+    ///             }
+    ///         ]
+    ///     );
+    /// }
+    /// ```
+    pub fn into_context(self) -> TelemetryContext {
+        let mut ctx = TelemetryContext::current();
+
+        ctx.span = Some(self.span);
+
+        ctx
     }
 }
 
@@ -220,10 +287,7 @@ pub fn state_for_trace_stitching() -> Option<SerializableTraceState> {
 /// If span covers whole function body it's preferable to use [`span_fn`] macro.
 ///
 /// Span ends when returned [`SpanScope`] is dropped. Note that [`SpanScope`] can't be used across
-/// `await` points. To span async scopes [`TelemetryContext::apply_with_tracing_span`] should be
-/// used.
-///
-/// [`TelemetryContext::apply_with_tracing_span`]: super::TelemetryContext::apply_with_tracing_span
+/// `await` points. To span async scopes [`SpanScope::into_context`] should be used.
 ///
 /// # Examples
 /// ```
