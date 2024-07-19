@@ -9,8 +9,6 @@ use std::fs::File;
 use std::io::Read;
 use std::os::raw::c_char;
 use std::sync::mpsc::{self};
-use std::sync::{Arc, Mutex};
-use std::thread::{spawn, JoinHandle};
 use tempfile::NamedTempFile;
 use tokio::sync::oneshot;
 
@@ -62,7 +60,6 @@ pub struct MemoryProfiler {
     _seal: Seal,
 
     request_heap_profile: mpsc::Sender<oneshot::Sender<anyhow::Result<String>>>,
-    _heap_profiling_thread_handle: Arc<Mutex<JoinHandle<()>>>,
 }
 
 impl MemoryProfiler {
@@ -156,12 +153,14 @@ fn init_profiler(settings: &MemoryProfilerSettings) -> BootstrapResult<Option<Me
     #[cfg(feature = "security")]
     let (setup_complete_sender, setup_complete_receiver) = mpsc::channel();
 
+    #[cfg(feature = "security")]
     let sandbox_profiling_syscalls = settings.sandbox_profiling_syscalls;
-    let heap_profile_thread_handle = spawn(move || {
+    std::thread::spawn(move || {
         heap_profile_thread(
             request_receiver,
             #[cfg(feature = "security")]
             setup_complete_sender,
+            #[cfg(feature = "security")]
             sandbox_profiling_syscalls,
         )
     });
@@ -183,7 +182,6 @@ fn init_profiler(settings: &MemoryProfilerSettings) -> BootstrapResult<Option<Me
         _seal: Seal,
 
         request_heap_profile: request_sender,
-        _heap_profiling_thread_handle: Arc::new(Mutex::new(heap_profile_thread_handle)),
     }))
 }
 
@@ -207,18 +205,20 @@ fn receive_profiling_thread_setup_msg(
 fn heap_profile_thread(
     receive_request: mpsc::Receiver<oneshot::Sender<anyhow::Result<String>>>,
     #[cfg(feature = "security")] setup_complete: mpsc::Sender<anyhow::Result<()>>,
-    sandbox_profiling_syscalls: bool,
+    #[cfg(feature = "security")] sandbox_profiling_syscalls: bool,
 ) {
     #[cfg(feature = "security")]
     if sandbox_profiling_syscalls {
-        if let Err(_) = setup_complete.send(sandbox_jemalloc_syscalls()) {
+        if setup_complete.send(sandbox_jemalloc_syscalls()).is_err() {
             return;
         }
     }
 
     while let Ok(send_response) = receive_request.recv() {
-        if let Err(_) = send_response.send(collect_heap_profile()) {
-            break;
+        if send_response.send(collect_heap_profile()).is_err() {
+            // A failure to send indicates the main thread's receiver is gone, so something else
+            // has already gone wrong there.
+            return;
         }
     }
 }
