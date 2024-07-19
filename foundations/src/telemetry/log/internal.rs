@@ -57,12 +57,16 @@ impl Deref for LoggerWithKvNestingTracking {
 }
 
 #[must_use]
-pub(crate) struct LogScope(#[allow(dead_code)] Scope<SharedLog>);
+pub(crate) struct LogScope {
+    _inner: Scope<SharedLog>,
+}
 
 impl LogScope {
     #[inline]
     pub(crate) fn new(log: SharedLog) -> Self {
-        Self(Scope::new(&LogHarness::get().log_scope_stack, log))
+        Self {
+            _inner: Scope::new(&LogHarness::get().log_scope_stack, log),
+        }
     }
 }
 

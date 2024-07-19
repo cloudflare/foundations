@@ -41,11 +41,18 @@ impl Parse for SpanName {
 struct Options {
     #[darling(default = "Options::default_crate_path")]
     crate_path: Path,
+
+    #[darling(default = "Options::default_async_local")]
+    async_local: bool,
 }
 
 impl Options {
     fn default_crate_path() -> Path {
         parse_quote!(::foundations)
+    }
+
+    fn default_async_local() -> bool {
+        false
     }
 }
 
@@ -100,17 +107,12 @@ fn expand_from_parsed(args: Args, item_fn: ItemFn) -> TokenStream2 {
         block,
     } = item_fn;
 
-    let span_name = args.span_name.as_tokens();
-    let crate_path = &args.options.crate_path;
-
     let body = match asyncness {
-        Some(_) => quote!(
-            #crate_path::telemetry::TelemetryContext::current().apply_with_tracing_span(
-                #span_name,
-                async move { #block }
-            ).await
-        ),
+        Some(_) => wrap_with_span(&args, quote!(async move { #block })),
         None => try_async_trait_fn_rewrite(&args, &block).unwrap_or_else(|| {
+            let span_name = args.span_name.as_tokens();
+            let crate_path = &args.options.crate_path;
+
             quote!(
                 let __span = #crate_path::telemetry::tracing::span(#span_name);
                 #block
@@ -158,23 +160,35 @@ fn try_async_trait_fn_rewrite(args: &Args, body: &Block) -> Option<TokenStream2>
         .map(|stmt| stmt.to_token_stream())
         .collect();
 
-    let span_name = args.span_name.as_tokens();
-    let crate_path = &args.options.crate_path;
+    let async_block = wrap_with_span(args, async_block.into_token_stream());
 
     // NOTE: OXY-1023 we do instrumentation inside additional future, so boxed
     // future can capture telemetry context on poll if it was instrumented.
     *body_stmts_token_streams.last_mut().unwrap() = quote!(
-        Box::pin(async move {
-            #crate_path::telemetry::TelemetryContext::current().apply_with_tracing_span(
-                #span_name,
-                #async_block
-            ).await
-        })
+        Box::pin(async move { #async_block })
     );
 
     Some(quote!(
         #(#body_stmts_token_streams)*
     ))
+}
+
+fn wrap_with_span(args: &Args, block: TokenStream2) -> TokenStream2 {
+    let apply_fn = if args.options.async_local {
+        quote!(apply_local)
+    } else {
+        quote!(apply)
+    };
+
+    let span_name = args.span_name.as_tokens();
+    let crate_path = &args.options.crate_path;
+
+    quote!(
+        #crate_path::telemetry::tracing::span(#span_name)
+            .into_context()
+            .#apply_fn(#block)
+            .await
+    )
 }
 
 #[cfg(test)]
@@ -261,14 +275,46 @@ mod tests {
 
         let expected = code_str! {
             async fn do_async<>() -> io::Result<String> {
-                ::foundations::telemetry::TelemetryContext::current().apply_with_tracing_span(
-                    "async_span",
-                    async move {{
+                ::foundations::telemetry::tracing::span("async_span")
+                    .into_context()
+                    .apply(async move {{
                         do_something_else().await;
 
                         Ok("foo".into())
-                    }}
-                ).await
+                    }})
+                    .await
+            }
+        };
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn expand_async_fn_local() {
+        let args = parse_attr! {
+            #[span_fn("async_span", async_local = true)]
+        };
+
+        let item_fn = parse_quote! {
+            async fn do_async() -> io::Result<String> {
+                do_something_else().await;
+
+                Ok("foo".into())
+            }
+        };
+
+        let actual = expand_from_parsed(args, item_fn).to_string();
+
+        let expected = code_str! {
+            async fn do_async<>() -> io::Result<String> {
+                ::foundations::telemetry::tracing::span("async_span")
+                    .into_context()
+                    .apply_local(async move {{
+                        do_something_else().await;
+
+                        Ok("foo".into())
+                    }})
+                    .await
             }
         };
 
@@ -319,9 +365,9 @@ mod tests {
                 Self: 'async_trait,
             {
                 Box::pin(async move {
-                    ::foundations::telemetry::TelemetryContext::current().apply_with_tracing_span(
-                        "async_trait_span",
-                        async move {
+                    ::foundations::telemetry::tracing::span("async_trait_span")
+                        .into_context()
+                        .apply(async move {
                             if let ::core::option::Option::Some(__ret) = ::core::option::Option::None::<String> {
                                 return __ret;
                             }
@@ -332,7 +378,74 @@ mod tests {
                             };
                             #[allow(unreachable_code)]
                             __ret
-                        }).await
+                        })
+                        .await
+                })
+            }
+        };
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn expand_async_trait_fn_local() {
+        let args = parse_attr! {
+            #[span_fn("async_trait_span", async_local = true)]
+        };
+
+        let item_fn = parse_quote! {
+            fn test<'life0, 'async_trait>(
+                &'life0 self,
+            ) -> ::core::pin::Pin<
+                Box<dyn ::core::future::Future<Output = String> + ::core::marker::Send + 'async_trait>
+            >
+            where
+                'life0: 'async_trait,
+                Self: 'async_trait,
+            {
+                Box::pin(async move {
+                    if let ::core::option::Option::Some(__ret) = ::core::option::Option::None::<String> {
+                        return __ret;
+                    }
+                    let __self = self;
+                    let __ret: String = {
+                        __self.do_something_else().await;
+                        "foo".into()
+                    };
+                    #[allow(unreachable_code)]
+                    __ret
+                })
+            }
+        };
+
+        let actual = expand_from_parsed(args, item_fn).to_string();
+
+        let expected = code_str! {
+            fn test<'life0, 'async_trait>(
+                &'life0 self,
+            ) -> ::core::pin::Pin<
+                Box<dyn ::core::future::Future<Output = String> + ::core::marker::Send + 'async_trait>
+            >
+            where
+                'life0: 'async_trait,
+                Self: 'async_trait,
+            {
+                Box::pin(async move {
+                    ::foundations::telemetry::tracing::span("async_trait_span")
+                        .into_context()
+                        .apply_local(async move {
+                            if let ::core::option::Option::Some(__ret) = ::core::option::Option::None::<String> {
+                                return __ret;
+                            }
+                            let __self = self;
+                            let __ret: String = {
+                                __self.do_something_else().await;
+                                "foo".into()
+                            };
+                            #[allow(unreachable_code)]
+                            __ret
+                        })
+                        .await
                 })
             }
         };
