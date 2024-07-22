@@ -1,6 +1,5 @@
 use super::settings::MemoryProfilerSettings;
 use crate::{BootstrapError, BootstrapResult, Result};
-use anyhow::anyhow;
 use anyhow::bail;
 use once_cell::sync::OnceCell;
 use std::ffi::{CStr, CString};
@@ -42,18 +41,12 @@ mod control {
     }
 }
 
-// NOTE: prevent direct construction by the external code.
-#[derive(Copy, Clone)]
-struct Seal;
-
 /// A safe interface for [jemalloc]'s memory profiling functionality.
 ///
 /// [jemalloc]: https://github.com/jemalloc/jemalloc
 #[derive(Clone)]
 pub struct MemoryProfiler {
-    _seal: Seal,
-
-    request_heap_profile: mpsc::Sender<oneshot::Sender<anyhow::Result<String>>>,
+    request_heap_profile: mpsc::Sender<oneshot::Sender<Result<String>>>,
 }
 
 impl MemoryProfiler {
@@ -65,6 +58,9 @@ impl MemoryProfiler {
     /// Note that profiling needs to be explicitly enabled by setting `_RJEM_MALLOC_CONF=prof:true`
     /// environment variable for the binary and with [`MemoryProfilerSettings::enabled`] being set
     /// to `true`. Otherwise, this method will return `None`.
+    ///
+    /// If syscall sandboxing is being used (see [`crate::security`] for more details), telemetry
+    /// must be initialized prior to syscall sandboxing.
     pub fn get_or_init_with(settings: &MemoryProfilerSettings) -> BootstrapResult<Option<Self>> {
         const MAX_SAMPLE_INTERVAL: u8 = 64;
 
@@ -105,7 +101,7 @@ impl MemoryProfiler {
         let (response_sender, response_receiver) = oneshot::channel();
         self.request_heap_profile.send(response_sender)?;
 
-        Ok(response_receiver.await??)
+        response_receiver.await?
     }
 
     /// Returns heap statistics.
@@ -156,13 +152,11 @@ fn init_profiler(settings: &MemoryProfilerSettings) -> BootstrapResult<Option<Me
         .map_err(|e| BootstrapError::new(e).context("failed to activate profiling"))?;
 
     Ok(Some(MemoryProfiler {
-        _seal: Seal,
-
         request_heap_profile: request_sender,
     }))
 }
 
-fn heap_profile_thread(receive_request: mpsc::Receiver<oneshot::Sender<anyhow::Result<String>>>) {
+fn heap_profile_thread(receive_request: mpsc::Receiver<oneshot::Sender<Result<String>>>) {
     while let Ok(send_response) = receive_request.recv() {
         if send_response.send(collect_heap_profile()).is_err() {
             // A failure to send indicates the main thread's receiver is gone, so something else
@@ -172,22 +166,21 @@ fn heap_profile_thread(receive_request: mpsc::Receiver<oneshot::Sender<anyhow::R
     }
 }
 
-fn collect_heap_profile() -> anyhow::Result<String> {
+fn collect_heap_profile() -> Result<String> {
     let out_file = NamedTempFile::new()?;
 
     let out_file_path = out_file
         .path()
         .to_str()
-        .ok_or(anyhow!("failed to obtain heap profile output file path"))?;
+        .ok_or("failed to obtain heap profile output file path")?;
 
     let mut out_file_path_c_str = CString::new(out_file_path)?.into_bytes_with_nul();
     let out_file_path_ptr = out_file_path_c_str.as_mut_ptr() as *mut c_char;
 
     control::write(control::PROF_DUMP, out_file_path_ptr).map_err(|e| {
-        anyhow!(
+        format!(
             "failed to dump jemalloc heap profile to {:?}: {}",
-            out_file_path,
-            e
+            out_file_path, e
         )
     })?;
 
