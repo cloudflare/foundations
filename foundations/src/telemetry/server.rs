@@ -49,7 +49,6 @@ pub(super) fn init(
     let settings = Arc::new(settings);
 
     // Eagerly init the memory profiler so it gets set up before syscalls are sandboxed with seccomp.
-    // Otherwise, the profiler may invoke seccomp for itself and violate prior seccomp configuration.
     #[cfg(all(target_os = "linux", feature = "memory-profiling"))]
     memory_profiling::profiler(Arc::clone(&settings)).map_err(|err| anyhow!(err))?;
 

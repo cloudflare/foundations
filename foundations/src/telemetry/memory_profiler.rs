@@ -1,5 +1,4 @@
 use super::settings::MemoryProfilerSettings;
-use crate::utils::feature_use;
 use crate::{BootstrapError, BootstrapResult, Result};
 use anyhow::anyhow;
 use anyhow::bail;
@@ -11,11 +10,6 @@ use std::os::raw::c_char;
 use std::sync::mpsc::{self};
 use tempfile::NamedTempFile;
 use tokio::sync::oneshot;
-
-feature_use!(cfg(feature = "security"), {
-    use crate::security::common_syscall_allow_lists::SERVICE_BASICS;
-    use crate::security::{allow_list, enable_syscall_sandboxing, ViolationAction};
-});
 
 static PROFILER: OnceCell<Option<MemoryProfiler>> = OnceCell::new();
 
@@ -149,24 +143,7 @@ fn init_profiler(settings: &MemoryProfilerSettings) -> BootstrapResult<Option<Me
     }
 
     let (request_sender, request_receiver) = mpsc::channel();
-
-    #[cfg(feature = "security")]
-    let (setup_complete_sender, setup_complete_receiver) = mpsc::channel();
-
-    #[cfg(feature = "security")]
-    let sandbox_profiling_syscalls = settings.sandbox_profiling_syscalls;
-    std::thread::spawn(move || {
-        heap_profile_thread(
-            request_receiver,
-            #[cfg(feature = "security")]
-            setup_complete_sender,
-            #[cfg(feature = "security")]
-            sandbox_profiling_syscalls,
-        )
-    });
-
-    #[cfg(feature = "security")]
-    receive_profiling_thread_setup_msg(setup_complete_receiver)?;
+    std::thread::spawn(move || heap_profile_thread(request_receiver));
 
     control::write(control::BACKGROUND_THREAD, true).map_err(|e| {
         BootstrapError::new(e).context("failed to activate background thread collection")
@@ -185,35 +162,7 @@ fn init_profiler(settings: &MemoryProfilerSettings) -> BootstrapResult<Option<Me
     }))
 }
 
-#[cfg(feature = "security")]
-fn receive_profiling_thread_setup_msg(
-    setup_complete_receiver: mpsc::Receiver<anyhow::Result<()>>,
-) -> anyhow::Result<()> {
-    match setup_complete_receiver.recv() {
-        Ok(Ok(())) => {}
-        Ok(Err(setup_err)) => {
-            return Err(setup_err);
-        }
-        Err(std::sync::mpsc::RecvError) => {
-            bail!("Profiling thread disconnected before finishing setup")
-        }
-    }
-
-    Ok(())
-}
-
-fn heap_profile_thread(
-    receive_request: mpsc::Receiver<oneshot::Sender<anyhow::Result<String>>>,
-    #[cfg(feature = "security")] setup_complete: mpsc::Sender<anyhow::Result<()>>,
-    #[cfg(feature = "security")] sandbox_profiling_syscalls: bool,
-) {
-    #[cfg(feature = "security")]
-    if sandbox_profiling_syscalls {
-        if setup_complete.send(sandbox_jemalloc_syscalls()).is_err() {
-            return;
-        }
-    }
-
+fn heap_profile_thread(receive_request: mpsc::Receiver<oneshot::Sender<anyhow::Result<String>>>) {
     while let Ok(send_response) = receive_request.recv() {
         if send_response.send(collect_heap_profile()).is_err() {
             // A failure to send indicates the main thread's receiver is gone, so something else
@@ -249,40 +198,16 @@ fn collect_heap_profile() -> anyhow::Result<String> {
     Ok(String::from_utf8(profile)?)
 }
 
-#[cfg(feature = "security")]
-fn sandbox_jemalloc_syscalls() -> anyhow::Result<()> {
-    #[cfg(target_arch = "x86_64")]
-    allow_list! {
-        static ALLOWED_SYSCALLS = [
-            ..SERVICE_BASICS,
-            // PXY-41: Required to call Instant::now from parking-lot.
-            clock_gettime,
-            openat,
-            creat,
-            unlink
-        ]
-    }
-
-    #[cfg(target_arch = "aarch64")]
-    allow_list! {
-        static ALLOWED_SYSCALLS = [
-            ..SERVICE_BASICS,
-            clock_gettime,
-            openat,
-            unlinkat
-        ]
-    }
-
-    enable_syscall_sandboxing(ViolationAction::KillProcess, &ALLOWED_SYSCALLS)?;
-
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::{
-        security::common_syscall_allow_lists::ASYNC, telemetry::settings::MemoryProfilerSettings,
+        security::{
+            allow_list,
+            common_syscall_allow_lists::{ASYNC, SERVICE_BASICS},
+            enable_syscall_sandboxing, ViolationAction,
+        },
+        telemetry::settings::MemoryProfilerSettings,
     };
 
     #[test]
@@ -296,10 +221,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn profile_heap_with_profiling_sandboxed_after_previous_seccomp_init() {
+    async fn profile_heap_after_seccomp_initialized() {
         let profiler = MemoryProfiler::get_or_init_with(&MemoryProfilerSettings {
             enabled: true,
-            sandbox_profiling_syscalls: true,
             ..Default::default()
         })
         .unwrap()
