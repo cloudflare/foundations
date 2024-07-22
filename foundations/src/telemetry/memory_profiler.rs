@@ -208,7 +208,6 @@ mod tests {
         assert!(MemoryProfiler::get_or_init_with(&MemoryProfilerSettings {
             enabled: true,
             sample_interval: 128,
-            ..Default::default()
         })
         .is_err());
     }
