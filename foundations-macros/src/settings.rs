@@ -1,12 +1,13 @@
 use crate::common::{error, parse_meta_list, Result};
+use darling::ast::NestedMeta;
 use darling::FromMeta;
 use proc_macro::TokenStream;
 use quote::{quote, quote_spanned, TokenStreamExt};
 use syn::parse::{Parse, ParseStream};
 use syn::spanned::Spanned;
 use syn::{
-    parse_macro_input, parse_quote, Attribute, Field, Fields, Ident, Item, ItemEnum, ItemStruct,
-    Lit, LitStr, Meta, MetaNameValue, NestedMeta, Path,
+    parse_macro_input, parse_quote, Attribute, Expr, ExprLit, Field, Fields, Ident, Item, ItemEnum,
+    ItemStruct, Lit, LitStr, Meta, MetaNameValue, Path,
 };
 
 const ERR_NOT_STRUCT_OR_ENUM: &str = "Settings should be either structure or enum.";
@@ -221,7 +222,7 @@ fn impl_settings_trait_for_field(
     let cfg_attrs = field
         .attrs
         .iter()
-        .filter(|a| a.path.is_ident("cfg"))
+        .filter(|a| a.path().is_ident("cfg"))
         .collect::<Vec<_>>();
 
     impl_for_field.append_all(quote_spanned! { span=>
@@ -254,16 +255,20 @@ fn extract_doc_comments(attrs: &[Attribute]) -> Vec<LitStr> {
     let mut comments = vec![];
 
     for attr in attrs {
-        if !attr.path.is_ident("doc") {
+        if !attr.path().is_ident("doc") {
             continue;
         }
 
-        if let Ok(Meta::NameValue(MetaNameValue {
-            lit: Lit::Str(lit_str),
+        if let Meta::NameValue(MetaNameValue {
+            value:
+                Expr::Lit(ExprLit {
+                    lit: Lit::Str(lit_str),
+                    ..
+                }),
             ..
-        })) = attr.parse_meta()
+        }) = &attr.meta
         {
-            comments.push(lit_str);
+            comments.push(lit_str.clone());
         }
     }
 
@@ -281,7 +286,11 @@ fn impl_serde_aware_default(item: &ItemStruct) -> proc_macro2::TokenStream {
             .expect("should not generate field docs for tuple struct");
 
         let span = field.ty.span();
-        let cfg_attrs = field.attrs.iter().filter(|attr| attr.path.is_ident("cfg"));
+
+        let cfg_attrs = field
+            .attrs
+            .iter()
+            .filter(|attr| attr.path().is_ident("cfg"));
 
         let function_path = get_field_default_fn(field)
             .unwrap_or_else(|| quote_spanned! { span=> Default::default });
@@ -300,15 +309,19 @@ fn impl_serde_aware_default(item: &ItemStruct) -> proc_macro2::TokenStream {
 
 fn get_field_default_fn(field: &Field) -> Option<proc_macro2::TokenStream> {
     for attr in &field.attrs {
-        if !attr.path.is_ident("serde") {
+        if !attr.path().is_ident("serde") {
             continue;
         }
 
-        let Ok(Meta::List(list)) = attr.parse_meta() else {
+        let Meta::List(list) = &attr.meta else {
             continue;
         };
 
-        for meta in list.nested {
+        let Ok(nested_meta_list) = NestedMeta::parse_meta_list(list.tokens.clone()) else {
+            continue;
+        };
+
+        for meta in nested_meta_list {
             let NestedMeta::Meta(Meta::NameValue(mnv)) = meta else {
                 continue;
             };
@@ -317,7 +330,12 @@ fn get_field_default_fn(field: &Field) -> Option<proc_macro2::TokenStream> {
                 continue;
             }
 
-            let Lit::Str(val) = mnv.lit else { continue };
+            let Expr::Lit(ExprLit {
+                lit: Lit::Str(val), ..
+            }) = mnv.value
+            else {
+                continue;
+            };
 
             match val.parse() {
                 Ok(tokens) => return Some(tokens),

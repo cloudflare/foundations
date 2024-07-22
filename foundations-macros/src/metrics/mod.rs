@@ -4,8 +4,8 @@ use proc_macro2::Span;
 use quote::{quote, ToTokens};
 use syn::punctuated::Punctuated;
 use syn::{
-    parse_macro_input, parse_quote, Attribute, AttributeArgs, ExprStruct, Ident, LitStr, Path,
-    Token, Type, Visibility,
+    parse_macro_input, parse_quote, Attribute, ExprStruct, Ident, LitStr, Path, Token, Type,
+    Visibility,
 };
 
 mod parsing;
@@ -77,11 +77,8 @@ enum ArgMode {
 }
 
 pub(crate) fn expand(args: TokenStream, item: TokenStream) -> TokenStream {
+    let args = parse_macro_input!(args as MacroArgs);
     let mod_ = parse_macro_input!(item as Mod);
-    let args = match MacroArgs::from_list(&parse_macro_input!(args as AttributeArgs)) {
-        Ok(args) => args,
-        Err(e) => return e.write_errors().into(),
-    };
 
     expand_from_parsed(args, mod_).into()
 }
