@@ -139,6 +139,7 @@ fn init_profiler(settings: &MemoryProfilerSettings) -> BootstrapResult<Option<Me
     }
 
     let (request_sender, request_receiver) = mpsc::channel();
+
     std::thread::spawn(move || heap_profile_thread(request_receiver));
 
     control::write(control::BACKGROUND_THREAD, true).map_err(|e| {
