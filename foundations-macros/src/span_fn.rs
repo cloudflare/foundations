@@ -132,7 +132,7 @@ fn expand_from_parsed(args: Args, item_fn: ItemFn) -> TokenStream2 {
 
 fn try_async_trait_fn_rewrite(args: &Args, body: &Block) -> Option<TokenStream2> {
     let (last_expr_fn_call, last_expr_fn_call_args) = match body.stmts.last()? {
-        Stmt::Expr(Expr::Call(ExprCall { func, args, .. })) => (func, args),
+        Stmt::Expr(Expr::Call(ExprCall { func, args, .. }), ..) => (func, args),
         _ => return None,
     };
 

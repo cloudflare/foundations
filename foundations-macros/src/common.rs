@@ -1,7 +1,9 @@
+use darling::ast::NestedMeta;
+use quote::ToTokens as _;
 use syn::parse::{Parse, ParseStream, Parser};
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
-use syn::{Attribute, NestedMeta, Token};
+use syn::{Attribute, Ident, Token};
 
 pub(crate) type Result<T> = std::result::Result<T, syn::Error>;
 
@@ -34,11 +36,12 @@ where
     T: Parse,
 {
     let parser = |input: ParseStream| {
+        let _name = input.parse::<Ident>()?;
         let _equal_token = input.parse::<Token![=]>()?;
         input.parse::<T>()
     };
 
-    parser.parse2(attr.tokens)
+    parser.parse2(attr.meta.to_token_stream())
 }
 
 #[cfg(test)]

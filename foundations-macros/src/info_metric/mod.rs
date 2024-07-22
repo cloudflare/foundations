@@ -1,6 +1,3 @@
-// See: https://github.com/cloudflare/foundations/issues/50
-#![allow(clippy::manual_unwrap_or_default)]
-
 use crate::common::Result;
 use darling::FromMeta;
 use proc_macro::TokenStream;
@@ -8,8 +5,7 @@ use proc_macro2::Span;
 use quote::{quote, ToTokens};
 use syn::punctuated::Punctuated;
 use syn::{
-    parse_macro_input, parse_quote, Attribute, AttributeArgs, Ident, LitStr, Path, Token, Type,
-    Visibility,
+    parse_macro_input, parse_quote, Attribute, Ident, LitStr, Path, Token, Type, Visibility,
 };
 
 mod parsing;
@@ -66,11 +62,8 @@ struct FieldAttrs {
 }
 
 pub(crate) fn expand(args: TokenStream, item: TokenStream) -> TokenStream {
+    let args = parse_macro_input!(args as MacroArgs);
     let mod_ = parse_macro_input!(item as Struct);
-    let args = match MacroArgs::from_list(&parse_macro_input!(args as AttributeArgs)) {
-        Ok(args) => args,
-        Err(e) => return e.write_errors().into(),
-    };
 
     expand_from_parsed(args, mod_)
         .unwrap_or_else(|e| e.to_compile_error())
