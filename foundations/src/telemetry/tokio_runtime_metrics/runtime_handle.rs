@@ -27,8 +27,8 @@ impl RuntimeHandle {
         tokio_runtime_core::blocking_threads(&self.runtime_name, self.runtime_id)
             .set(metrics.num_blocking_threads() as u64);
 
-        tokio_runtime_core::active_tasks(&self.runtime_name, self.runtime_id)
-            .set(metrics.active_tasks_count() as u64);
+        tokio_runtime_core::num_alive_tasks(&self.runtime_name, self.runtime_id)
+            .set(metrics.num_alive_tasks() as u64);
 
         tokio_runtime_core::idle_blocking_threads(&self.runtime_name, self.runtime_id)
             .set(metrics.num_idle_blocking_threads() as u64);
