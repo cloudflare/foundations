@@ -11,7 +11,7 @@
 //! |:-------------------------------------------------|:--------------------------------------------------------------------|:---------------------------------------|
 //! | tokio_runtime_workers                            | [`tokio::runtime::RuntimeMetrics::num_workers`]                     | runtime_name?, runtime_id?             |
 //! | tokio_runtime_blocking_threads                   | [`tokio::runtime::RuntimeMetrics::num_blocking_threads`]            | runtime_name?, runtime_id?             |
-//! | tokio_runtime_active_tasks                       | [`tokio::runtime::RuntimeMetrics::active_tasks_count`]              | runtime_name?, runtime_id?             |
+//! | tokio_runtime_num_alive_tasks                    | [`tokio::runtime::RuntimeMetrics::num_alive_tasks`]                 | runtime_name?, runtime_id?             |
 //! | tokio_runtime_idle_blocking_threads              | [`tokio::runtime::RuntimeMetrics::num_idle_blocking_threads`]       | runtime_name?, runtime_id?             |
 //! | tokio_runtime_remote_schedules_total             | [`tokio::runtime::RuntimeMetrics::remote_schedule_count`]           | runtime_name?, runtime_id?             |
 //! | tokio_runtime_budget_forced_yields_total         | [`tokio::runtime::RuntimeMetrics::budget_forced_yield_count`]       | runtime_name?, runtime_id?             |
