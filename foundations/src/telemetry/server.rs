@@ -47,6 +47,11 @@ pub(super) fn init(
     }
 
     let settings = Arc::new(settings);
+
+    // Eagerly init the memory profiler so it gets set up before syscalls are sandboxed with seccomp.
+    #[cfg(all(target_os = "linux", feature = "memory-profiling"))]
+    memory_profiling::profiler(Arc::clone(&settings)).map_err(|err| anyhow!(err))?;
+
     let router = create_router(&settings, custom_routes)?;
     let addr = settings.server.addr;
 
@@ -162,7 +167,7 @@ mod memory_profiling {
     use super::*;
     use crate::telemetry::MemoryProfiler;
 
-    fn profiler(settings: Arc<TelemetrySettings>) -> Result<MemoryProfiler> {
+    pub(super) fn profiler(settings: Arc<TelemetrySettings>) -> Result<MemoryProfiler> {
         MemoryProfiler::get_or_init_with(&settings.memory_profiler)?.ok_or_else(|| {
             "profiling should be enabled via `_RJEM_MALLOC_CONF=prof:true` env var".into()
         })

@@ -1,24 +1,19 @@
 use super::settings::MemoryProfilerSettings;
-use crate::utils::feature_use;
 use crate::{BootstrapError, BootstrapResult, Result};
 use anyhow::bail;
-use once_cell::sync::{Lazy, OnceCell};
+use once_cell::sync::OnceCell;
 use std::ffi::{CStr, CString};
 use std::fs::File;
 use std::io::Read;
 use std::os::raw::c_char;
-use std::thread;
+use std::sync::mpsc::{self};
 use tempfile::NamedTempFile;
-use tokio::sync::Mutex as AsyncMutex;
-use tokio::task::spawn_blocking;
-
-feature_use!(cfg(feature = "security"), {
-    use crate::security::common_syscall_allow_lists::SERVICE_BASICS;
-    use crate::security::{allow_list, enable_syscall_sandboxing, ViolationAction};
-});
+use tokio::sync::{oneshot, Mutex as AsyncMutex};
 
 static PROFILER: OnceCell<Option<MemoryProfiler>> = OnceCell::new();
-static PROFILING_IN_PROGRESS_LOCK: Lazy<AsyncMutex<()>> = Lazy::new(Default::default);
+static HEAP_PROFILE_REQUEST_SENDER: OnceCell<
+    AsyncMutex<mpsc::Sender<oneshot::Sender<Result<String>>>>,
+> = OnceCell::new();
 
 mod control {
     use super::*;
@@ -59,9 +54,6 @@ struct Seal;
 #[derive(Copy, Clone)]
 pub struct MemoryProfiler {
     _seal: Seal,
-
-    #[cfg(feature = "security")]
-    sandbox_profiling_syscalls: bool,
 }
 
 impl MemoryProfiler {
@@ -73,6 +65,9 @@ impl MemoryProfiler {
     /// Note that profiling needs to be explicitly enabled by setting `_RJEM_MALLOC_CONF=prof:true`
     /// environment variable for the binary and with [`MemoryProfilerSettings::enabled`] being set
     /// to `true`. Otherwise, this method will return `None`.
+    ///
+    /// If syscall sandboxing is being used (see [`crate::security`] for more details), telemetry
+    /// must be initialized prior to syscall sandboxing.
     pub fn get_or_init_with(settings: &MemoryProfilerSettings) -> BootstrapResult<Option<Self>> {
         const MAX_SAMPLE_INTERVAL: u8 = 64;
 
@@ -110,29 +105,19 @@ impl MemoryProfiler {
     /// }
     /// ```
     pub async fn heap_profile(&self) -> Result<String> {
+        let Some(sender_mutex) = HEAP_PROFILE_REQUEST_SENDER.get() else {
+            return Err("Profile request sender is not initialized".into());
+        };
+
         // NOTE: we use tokio mutex here, so we can hold the lock across `await` points.
-        let Ok(_lock) = PROFILING_IN_PROGRESS_LOCK.try_lock() else {
+        let Ok(sender_guard) = sender_mutex.try_lock() else {
             return Err("profiling is already in progress".into());
         };
 
-        #[cfg(feature = "security")]
-        let sandbox_profiling_syscalls = self.sandbox_profiling_syscalls;
+        let (response_sender, response_receiver) = oneshot::channel();
+        sender_guard.send(response_sender)?;
 
-        let collector_thread = thread::spawn(move || {
-            #[cfg(feature = "security")]
-            if sandbox_profiling_syscalls {
-                sandbox_jemalloc_syscalls()?;
-            }
-
-            collect_heap_profile()
-        });
-
-        spawn_blocking(move || {
-            collector_thread
-                .join()
-                .map_err(|_| "heap profile collector thread panicked")?
-        })
-        .await?
+        response_receiver.await?
     }
 
     /// Returns heap statistics.
@@ -169,6 +154,13 @@ fn init_profiler(settings: &MemoryProfilerSettings) -> BootstrapResult<Option<Me
         return Ok(None);
     }
 
+    let (request_sender, request_receiver) = mpsc::channel();
+    HEAP_PROFILE_REQUEST_SENDER
+        .set(AsyncMutex::new(request_sender))
+        .map_err(|_| anyhow::anyhow!("request sender had already been initialized"))?;
+
+    std::thread::spawn(move || heap_profile_thread(request_receiver));
+
     control::write(control::BACKGROUND_THREAD, true).map_err(|e| {
         BootstrapError::new(e).context("failed to activate background thread collection")
     })?;
@@ -179,12 +171,17 @@ fn init_profiler(settings: &MemoryProfilerSettings) -> BootstrapResult<Option<Me
     control::write(control::PROF_ACTIVE, true)
         .map_err(|e| BootstrapError::new(e).context("failed to activate profiling"))?;
 
-    Ok(Some(MemoryProfiler {
-        _seal: Seal,
+    Ok(Some(MemoryProfiler { _seal: Seal }))
+}
 
-        #[cfg(feature = "security")]
-        sandbox_profiling_syscalls: settings.sandbox_profiling_syscalls,
-    }))
+fn heap_profile_thread(receive_request: mpsc::Receiver<oneshot::Sender<Result<String>>>) {
+    while let Ok(send_response) = receive_request.recv() {
+        if send_response.send(collect_heap_profile()).is_err() {
+            // A failure to send indicates the main thread's receiver is gone, so something else
+            // has already gone wrong there.
+            return;
+        }
+    }
 }
 
 fn collect_heap_profile() -> Result<String> {
@@ -212,38 +209,11 @@ fn collect_heap_profile() -> Result<String> {
     Ok(String::from_utf8(profile)?)
 }
 
-#[cfg(feature = "security")]
-fn sandbox_jemalloc_syscalls() -> Result<()> {
-    #[cfg(target_arch = "x86_64")]
-    allow_list! {
-        static ALLOWED_SYSCALLS = [
-            ..SERVICE_BASICS,
-            // PXY-41: Required to call Instant::now from parking-lot.
-            clock_gettime,
-            openat,
-            creat,
-            unlink
-        ]
-    }
-
-    #[cfg(target_arch = "aarch64")]
-    allow_list! {
-        static ALLOWED_SYSCALLS = [
-            ..SERVICE_BASICS,
-            clock_gettime,
-            openat,
-            unlinkat
-        ]
-    }
-
-    enable_syscall_sandboxing(ViolationAction::KillProcess, &ALLOWED_SYSCALLS)?;
-
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::security::common_syscall_allow_lists::{ASYNC, SERVICE_BASICS};
+    use crate::security::{allow_list, enable_syscall_sandboxing, ViolationAction};
     use crate::telemetry::settings::MemoryProfilerSettings;
 
     #[test]
@@ -251,9 +221,31 @@ mod tests {
         assert!(MemoryProfiler::get_or_init_with(&MemoryProfilerSettings {
             enabled: true,
             sample_interval: 128,
-            ..Default::default()
         })
         .is_err());
+    }
+
+    #[tokio::test]
+    async fn profile_heap_after_seccomp_initialized() {
+        let profiler = MemoryProfiler::get_or_init_with(&MemoryProfilerSettings {
+            enabled: true,
+            ..Default::default()
+        })
+        .unwrap()
+        .unwrap_or_else(|| {
+            panic!("profiling should be enabled via `_RJEM_MALLOC_CONF=prof:true` env var");
+        });
+
+        allow_list! {
+           static ALLOW_PROFILING = [
+                ..SERVICE_BASICS,
+                ..ASYNC
+           ]
+        }
+        enable_syscall_sandboxing(ViolationAction::KillProcess, &ALLOW_PROFILING).unwrap();
+
+        let profile = profiler.heap_profile().await.unwrap();
+        assert!(!profile.is_empty());
     }
 
     // NOTE: `heap_profile` uses raw pointers, the test ensures that it doesn't affect the returned future

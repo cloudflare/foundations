@@ -17,14 +17,6 @@ pub struct MemoryProfilerSettings {
     /// The default is `19` (2 ^ 19 = 512KiB).
     #[serde(default = "MemoryProfilerSettings::default_sample_interval")]
     pub sample_interval: u8,
-
-    /// Enables [seccomp] sandboxing of syscalls made by [jemalloc] during heap profile collection.
-    ///
-    /// [seccomp]: https://en.wikipedia.org/wiki/Seccomp
-    /// [jemalloc]: https://github.com/jemalloc/jemalloc
-    #[cfg(feature = "security")]
-    #[serde(default = "MemoryProfilerSettings::default_sandbox_profiling_syscalls")]
-    pub sandbox_profiling_syscalls: bool,
 }
 
 #[cfg(not(feature = "settings"))]
@@ -33,10 +25,6 @@ impl Default for MemoryProfilerSettings {
         Self {
             enabled: false,
             sample_interval: MemoryProfilerSettings::default_sample_interval(),
-
-            #[cfg(feature = "security")]
-            sandbox_profiling_syscalls: MemoryProfilerSettings::default_sandbox_profiling_syscalls(
-            ),
         }
     }
 }
@@ -44,10 +32,5 @@ impl Default for MemoryProfilerSettings {
 impl MemoryProfilerSettings {
     fn default_sample_interval() -> u8 {
         19
-    }
-
-    #[cfg(feature = "security")]
-    fn default_sandbox_profiling_syscalls() -> bool {
-        true
     }
 }
