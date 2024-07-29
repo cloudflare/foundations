@@ -479,8 +479,9 @@ macro_rules! __add_span_tags {
 
 /// Adds log fields to the current span.
 ///
-/// Log entries need to be provided as comma-separated `"field" => "value"` pairs there. Fields and
-/// values can be strings or string slices.
+/// Log entries can be provided eother as comma-separated `"field" => "value"` pairs,
+/// or an [iterable] over `("key", value)` tuples. Fields and values can be strings or
+/// string slices.
 ///
 /// # Examples
 /// ```
@@ -531,6 +532,7 @@ macro_rules! __add_span_tags {
 ///     }]
 /// );
 /// ```
+/// [iterable]: std::iter::IntoIterator
 #[macro_export]
 #[doc(hidden)]
 macro_rules! __add_span_log_fields {
@@ -540,6 +542,15 @@ macro_rules! __add_span_log_fields {
                 $(
                     builder.field(($field, $val));
                 )+
+            });
+        });
+    };
+    ( $fields:expr ) => {
+        $crate::telemetry::tracing::internal::write_current_span(|span| {
+            span.log(|builder| {
+                for (name, val) in $fields.into_iter() {
+                    builder.field((name, val));
+                }
             });
         });
     };

@@ -4,6 +4,8 @@ mod field_dedup;
 mod field_filtering;
 mod field_redact;
 mod rate_limit;
+#[cfg(feature = "tracing")]
+mod tracing_drain;
 
 pub(crate) mod init;
 
@@ -59,6 +61,33 @@ pub fn set_verbosity(level: Level) -> Result<()> {
 pub fn verbosity() -> LogVerbosity {
     let harness = LogHarness::get();
     harness.settings.verbosity
+}
+
+/// Sets the level of log messages to emit to tracing span logs, overriding the settings used
+/// in [`init`].
+///
+/// Does not enable or disable emission to trace spans, and so will have no impact if
+/// [`trace_emission.enabled`] was set to false in [`init`].
+///
+/// This is subject to the same nesting limitations of `set_verbosity`.
+///
+/// [`init`]: crate::telemetry::init
+/// [`trace_emission.enabled`]: crate::telemetry::settings::TraceEmissionSettings
+#[cfg(feature = "tracing")]
+pub fn set_trace_emission_verbosity(level: Level) -> Result<()> {
+    let harness = LogHarness::get();
+
+    let mut settings = harness.settings.clone();
+    settings.trace_emission.verbosity = LogVerbosity(level);
+
+    let current_log = current_log();
+    let mut current_log_lock = current_log.write();
+
+    let kv = OwnedKV(current_log_lock.list().clone());
+    current_log_lock.inner = build_log_with_drain(&settings, kv, Arc::clone(&harness.root_drain));
+    current_log_lock.inc_nesting_level();
+
+    Ok(())
 }
 
 /// Returns current log as a raw [slog] crate's `Logger` used by Foundations internally.

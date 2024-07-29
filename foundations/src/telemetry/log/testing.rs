@@ -1,4 +1,4 @@
-use crate::telemetry::log::init::{apply_filters_to_drain, LogHarness};
+use crate::telemetry::log::init::{build_log_with_drain, LogHarness};
 use crate::telemetry::log::internal::LoggerWithKvNestingTracking;
 use crate::telemetry::settings::LoggingSettings;
 use parking_lot::RwLock as ParkingRwLock;
@@ -69,7 +69,7 @@ pub(crate) fn create_test_log(
         records: Arc::clone(&log_records),
     };
 
-    let drain = Arc::new(apply_filters_to_drain(drain, settings));
+    let drain = Arc::new(build_log_with_drain(settings, slog::o!(), drain));
     let log = LoggerWithKvNestingTracking::new(Logger::root(Arc::clone(&drain), slog::o!()));
 
     let _ = LogHarness::override_for_testing(LogHarness {
