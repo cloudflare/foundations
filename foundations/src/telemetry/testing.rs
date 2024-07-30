@@ -6,7 +6,6 @@ feature_use!(cfg(feature = "logging"), {
     use super::log::testing::{create_test_log, TestLogRecord, TestLogRecords};
     use super::settings::LogVerbosity;
     use super::settings::LoggingSettings;
-    use slog::Level;
     use std::sync::Arc;
     use std::sync::RwLockReadGuard;
 });
@@ -52,7 +51,7 @@ impl TestTelemetryContext {
         #[cfg(feature = "logging")]
         let (log, log_records) = {
             create_test_log(&LoggingSettings {
-                verbosity: LogVerbosity(Level::Trace),
+                verbosity: LogVerbosity::Trace,
                 ..Default::default()
             })
         };

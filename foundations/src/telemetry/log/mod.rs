@@ -39,11 +39,11 @@ pub use self::testing::TestLogRecord;
 /// verbosity level.
 ///
 /// [`init`]: crate::telemetry::init
-pub fn set_verbosity(level: Level) -> Result<()> {
+pub fn set_verbosity(verbosity: LogVerbosity) -> Result<()> {
     let harness = LogHarness::get();
 
     let mut settings = harness.settings.clone();
-    settings.verbosity = LogVerbosity(level);
+    settings.verbosity = verbosity;
 
     let current_log = current_log();
     let mut current_log_lock = current_log.write();
