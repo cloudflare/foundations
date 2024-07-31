@@ -172,6 +172,8 @@ mod security {
             .allowlist_var("SCMP_ACT_ALLOW")
             .allowlist_var("PR_SET_TSC")
             .allowlist_var("PR_TSC_SIGSEGV")
+            .allowlist_var("PR_GET_SECCOMP")
+            .allowlist_var("PR_SET_NAME")
             .derive_default(true)
             .parse_callbacks(Box::new(CargoCallbacks))
             .generate()

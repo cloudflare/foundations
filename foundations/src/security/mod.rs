@@ -50,6 +50,7 @@ mod sys {
 use self::internal::RawRule;
 use crate::BootstrapResult;
 use anyhow::bail;
+use sys::PR_GET_SECCOMP;
 
 pub use self::syscalls::Syscall;
 
@@ -296,8 +297,25 @@ pub enum Rule {
     ReturnError(Syscall, RawOsErrorNum, Vec<ArgCmp>),
 }
 
+/// See [PR_GET_SECCOMP]
+///
+/// [PR_GET_SECCOMP]: https://linuxman7.org/linux/man-pages/man2/PR_GET_SECCOMP.2const.html
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum SeccompMode {
+    /// The current thread is not in secure computing mode
+    None = 0,
+
+    /// The current thread is in strict secure computing mode.
+    /// Unused in practice since the syscall to get the value
+    /// would kill your process in strict computing mode.
+    _Strict = 1,
+
+    /// The current thread is in filter mode
+    Filter = 2,
+}
+
 /// Enables [seccomp]-based syscall sandboxing in the current thread and all the threads spawned
-/// by it.
+/// by it, if the current thread does not already have sandboxing enabled.
 ///
 /// Calling the function early in the `main` function effectively enables seccomp for the whole
 /// process.
@@ -306,6 +324,10 @@ pub enum Rule {
 /// provided [`ViolationAction`]. [`allow_list`] macro can be used to conveniently construct lists
 /// of allowed syscalls. In addition, the crate provides [`common_syscall_allow_lists`] that can be
 /// merged into the user-provided allow lists.
+///
+/// To setup sandboxing on a thread has already been sandboxed, use
+/// [`enable_syscall_sandboxing_ignore_existing`] on a thread allowing the `prctl` and `seccomp`
+/// syscalls.
 ///
 /// [seccomp]: https://man7.org/linux/man-pages/man2/seccomp.2.html
 ///
@@ -346,6 +368,52 @@ pub enum Rule {
 /// let _ = TcpListener::bind("127.0.0.1:0");
 /// ```
 pub fn enable_syscall_sandboxing(
+    violation_action: ViolationAction,
+    exception_rules: &Vec<Rule>,
+) -> BootstrapResult<()> {
+    let current_mode = get_current_thread_seccomp_mode()?;
+    if current_mode != SeccompMode::None {
+        return Ok(());
+    }
+
+    enable_syscall_sandboxing_ignore_existing(violation_action, exception_rules)
+}
+
+/// Gets the secure computing mode of the current thread.
+///
+/// Uses the [prctl(PR_GET_SECCOMP)] syscall, so calling this without an allow_list such as
+/// the following may violate sandboxing rules if called after [`enable_syscall_sandboxing`].
+///
+/// ```
+/// use foundations::security::{allow_list};
+///
+/// allow_list! {
+///    pub static GET_SECCOMP = [
+///        prctl if [ ArgCmp::Equal { arg_idx: 0, value: sys::PR_GET_SECCOMP.into() } ]
+///    ]
+///}
+/// ```
+///
+/// [prctl(PR_GET_SECCOMP)]: https://linuxman7.org/linux/man-pages/man2/PR_GET_SECCOMP.2const.html
+pub fn get_current_thread_seccomp_mode() -> BootstrapResult<SeccompMode> {
+    let current_seccomp_mode = unsafe { sys::prctl(PR_GET_SECCOMP as i32) };
+    match current_seccomp_mode {
+        0 => Ok(SeccompMode::None),
+        2 => Ok(SeccompMode::Filter),
+        _ => bail!("Unable to determine the current seccomp mode. Perhaps the kernel was not configured with CONFIG_SECCOMP?")
+    }
+}
+
+/// Attempts to enable [seccomp]-based syscall sandboxing in the current thread and all
+/// the threads spawned by it, regardless of whether this thread is already sandboxed.
+///
+/// If called after sandboxing was previously set up, this will likely violate rules
+/// not configured to allow the `prctl` and `seccomp` syscalls.
+///
+/// See [`enable_syscall_sandboxing`] for more details.
+///
+/// [seccomp]: https://man7.org/linux/man-pages/man2/seccomp.2.html
+pub fn enable_syscall_sandboxing_ignore_existing(
     violation_action: ViolationAction,
     exception_rules: &Vec<Rule>,
 ) -> BootstrapResult<()> {
