@@ -379,31 +379,6 @@ pub fn enable_syscall_sandboxing(
     enable_syscall_sandboxing_ignore_existing(violation_action, exception_rules)
 }
 
-/// Gets the secure computing mode of the current thread.
-///
-/// Uses the [prctl(PR_GET_SECCOMP)] syscall, so calling this without an allow_list such as
-/// the following may violate sandboxing rules if called after [`enable_syscall_sandboxing`].
-///
-/// ```
-/// use foundations::security::{allow_list};
-///
-/// allow_list! {
-///    pub static GET_SECCOMP = [
-///        prctl if [ ArgCmp::Equal { arg_idx: 0, value: sys::PR_GET_SECCOMP.into() } ]
-///    ]
-///}
-/// ```
-///
-/// [prctl(PR_GET_SECCOMP)]: https://linuxman7.org/linux/man-pages/man2/PR_GET_SECCOMP.2const.html
-pub fn get_current_thread_seccomp_mode() -> BootstrapResult<SeccompMode> {
-    let current_seccomp_mode = unsafe { sys::prctl(PR_GET_SECCOMP as i32) };
-    match current_seccomp_mode {
-        0 => Ok(SeccompMode::None),
-        2 => Ok(SeccompMode::Filter),
-        _ => bail!("Unable to determine the current seccomp mode. Perhaps the kernel was not configured with CONFIG_SECCOMP?")
-    }
-}
-
 /// Attempts to enable [seccomp]-based syscall sandboxing in the current thread and all
 /// the threads spawned by it, regardless of whether this thread is already sandboxed.
 ///
@@ -456,6 +431,31 @@ pub fn enable_syscall_sandboxing_ignore_existing(
     }
 
     Ok(())
+}
+
+/// Gets the secure computing mode of the current thread.
+///
+/// Uses the [prctl(PR_GET_SECCOMP)] syscall, so calling this without an allow_list such as
+/// the following may violate sandboxing rules if called after [`enable_syscall_sandboxing`].
+///
+/// ```
+/// use foundations::security::{allow_list};
+///
+/// allow_list! {
+///    pub static GET_SECCOMP = [
+///        prctl if [ ArgCmp::Equal { arg_idx: 0, value: sys::PR_GET_SECCOMP.into() } ]
+///    ]
+///}
+/// ```
+///
+/// [prctl(PR_GET_SECCOMP)]: https://linuxman7.org/linux/man-pages/man2/PR_GET_SECCOMP.2const.html
+pub fn get_current_thread_seccomp_mode() -> BootstrapResult<SeccompMode> {
+    let current_seccomp_mode = unsafe { sys::prctl(PR_GET_SECCOMP as i32) };
+    match current_seccomp_mode {
+        0 => Ok(SeccompMode::None),
+        2 => Ok(SeccompMode::Filter),
+        _ => bail!("Unable to determine the current seccomp mode. Perhaps the kernel was not configured with CONFIG_SECCOMP?")
+    }
 }
 
 /// Forbids usage of x86_64 CPU cycle counter for [Spectre] mitigation.
