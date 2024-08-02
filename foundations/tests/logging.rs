@@ -1,7 +1,12 @@
 use foundations::telemetry::log::internal::LoggerWithKvNestingTracking;
-use foundations::telemetry::log::{add_fields, set_verbosity, warn};
-use foundations::telemetry::settings::{LoggingSettings, RateLimitingSettings};
-use foundations::telemetry::TestTelemetryContext;
+use foundations::telemetry::log::{
+    add_fields, error, info, set_verbosity, trace, warn, TestLogRecord,
+};
+use foundations::telemetry::settings::{
+    LogVerbosity, LoggingSettings, RateLimitingSettings, TraceEmissionSettings,
+};
+use foundations::telemetry::tracing::test_trace;
+use foundations::telemetry::{tracing, TestTelemetryContext};
 use foundations_macros::with_test_telemetry;
 use slog::Level;
 
@@ -72,4 +77,62 @@ fn test_not_exceed_limit_kv_nesting(_ctx: TestTelemetryContext) {
         add_fields! { "key1" => "hello" }
         set_verbosity(Level::Info).expect("set_verbosity");
     }
+}
+
+#[with_test_telemetry(test)]
+fn test_trace_span_logging(mut ctx: TestTelemetryContext) {
+    ctx.set_logging_settings(LoggingSettings {
+        verbosity: LogVerbosity(Level::Error),
+        trace_emission: TraceEmissionSettings {
+            enabled: true,
+            verbosity: LogVerbosity(Level::Info),
+        },
+        ..Default::default()
+    });
+
+    {
+        let _span = tracing::span("root");
+        error!("error {}", 1; "error" => "log");
+        let _span = tracing::span("child 1");
+        info!("info {}", 2; "info" => "log");
+        let _span = tracing::span("child 2");
+        trace!("trace {}", 3; "trace" => "log");
+    }
+
+    assert_eq!(
+        ctx.traces(tracing::TestTraceOptions {
+            include_logs: true,
+            ..Default::default()
+        }),
+        vec![test_trace! {
+            "root"; {
+                logs: [
+                    ("level", "ERRO"),
+                    ("msg", "error 1"),
+                    ("name", "logging")
+                ]
+            } => {
+                "child 1"; {
+                    logs: [
+                        ("level", "INFO"),
+                        ("msg", "info 2"),
+                        ("name", "logging")
+                    ]
+                } => {
+                    "child 2"; {
+                        logs: []
+                    }
+                }
+            }
+        }]
+    );
+
+    assert_eq!(
+        *ctx.log_records(),
+        &[TestLogRecord {
+            level: Level::Error,
+            message: "error 1".into(),
+            fields: vec![("error".into(), "log".into())]
+        }]
+    );
 }

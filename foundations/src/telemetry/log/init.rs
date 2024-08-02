@@ -2,6 +2,10 @@ use super::field_dedup::FieldDedupFilterFactory;
 use super::field_filtering::FieldFilteringDrain;
 use super::field_redact::FieldRedactFilterFactory;
 use super::internal::{LoggerWithKvNestingTracking, SharedLog};
+#[cfg(feature = "tracing")]
+use super::tracing_drain::{TracingDrain, TracingFilteringDrain};
+#[cfg(feature = "tracing")]
+use slog::Duplicate;
 
 #[cfg(feature = "metrics")]
 use crate::telemetry::log::log_volume::LogVolumeMetricsDrain;
@@ -128,6 +132,26 @@ fn get_root_drain(
     base_drain
 }
 
+#[cfg(feature = "tracing")]
+fn add_tracing_drain<D>(
+    drain: D,
+    settings: &LoggingSettings,
+) -> Fuse<Duplicate<D, TracingFilteringDrain<FilteredDrain<TracingDrain>>>>
+where
+    D: Drain<Ok = (), Err = Never> + 'static,
+{
+    let tracing_drain = TracingDrain::new();
+    let tracing_drain = FieldFilteringDrain::new(tracing_drain, FieldDedupFilterFactory);
+    let tracing_drain = FieldFilteringDrain::new(
+        tracing_drain,
+        FieldRedactFilterFactory::new(settings.redact_keys.clone()),
+    );
+    let tracing_drain = tracing_drain.filter_level(*settings.trace_emission.verbosity);
+    let tracing_drain = TracingFilteringDrain::new(tracing_drain);
+
+    Duplicate::new(drain, tracing_drain).fuse()
+}
+
 pub(crate) fn apply_filters_to_drain<D>(
     drain: D,
     settings: &LoggingSettings,
@@ -155,6 +179,12 @@ where
     K: SendSyncRefUnwindSafeKV + 'static,
 {
     let drain = apply_filters_to_drain(drain, settings);
+
+    #[cfg(feature = "tracing")]
+    if settings.trace_emission.enabled {
+        return Logger::root(add_tracing_drain(drain, settings), kv);
+    }
+
     Logger::root(drain, kv)
 }
 

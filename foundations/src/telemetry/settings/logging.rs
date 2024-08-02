@@ -39,6 +39,10 @@ pub struct LoggingSettings {
 
     /// Configure log volume metrics.
     pub log_volume_metrics: LogVolumeMetricSettings,
+
+    /// Settings to allow additionally emitting logs to trace spans
+    #[cfg(feature = "tracing")]
+    pub trace_emission: TraceEmissionSettings,
 }
 
 /// Log output destination.
@@ -93,6 +97,19 @@ impl Deref for LogVerbosity {
 pub struct LogVolumeMetricSettings {
     /// Whether to enable log volume metrics
     pub enabled: bool,
+}
+
+/// Trace logging settings
+///
+/// If enabled, logs can be emitted as span log entries if the current context
+/// is traced. Unlike the main output, these will not be rate limited.
+#[cfg_attr(feature = "settings", settings(crate_path = "crate"))]
+#[cfg_attr(not(feature = "settings"), derive(Clone, Debug, Default))]
+pub struct TraceEmissionSettings {
+    /// Whether to enable logging to trace spans
+    pub enabled: bool,
+    /// The verbosity of logs to emit to trace spans
+    pub verbosity: LogVerbosity,
 }
 
 #[cfg(feature = "settings")]
