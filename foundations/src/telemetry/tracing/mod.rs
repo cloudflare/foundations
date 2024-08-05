@@ -25,7 +25,7 @@ use std::sync::Arc;
 pub use self::testing::{TestSpan, TestTrace, TestTraceIterator, TestTraceOptions};
 
 pub use cf_rustracing::tag::TagValue;
-pub use cf_rustracing_jaeger::span::SpanContextState as SerializableTraceState;
+pub use cf_rustracing_jaeger::span::{SpanContextState as SerializableTraceState, TraceId};
 
 /// A macro that wraps function body with a tracing span that is active as long as the function
 /// call lasts.
