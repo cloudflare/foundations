@@ -31,7 +31,7 @@ bindgen = { version = "0.68.1", default-features = false }
 cc = "1.0"
 clap = "4.4"
 crossbeam-channel = "0.5"
-darling = "0.20"
+darling = "0.20.10"
 erased-serde = "0.3.28"
 futures-util = "0.3.28"
 governor = "0.6"
