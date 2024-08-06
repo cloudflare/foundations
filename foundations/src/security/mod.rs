@@ -47,8 +47,10 @@ mod sys {
     include!(concat!(env!("OUT_DIR"), "/security_sys.rs"));
 }
 
+use std::{fmt::Display, os::unix::raw::mode_t};
+
 use self::internal::RawRule;
-use crate::BootstrapResult;
+use crate::{BootstrapError, BootstrapResult};
 use anyhow::bail;
 use sys::PR_GET_SECCOMP;
 
@@ -98,6 +100,31 @@ impl ArgCmpValue {
 impl<T: Into<u64>> From<T> for ArgCmpValue {
     fn from(val: T) -> Self {
         Self(val.into())
+    }
+}
+
+#[derive(Debug)]
+pub enum SandboxingInitializationError {
+    AlreadyInitialized(SeccompMode),
+    Other(BootstrapError),
+}
+
+impl Display for SandboxingInitializationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SandboxingInitializationError::AlreadyInitialized(mode) => write!(
+                f,
+                "seccomp has already been initialized and is in mode {:?}",
+                mode
+            ),
+            SandboxingInitializationError::Other(e) => e.fmt(f),
+        }
+    }
+}
+
+impl From<BootstrapError> for SandboxingInitializationError {
+    fn from(err: BootstrapError) -> Self {
+        SandboxingInitializationError::Other(err)
     }
 }
 
@@ -370,13 +397,16 @@ pub enum SeccompMode {
 pub fn enable_syscall_sandboxing(
     violation_action: ViolationAction,
     exception_rules: &Vec<Rule>,
-) -> BootstrapResult<()> {
+) -> Result<(), SandboxingInitializationError> {
     let current_mode = get_current_thread_seccomp_mode()?;
     if current_mode != SeccompMode::None {
-        return Ok(());
+        return Err(SandboxingInitializationError::AlreadyInitialized(
+            current_mode,
+        ));
     }
 
     enable_syscall_sandboxing_ignore_existing(violation_action, exception_rules)
+        .map_err(|e| e.into())
 }
 
 /// Attempts to enable [seccomp]-based syscall sandboxing in the current thread and all
