@@ -15,7 +15,7 @@ pub(super) mod tokio_runtime_core {
     pub fn blocking_threads(runtime_name: &Option<Arc<str>>, runtime_id: Option<usize>) -> Gauge;
 
     /// Current number of active tasks on the runtime.
-    pub fn active_tasks(runtime_name: &Option<Arc<str>>, runtime_id: Option<usize>) -> Gauge;
+    pub fn num_alive_tasks(runtime_name: &Option<Arc<str>>, runtime_id: Option<usize>) -> Gauge;
 
     /// Current number of idle blocking threads on the runtime which aren't doing anything.
     ///
