@@ -22,7 +22,7 @@
 //!
 //! - **default**: All features are enabled by default.
 //! - **platform-common-default**: The same as **default**, but excludes platform-specific features,
-//! such as **security**.
+//!   such as **security**.
 //! - **server-client-common-default**: A subset of features that can be used both on server and client sides.
 //!   Useful for libraries that can be used either way.
 //! - **settings**: Enables serializable documented settings functionality.
@@ -35,11 +35,11 @@
 //! - **testing**: Enables testing-related functionality.
 //! - **security**: Enables security features. Available only on Linux (x86_64, aarch64).
 //! - **jemalloc**: Enables [jemalloc] memory allocator which is known to perform much better than
-//! system allocators for long living service.
+//!   system allocators for long living service.
 //! - **memory-profiling**: Enables memory profiling functionality and telemetry. Implicity enables
-//!  **jemalloc** feature.
+//!   **jemalloc** feature.
 //! - **cli**: Enables command line interface (CLI) functionality. Implicitly enabled **settings**
-//! feature.
+//!   feature.
 //!
 //! # Unstable Features
 //! Foundations has unstable features which are gated behind `--cfg foundations_unstable`:

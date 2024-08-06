@@ -328,8 +328,6 @@ pub enum Rule {
 /// use foundations::security::{enable_syscall_sandboxing, ViolationAction, allow_list};
 /// use foundations::security::common_syscall_allow_lists::SERVICE_BASICS;
 /// use std::net::TcpListener;
-/// use std::panic;
-/// use std::thread;
 ///
 /// allow_list! {
 ///    static ALLOW_BIND = [
