@@ -30,7 +30,8 @@ foundations-macros = { version = "3", path = "./foundations-macros" }
 bindgen = { version = "0.68.1", default-features = false }
 cc = "1.0"
 cf-rustracing = "1.0"
-cf-rustracing-jaeger = "1.1"
+cf-rustracing-jaeger = { git = "https://github.com/evanrittenhouse/rustracing_jaeger.git", rev = "1ea92b59907f0dad057555256870a345f20f5fcc"}
+# cf-rustracing-jaeger = "1.1"
 clap = "4.4"
 darling = "0.14.4"
 erased-serde = "0.3.28"
@@ -64,10 +65,10 @@ slog-async = "2.3"
 slog-json = "2.3"
 slog-term = "2.4"
 tempfile = "3.7"
-tokio = "1.37.0"
+tokio = "1.36.0"
 thread_local = "1.1"
-tikv-jemallocator = "0.6.0"
-tikv-jemalloc-ctl = "0.6.0"
+tikv-jemallocator = "0.5.0"
+tikv-jemalloc-ctl = "0.5.0"
 yaml-merge-keys = "0.5"
 
 # needed for minver
