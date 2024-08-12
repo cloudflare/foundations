@@ -17,6 +17,13 @@ allow_list! {
         sched_getaffinity,
         madvise, // memory allocation
         mprotect,
+        // NOTE: rust 1.80.0 std library introduced an assertion that uses `fcntl`:
+        // https://github.com/rust-lang/rust/commit/38ded129236f112a7421f311aeb8ca750b661443
+        // it's later has been changed to debug-only assertion:
+        // https://github.com/rust-lang/rust/commit/1ba00d9cb2fcfef464b6a188fa3a7543c66eecaa,
+        // so we allow this syscall only in debug mode.
+        #[cfg(debug_assertions)]
+        fcntl,
         prctl if [ ArgCmp::Equal { arg_idx: 0, value: PR_SET_NAME.into() } ] // tokio-runtime thread name
     ]
 }
