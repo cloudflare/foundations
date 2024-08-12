@@ -1,6 +1,7 @@
 use super::{ArgAttrs, ArgMode, FnArg, FnAttrs, ItemFn, MacroArgs, Mod};
 use crate::common::{error, parse_attr_value, parse_meta_list, Result};
 use darling::FromMeta;
+use quote::ToTokens as _;
 use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
 use syn::{
@@ -28,6 +29,7 @@ impl Parse for MacroArgs {
         }
 
         let meta_list = parse_meta_list(&input)?;
+
         Ok(Self::from_list(&meta_list)?)
     }
 }
@@ -65,25 +67,31 @@ impl Parse for ItemFn {
             let mut optional = None;
 
             for attr in attrs {
-                if attr.path.is_ident("cfg") {
+                let path = attr.path();
+
+                if path.is_ident("cfg") {
                     cfg.push(attr);
-                } else if attr.path.is_ident("doc") {
+                } else if path.is_ident("doc") {
                     doc.push_str(&parse_attr_value::<LitStr>(attr)?.value());
-                } else if attr.path.is_ident("ctor") {
+                } else if path.is_ident("ctor") {
                     if ctor.is_some() {
                         return error(&attr, DUPLICATE_CTOR_ATTR_ERROR);
                     }
 
                     ctor = Some(parse_attr_value(attr)?);
-                } else if attr.path.is_ident("optional") {
+                } else if path.is_ident("optional") {
                     if optional.is_some() {
                         return error(&attr, DUPLICATE_OPTIONAL_ATTR_ERROR);
                     }
 
-                    if attr.tokens.is_empty() {
+                    if attr.to_token_stream().is_empty() {
                         optional = Some(true);
                     } else {
-                        optional = Some(parse_attr_value::<LitBool>(attr)?.value);
+                        optional = Some(
+                            parse_attr_value::<LitBool>(attr)
+                                .map(|l| l.value)
+                                .unwrap_or(true),
+                        );
                     }
                 } else {
                     return error(&attr, FN_ATTR_ERROR);
@@ -138,13 +146,15 @@ impl Parse for FnArg {
             let mut attrs = ArgAttrs::default();
 
             for attr in raw_attrs {
-                if attr.path.is_ident("serde") {
+                let path = attr.path();
+
+                if path.is_ident("serde") {
                     if attrs.serde.is_some() {
                         return error(&attr, DUPLICATE_SERDE_ATTR_ERROR);
                     }
 
                     attrs.serde = Some(attr);
-                } else if attr.path.is_ident("serde_as") {
+                } else if path.is_ident("serde_as") {
                     if attrs.serde_as.is_some() {
                         return error(&attr, DUPLICATE_SERDE_AS_ATTR_ERROR);
                     }

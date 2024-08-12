@@ -3,7 +3,7 @@
 //! Foundations provides simple and ergonomic interface to [Prometheus] metrics:
 //! - Use [`metrics`] macro to define regular metrics.
 //! - Use [`report_info`] function to register service information metrics (metrics, whose value is
-//! persistent during the service lifetime, e.g. software version).
+//!   persistent during the service lifetime, e.g. software version).
 //! - Use [`collect`] method to obtain metrics report programmatically.
 //! - Use [telemetry server] to expose a metrics endpoint.
 //!

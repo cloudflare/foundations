@@ -19,6 +19,7 @@ impl Parse for MacroArgs {
         }
 
         let meta_list = parse_meta_list(&input)?;
+
         Ok(Self::from_list(&meta_list)?)
     }
 }
@@ -30,9 +31,11 @@ impl Parse for Struct {
             let mut doc = "".to_owned();
 
             for attr in attrs {
-                if attr.path.is_ident("cfg") {
+                let path = attr.path();
+
+                if path.is_ident("cfg") {
                     cfg.push(attr);
-                } else if attr.path.is_ident("doc") {
+                } else if path.is_ident("doc") {
                     doc.push_str(&parse_attr_value::<LitStr>(attr)?.value());
                 } else {
                     return error(&attr, STRUCT_ATTR_ERROR);
@@ -76,13 +79,15 @@ impl Parse for Field {
             let mut attrs = FieldAttrs::default();
 
             for attr in raw_attrs {
-                if attr.path.is_ident("serde") {
+                let path = attr.path();
+
+                if path.is_ident("serde") {
                     if attrs.serde.is_some() {
                         return error(&attr, DUPLICATE_SERDE_ATTR_ERROR);
                     }
 
                     attrs.serde = Some(attr);
-                } else if attr.path.is_ident("serde_as") {
+                } else if path.is_ident("serde_as") {
                     if attrs.serde_as.is_some() {
                         return error(&attr, DUPLICATE_SERDE_AS_ATTR_ERROR);
                     }

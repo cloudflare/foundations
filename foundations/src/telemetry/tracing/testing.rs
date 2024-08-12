@@ -146,15 +146,16 @@ pub struct TestTraceOptions {
 }
 
 #[must_use]
-pub(crate) struct TestTracerScope(#[allow(dead_code)] Scope<Tracer>);
+pub(crate) struct TestTracerScope {
+    _inner: Scope<Tracer>,
+}
 
 impl TestTracerScope {
     #[inline]
     pub(crate) fn new(tracer: Tracer) -> Self {
-        Self(Scope::new(
-            &TracingHarness::get().test_tracer_scope_stack,
-            tracer,
-        ))
+        Self {
+            _inner: Scope::new(&TracingHarness::get().test_tracer_scope_stack, tracer),
+        }
     }
 }
 
