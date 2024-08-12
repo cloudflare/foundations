@@ -20,6 +20,7 @@ use slog_json::{Json as JsonDrain, Json};
 use slog_term::{FullFormat as TextDrain, PlainDecorator, TermDecorator};
 use std::fs::File;
 use std::io;
+use std::io::BufWriter;
 use std::panic::RefUnwindSafe;
 use std::sync::Arc;
 
@@ -70,6 +71,10 @@ pub(crate) fn init(service_info: &ServiceInfo, settings: &LoggingSettings) -> Bo
     // NOTE: OXY-178, default is 128 (https://docs.rs/slog-async/2.7.0/src/slog_async/lib.rs.html#251)
     const CHANNEL_SIZE: usize = 1024;
 
+    // buffer json log lines up to 4kb characters. `set_flush` is enabled on the `JsonDrain` below
+    // so messages less than 4k will still be written even if the buffer isn't full.
+    const BUF_SIZE: usize = 4096;
+
     let base_drain = match (&settings.output, &settings.format) {
         (LogOutput::Terminal, LogFormat::Text) => {
             let drain = TextDrain::new(TermDecorator::new().stdout().build())
@@ -78,7 +83,8 @@ pub(crate) fn init(service_info: &ServiceInfo, settings: &LoggingSettings) -> Bo
             AsyncDrain::new(drain).chan_size(CHANNEL_SIZE).build()
         }
         (LogOutput::Terminal, LogFormat::Json) => {
-            let drain = build_json_log_drain(io::stdout());
+            let buf = BufWriter::with_capacity(BUF_SIZE, io::stdout());
+            let drain = build_json_log_drain(buf);
             AsyncDrain::new(drain).chan_size(CHANNEL_SIZE).build()
         }
         (LogOutput::File(file), LogFormat::Text) => {
@@ -88,7 +94,8 @@ pub(crate) fn init(service_info: &ServiceInfo, settings: &LoggingSettings) -> Bo
             AsyncDrain::new(drain).chan_size(CHANNEL_SIZE).build()
         }
         (LogOutput::File(file), LogFormat::Json) => {
-            let drain = build_json_log_drain(File::create(file)?);
+            let buf = BufWriter::with_capacity(BUF_SIZE, File::create(file)?);
+            let drain = build_json_log_drain(buf);
             AsyncDrain::new(drain).chan_size(CHANNEL_SIZE).build()
         }
     };
@@ -165,6 +172,7 @@ where
     JsonDrain::new(output)
         .add_default_keys()
         .set_pretty(false)
+        .set_flush(true)
         .build()
         .fuse()
 }
