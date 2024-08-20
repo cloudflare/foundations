@@ -2,14 +2,14 @@ use super::init::TracingHarness;
 use super::StartTraceOptions;
 use rand::{self, Rng};
 
-use crate::telemetry::tracing::rate_limit::RateLimitingProbabilisticSampler;
+use cf_rustracing::sampler::BoxSampler;
 use cf_rustracing::tag::Tag;
 use cf_rustracing_jaeger::span::{Span, SpanContext, SpanContextState};
 use std::borrow::Cow;
 use std::error::Error;
 use std::sync::Arc;
 
-pub(crate) type Tracer = cf_rustracing::Tracer<RateLimitingProbabilisticSampler, SpanContextState>;
+pub(crate) type Tracer = cf_rustracing::Tracer<BoxSampler<SpanContextState>, SpanContextState>;
 
 #[derive(Debug, Clone)]
 pub(crate) struct SharedSpan {

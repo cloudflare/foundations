@@ -1,4 +1,4 @@
-use crate::telemetry::settings::TracingSettings;
+use crate::telemetry::settings::ActiveSamplingSettings;
 use cf_rustracing::sampler::Sampler;
 use cf_rustracing::span::CandidateSpan;
 use cf_rustracing::{sampler::ProbabilisticSampler, Result};
@@ -26,7 +26,7 @@ impl Default for RateLimitingProbabilisticSampler {
 impl RateLimitingProbabilisticSampler {
     /// If `sampling_rate` is not in the range `0.0...1.0`,
     /// it will return an error with the kind `ErrorKind::InvalidInput`.
-    pub(crate) fn new(settings: &TracingSettings) -> Result<Self> {
+    pub(crate) fn new(settings: &ActiveSamplingSettings) -> Result<Self> {
         let rate_limiter = if settings.rate_limit.enabled {
             settings
                 .rate_limit

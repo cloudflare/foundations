@@ -24,15 +24,8 @@ pub struct TracingSettings {
     /// The output for the collected traces.
     pub output: TracesOutput,
 
-    /// Sampling ratio.
-    ///
-    /// This can be any fractional value between `0.0` and `1.0`.
-    /// Where `1.0` means "sample everything", and `0.0` means "don't sample anything".
-    #[serde(default = "TracingSettings::default_sampling_ratio")]
-    pub sampling_ratio: f64,
-
-    /// Settings for rate limiting emission of traces
-    pub rate_limit: RateLimitingSettings,
+    /// The strategy used to sample traces.
+    pub sampling_strategy: SamplingStrategy,
 }
 
 #[cfg(not(feature = "settings"))]
@@ -41,8 +34,7 @@ impl Default for TracingSettings {
         Self {
             enabled: TracingSettings::default_enabled(),
             output: Default::default(),
-            sampling_ratio: TracingSettings::default_sampling_ratio(),
-            rate_limit: Default::default(),
+            sampling_strategy: Default::default(),
         }
     }
 }
@@ -50,10 +42,6 @@ impl Default for TracingSettings {
 impl TracingSettings {
     fn default_enabled() -> bool {
         true
-    }
-
-    fn default_sampling_ratio() -> f64 {
-        1.0
     }
 }
 
@@ -123,5 +111,65 @@ impl JaegerThriftUdpOutputSettings {
         let server_addr = server_addr.into();
 
         server_addr
+    }
+}
+
+/// Settings used when active sampling is enabled.
+#[cfg_attr(feature = "settings", settings(crate_path = "crate"))]
+#[cfg_attr(not(feature = "settings"), derive(Clone, Debug, serde::Deserialize))]
+pub struct ActiveSamplingSettings {
+    /// Sampling ratio.
+    ///
+    /// This can be any fractional value between `0.0` and `1.0`.
+    /// Where `1.0` means "sample everything", and `0.0` means "don't sample anything".
+    #[serde(default = "ActiveSamplingSettings::default_sampling_ratio")]
+    pub sampling_ratio: f64,
+
+    /// Settings for rate limiting emission of traces
+    pub rate_limit: RateLimitingSettings,
+}
+
+impl ActiveSamplingSettings {
+    fn default_sampling_ratio() -> f64 {
+        1.0
+    }
+}
+
+#[cfg(not(feature = "settings"))]
+impl Default for ActiveSamplingSettings {
+    fn default() -> Self {
+        Self {
+            sampling_ratio: ActiveSamplingSettings::default_sampling_ratio(),
+            rate_limit: Default::default(),
+        }
+    }
+}
+
+/// The sampling strategy used for tracing purposes.
+#[cfg_attr(
+    feature = "settings",
+    settings(crate_path = "crate", impl_default = false)
+)]
+#[cfg_attr(not(feature = "settings"), derive(Clone, Debug, serde::Deserialize))]
+pub enum SamplingStrategy {
+    /// This only samples traces which have one or more references.
+    ///
+    /// Passive sampling is meant to be used when we want to defer the sampling logic to the parent
+    /// service. The traces will only be sent if the parent service sent trace stitching data.
+    /// Backed by [cf_rustracing::sampler::PassiveSampler]
+    Passive,
+
+    /// Active sampling.
+    ///
+    /// This will sample a percentage of traces, specified in [sampling ratio], and also supports
+    /// rate limiting traces - see [RateLimitingSettings].
+    ///
+    /// [sampling ratio]: crate::telemetry::settings::ActiveSamplingSettings::sampling_ratio
+    Active(ActiveSamplingSettings),
+}
+
+impl Default for SamplingStrategy {
+    fn default() -> Self {
+        Self::Active(Default::default())
     }
 }

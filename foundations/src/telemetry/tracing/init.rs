@@ -1,7 +1,7 @@
 use super::internal::{SharedSpan, Tracer};
 use super::output_jaeger_thrift_udp;
 use crate::telemetry::scope::ScopeStack;
-use crate::telemetry::settings::{TracesOutput, TracingSettings};
+use crate::telemetry::settings::{SamplingStrategy, TracesOutput, TracingSettings};
 use crate::{BootstrapResult, ServiceInfo};
 use cf_rustracing_jaeger::span::SpanReceiver;
 use futures_util::future::BoxFuture;
@@ -10,6 +10,7 @@ use once_cell::sync::{Lazy, OnceCell};
 #[cfg(feature = "telemetry-otlp-grpc")]
 use super::output_otlp_grpc;
 
+use cf_rustracing::sampler::{PassiveSampler, Sampler};
 #[cfg(feature = "testing")]
 use std::borrow::Cow;
 
@@ -18,7 +19,7 @@ use crate::telemetry::tracing::rate_limit::RateLimitingProbabilisticSampler;
 static HARNESS: OnceCell<TracingHarness> = OnceCell::new();
 
 static NOOP_HARNESS: Lazy<TracingHarness> = Lazy::new(|| {
-    let (noop_tracer, _) = Tracer::new(Default::default());
+    let (noop_tracer, _) = Tracer::new(RateLimitingProbabilisticSampler::default().boxed());
 
     TracingHarness {
         tracer: noop_tracer,
@@ -60,9 +61,14 @@ impl TracingHarness {
 pub(crate) fn create_tracer_and_span_rx(
     settings: &TracingSettings,
 ) -> BootstrapResult<(Tracer, SpanReceiver)> {
-    Ok(Tracer::new(RateLimitingProbabilisticSampler::new(
-        settings,
-    )?))
+    let sampler = match &settings.sampling_strategy {
+        SamplingStrategy::Passive => PassiveSampler.boxed(),
+        SamplingStrategy::Active(settings) => {
+            RateLimitingProbabilisticSampler::new(settings)?.boxed()
+        }
+    };
+
+    Ok(Tracer::new(sampler))
 }
 
 // NOTE: does nothing if tracing has already been initialized in this process.
