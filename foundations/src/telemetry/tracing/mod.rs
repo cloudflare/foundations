@@ -216,7 +216,7 @@ pub struct StartTraceOptions {
     ///
     /// Can be used to enforce trace sampling by providing `Some(1.0)` value.
     ///
-    /// [sampling ratio]: crate::telemetry::settings::TracingSettings::sampling_ratio
+    /// [sampling ratio]: crate::telemetry::settings::ActiveSamplingSettings::sampling_ratio
     /// [tracing initializaion]: crate::telemetry::init
     pub override_sampling_ratio: Option<f64>,
 }
