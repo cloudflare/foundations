@@ -1,4 +1,40 @@
-3.3.0
+4.0.0-rc.1
+- 2024-09-12 Update versions for 4.0.0
+- 2024-08-20 chore: add passive sampling option to tracing
+- 2024-07-18 Remove old deserialize
+- 2024-02-03 telemetry: change LogVerbosity to an enum, use it throughout public API
+- 2024-08-12 Buffer JSON slog messages
+- 2024-07-24 Lock around the sender
+- 2024-07-22 Add blank line
+- 2024-07-22 Clippy
+- 2024-07-22 More code review improvements
+- 2024-07-22 Remove profiler sandboxing functionality
+- 2024-07-19 Code review improvements, fix builds
+- 2024-07-18 Remove now-unnecessary profiling lock
+- 2024-07-18 Cleanup and add docs about initialization order
+- 2024-07-17 Remove recv timeout
+- 2024-07-17 ZTC-1648: Avoid heap profiling crash by starting profiling thread before seccomp is configured
+- 2024-08-12 Fix seccomp violation in MemoryProfiler introduce by Rust 1.80.0 std
+- 2024-08-06 Make clippy happy
+- 2024-08-05 Expose TraceId, as it now can be used in serializable state ctor
+- 2024-07-24 Rename depricated tokio metric
+- 2024-07-22 Bump syn and darling (closes #50)
+- 2024-07-19 Telemetry API improvements
+- 2024-07-17 ZTC-1545: Error during settings deserialization if YAML contains unused keys (#49)
+- 2024-07-17 Don't halt gRPC reporting on errors (closes #44)
+- 2024-07-09 ZTC-1478: Rework logger nesting tracking
+- 2024-06-25 Fix CI by temporarily allowing lint violated by darling crate (#51)
+- 2024-06-13 ZTC-1478: track the number of times a logger has been replaced with a child logger (#47)
+- 2024-05-12 Implement gRPC export for traces
+- 2024-05-06 Re-introduce interior mutability for TestTelemetryContext::traces()
+- 2024-05-06 Shape new tracing output API.
+- 2024-03-29 Implement OTLP output settings. Make serde aware of defaults for settings
+- 2024-03-16 Implement conversion of span data to OTLP format
+- 2024-03-14 Use term "output" instead of "exporter" for tracing to be consistent with logging settings
+- 2024-03-11 Introduce TelemetryDriver
+- 2024-03-11 Make tracer exporters configurable
+- 2024-03-26 Improve metrics bind error message
+- 2024-03-21 Release 3.3.0
 - 2024-03-21 Fix new lints
 - 2024-03-19 Construct metrics registry with default() when name_in_metrics is empty
 - 2024-03-10 Fix paths in gen-syscall-enum tool
@@ -11,11 +47,7 @@
 - 2024-02-15 Fix potential deadlock in `link_new_trace_with_current`
 - 2024-02-12 ci: add docsrs and minver checks (#20)
 - 2024-02-09 docs: fix typo in service_info macro doc comments (#19)
-
-3.2.1
 - 2024-02-05 Release 3.2.1
-
-3.2.0
 - 2024-02-05 Release 3.2.0
 - 2024-02-05 telemetry: add tokio runtime metrics (#12)
 - 2024-02-02 telemetry: make logger verbosity public
@@ -23,12 +55,8 @@
 - 2024-01-31 Enable feature `all` on socket2, should address #5
 - 2024-02-01 Disable `default-features` for dependency `prometheus`
 - 2024-01-31 ci: add macos to features check ci
-
-3.1.1
 - 2024-01-26 Release 3.1.1
 - 2024-01-26 Add check for missing seccomp sources to ensure that they are always published
-
-3.1.0
 - 2024-01-26 Release 3.1.0
 - 2024-01-26 Merge pull request #2 from cloudflare/android-ci
 - 2024-01-26 Introduce feature sets for clients
