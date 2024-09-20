@@ -15,7 +15,7 @@ static REGISTRIES: OnceCell<Registries> = OnceCell::new();
 pub struct Registries {
     // NOTE: we intentionally use a lock without poisoning here to not
     // panic the threads if they just share telemetry with failed thread.
-    main: parking_lot::RwLock<Registry>,
+    pub(super) main: parking_lot::RwLock<Registry>,
     opt: parking_lot::RwLock<Registry>,
     pub(super) info: parking_lot::RwLock<HashMap<TypeId, Box<dyn ErasedInfoMetric>>>,
     extra_label: Option<(String, String)>,

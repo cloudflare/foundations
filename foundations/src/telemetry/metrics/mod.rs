@@ -12,6 +12,7 @@
 use super::settings::MetricsSettings;
 use crate::Result;
 use prometheus::{Encoder, TextEncoder};
+use prometheus_client::registry::Registry;
 use serde::Serialize;
 use std::any::TypeId;
 
@@ -195,22 +196,22 @@ pub fn collect(settings: &MetricsSettings) -> Result<String> {
 ///     let endpoint = Arc::new("http-over-tcp".to_owned());
 ///     let l4_protocol = labels::L4Protocol::Tcp;
 ///     let ingress_ip = "127.0.0.1".parse::<IpAddr>().unwrap();
-///     
+///
 ///     my_app_metrics::client_connections_total(
 ///         &endpoint,
 ///         l4_protocol,
 ///         ingress_ip,
 ///     ).inc();
-///     
+///
 ///     let client_connections_active = my_app_metrics::client_connections_active(
 ///         &endpoint,
 ///         l4_protocol,
 ///         labels::IpVersion::V4,
 ///         ingress_ip,
 ///     );
-///     
+///
 ///     client_connections_active.inc();
-///     
+///
 ///     my_app_metrics::proxy_status_serialization_error_count().inc();
 ///
 ///     client_connections_active.dec();
@@ -368,4 +369,47 @@ impl MetricConstructor<TimeHistogram> for HistogramBuilder {
     fn new_metric(&self) -> TimeHistogram {
         TimeHistogram::new(self.buckets.iter().cloned())
     }
+}
+
+/// Runs a closure with a prometheus [Registry] to enable registration of external metrics.
+/// This is useful to register [prometheus_client] metrics that are not created with
+/// `foundations` itself, such as metrics from third party libraries.
+///
+/// # Example
+///
+/// In this example we have a `Cache` that would be provided from an external crate, which
+/// does not expose metrics directly, but allows registering them in a provided `Registry`.
+///
+/// ```
+/// #[derive(Default)]
+/// struct Cache {
+///   calls: prometheus_client::metrics::counter::Counter,
+/// }
+///
+/// impl Cache {
+///   fn register_metrics(&self, registry: &mut prometheus_client::registry::Registry) {
+///     registry.register(
+///       "calls",
+///       "The number of calls into cache",
+///       Box::new(self.calls.clone()),
+///     )
+///   }
+/// }
+///
+/// let cache = Cache::default();
+///
+/// foundations::telemetry::metrics::with_registry(|registry| {
+///    let registry = registry.sub_registry_with_prefix("cache");
+///
+///    cache.register_metrics(registry.sub_registry_with_label((
+///      std::borrow::Cow::Borrowed("name"),
+///      std::borrow::Cow::Borrowed("things"),
+///   )));
+/// });
+/// ```
+pub fn with_registry<F>(f: F)
+where
+    F: FnOnce(&mut Registry),
+{
+    f(&mut Registries::get().main.write())
 }
