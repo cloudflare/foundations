@@ -196,22 +196,22 @@ pub fn collect(settings: &MetricsSettings) -> Result<String> {
 ///     let endpoint = Arc::new("http-over-tcp".to_owned());
 ///     let l4_protocol = labels::L4Protocol::Tcp;
 ///     let ingress_ip = "127.0.0.1".parse::<IpAddr>().unwrap();
-///     
+///
 ///     my_app_metrics::client_connections_total(
 ///         &endpoint,
 ///         l4_protocol,
 ///         ingress_ip,
 ///     ).inc();
-///     
+///
 ///     let client_connections_active = my_app_metrics::client_connections_active(
 ///         &endpoint,
 ///         l4_protocol,
 ///         labels::IpVersion::V4,
 ///         ingress_ip,
 ///     );
-///     
+///
 ///     client_connections_active.inc();
-///     
+///
 ///     my_app_metrics::proxy_status_serialization_error_count().inc();
 ///
 ///     client_connections_active.dec();
@@ -374,5 +374,78 @@ impl MetricConstructor<Histogram> for HistogramBuilder {
 impl MetricConstructor<TimeHistogram> for HistogramBuilder {
     fn new_metric(&self) -> TimeHistogram {
         TimeHistogram::new(self.buckets.iter().cloned())
+    }
+}
+
+/// Adds an [ExtraProducer] that runs whenever Prometheus metrics are scraped.
+/// The producer appends metrics into a provided buffer to make them available.
+///
+/// The motivation for this is enabling metrics export from third party libraries that
+/// do not integrate with `foundations`` directly in a forward and backward compatible way.
+///
+/// One can ask "why not expose a `Registry` from `prometheus_client`?" The reason is that
+/// it would require compatibility between `prometheus_client` version that `foundations`
+/// depend on and the version that the third party crates depend on. With a producer
+/// that simply appends bytes into a buffer we avoid the need to have this match,
+/// at the cost of requiring the consumers to do the encoding themselves.
+///
+/// # Example
+///
+/// In this example we have a `Cache` that would be provided from an external crate, which
+/// does not expose metrics directly, but allows registering them in a provided `Registry`.
+///
+/// The consumer code would make a `Registry` with whatever version they want and do
+/// the encoding in a text format to make a suitable [ExtraProducer].
+///
+/// ```
+/// #[derive(Default)]
+/// struct Cache {
+///   calls: prometheus_client::metrics::counter::Counter,
+/// }
+///
+/// impl Cache {
+///   fn register_metrics(&self, registry: &mut prometheus_client::registry::Registry) {
+///     registry.register(
+///       "calls",
+///       "The number of calls into cache",
+///       Box::new(self.calls.clone()),
+///     )
+///   }
+/// }
+///
+/// let cache = Cache::default();
+///
+/// let mut registry = prometheus_client::registry::Registry::default();
+/// let mut sub_registry = registry.sub_registry_with_prefix("cache").sub_registry_with_label((
+///     std::borrow::Cow::Borrowed("cache"),
+///     std::borrow::Cow::Borrowed("things"),
+/// ));
+///
+/// cache.register_metrics(&mut sub_registry);
+///
+/// foundations::telemetry::metrics::add_extra_producer(move |buffer: &mut Vec<u8>| {
+///     prometheus_client::encoding::text::encode(buffer, &registry).unwrap();
+/// });
+/// ```
+pub fn add_extra_producer<P>(p: P)
+where
+    P: ExtraProducer + 'static,
+{
+    Registries::get().add_extra_producer(Box::new(p));
+}
+
+/// Describes something that can expand prometheus metrics but appending
+/// them in a text format to a provided buffer.
+pub trait ExtraProducer: Send + Sync {
+    /// Takes a buffer and appends prometheus metrics in text format into it.
+    fn produce(&self, buffer: &mut Vec<u8>);
+}
+
+impl<F> ExtraProducer for F
+where
+    F: Fn(&mut Vec<u8>) + Send + Sync,
+{
+    fn produce(&self, buffer: &mut Vec<u8>) {
+        self(buffer)
     }
 }
