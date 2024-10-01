@@ -50,7 +50,9 @@ pub(super) fn init(
 
     // Eagerly init the memory profiler so it gets set up before syscalls are sandboxed with seccomp.
     #[cfg(all(target_os = "linux", feature = "memory-profiling"))]
-    memory_profiling::profiler(Arc::clone(&settings)).map_err(|err| anyhow!(err))?;
+    if settings.memory_profiler.enabled {
+        memory_profiling::profiler(Arc::clone(&settings)).map_err(|err| anyhow!(err))?;
+    }
 
     let router = create_router(&settings, custom_routes)?;
     let addr = settings.server.addr;

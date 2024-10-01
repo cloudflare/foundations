@@ -194,6 +194,19 @@ jobs:
           RUSTFLAGS: -Dwarnings --cfg tokio_unstable --cfg foundations_unstable
           _RJEM_MALLOC_CONF: prof:true
 
+  run-example-dry-run:
+    name: Run example (dry run)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: "recursive"
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Run example (dry run)
+        run: cargo run --example http_server -- --dry-run --config examples/http_server/example_conf.yaml
+
   test:
     name: Test
     runs-on: ${{ matrix.os }}
