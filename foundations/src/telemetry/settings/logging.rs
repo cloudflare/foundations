@@ -72,17 +72,23 @@ pub enum LogFormat {
 #[derive(Copy, Default)]
 pub enum LogVerbosity {
     /// See [`slog::Level::Critical`].
+    #[cfg_attr(feature = "settings", serde(rename = "CRITICAL"))]
     Critical,
     /// See [`slog::Level::Error`].
+    #[cfg_attr(feature = "settings", serde(rename = "ERROR"))]
     Error,
     /// See [`slog::Level::Warning`].
+    #[cfg_attr(feature = "settings", serde(rename = "WARN"))]
     Warning,
     /// See [`slog::Level::Info`].
     #[default]
+    #[cfg_attr(feature = "settings", serde(rename = "INFO"))]
     Info,
     /// See [`slog::Level::Debug`].
+    #[cfg_attr(feature = "settings", serde(rename = "DEBUG"))]
     Debug,
     /// See [`slog::Level::Trace`].
+    #[cfg_attr(feature = "settings", serde(rename = "TRACE"))]
     Trace,
 }
 
