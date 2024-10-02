@@ -26,9 +26,6 @@ use std::net::{SocketAddr, TcpListener as StdTcpListener};
 use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
 
-#[cfg(target_os = "linux")]
-use foundations::security::SandboxingInitializationError;
-
 #[tokio::main]
 async fn main() -> BootstrapResult<()> {
     // Obtain service information from Cargo.toml
@@ -72,7 +69,7 @@ async fn main() -> BootstrapResult<()> {
     // doesn't include `listen` syscall that we used before to spawn `TcpListener`'s, so if malicious
     // actor attempt to create a new server endpoint the process will terminate.
     #[cfg(target_os = "linux")]
-    sandbox_syscalls().map_err(foundations::BootstrapError::from)?;
+    sandbox_syscalls()?;
 
     // Start serving endpoints.
     let mut endpoint_futures = FuturesUnordered::new();
@@ -243,7 +240,7 @@ async fn respond(
 }
 
 #[cfg(target_os = "linux")]
-fn sandbox_syscalls() -> Result<(), SandboxingInitializationError> {
+fn sandbox_syscalls() -> BootstrapResult<()> {
     use foundations::security::common_syscall_allow_lists::{
         ASYNC, NET_SOCKET_API, SERVICE_BASICS,
     };
