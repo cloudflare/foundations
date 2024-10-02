@@ -1,8 +1,7 @@
 //! Predefined allow lists of syscalls for commonly used operations.
 
+use super::sys;
 use super::{allow_list, ArgCmp};
-
-const PR_SET_NAME: u64 = 15;
 
 allow_list! {
     /// An allow list for basic tokio and Rust std library operations.
@@ -24,7 +23,7 @@ allow_list! {
         // so we allow this syscall only in debug mode.
         #[cfg(debug_assertions)]
         fcntl,
-        prctl if [ ArgCmp::Equal { arg_idx: 0, value: PR_SET_NAME.into() } ] // tokio-runtime thread name
+        prctl if [ ArgCmp::Equal { arg_idx: 0, value: sys::PR_SET_NAME.into() } ] // tokio-runtime thread name
     ]
 }
 

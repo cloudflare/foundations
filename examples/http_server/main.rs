@@ -244,7 +244,9 @@ fn sandbox_syscalls() -> BootstrapResult<()> {
     use foundations::security::common_syscall_allow_lists::{
         ASYNC, NET_SOCKET_API, SERVICE_BASICS,
     };
-    use foundations::security::{allow_list, enable_syscall_sandboxing, ViolationAction};
+    use foundations::security::{
+        allow_list, enable_syscall_sandboxing, FilterAttribute, ViolationAction,
+    };
 
     allow_list! {
         static ALLOWED = [
@@ -254,5 +256,9 @@ fn sandbox_syscalls() -> BootstrapResult<()> {
         ]
     }
 
-    enable_syscall_sandboxing(ViolationAction::KillProcess, &ALLOWED)
+    enable_syscall_sandboxing(
+        ViolationAction::KillProcess,
+        &ALLOWED,
+        Some(&[FilterAttribute::SyncThreads(true)]),
+    )
 }

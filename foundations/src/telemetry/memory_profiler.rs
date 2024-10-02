@@ -242,7 +242,7 @@ mod tests {
                 ..ASYNC
            ]
         }
-        enable_syscall_sandboxing(ViolationAction::KillProcess, &ALLOW_PROFILING).unwrap();
+        enable_syscall_sandboxing(ViolationAction::KillProcess, &ALLOW_PROFILING, None).unwrap();
 
         let profile = profiler.heap_profile().await.unwrap();
         assert!(!profile.is_empty());

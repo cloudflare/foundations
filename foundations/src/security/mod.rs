@@ -215,7 +215,7 @@ pub enum Rule {
     ///
     /// rules.extend_from_slice(&PROCESS_EXIT_ALLOWED);
     ///
-    /// enable_syscall_sandboxing(ViolationAction::KillProcess, &rules).unwrap();
+    /// enable_syscall_sandboxing(ViolationAction::KillProcess, &rules, None).unwrap();
     ///
     /// process::exit(1);
     /// ```
@@ -250,7 +250,7 @@ pub enum Rule {
     ///
     /// rules.extend_from_slice(&PROCESS_EXIT_ALLOWED);
     ///
-    /// enable_syscall_sandboxing(ViolationAction::KillProcess, &PROCESS_EXIT_ALLOWED).unwrap();
+    /// enable_syscall_sandboxing(ViolationAction::KillProcess, &PROCESS_EXIT_ALLOWED, None).unwrap();
     ///
     /// process::exit(0);
     /// ```
@@ -287,7 +287,7 @@ pub enum Rule {
     /// rules.extend_from_slice(&SERVICE_BASICS);
     /// rules.extend_from_slice(&NET_SOCKET_API);
     ///
-    /// enable_syscall_sandboxing(ViolationAction::KillProcess, &rules).unwrap();
+    /// enable_syscall_sandboxing(ViolationAction::KillProcess, &rules, None).unwrap();
     ///
     /// let err = TcpListener::bind("127.0.0.1:0").unwrap_err();
     ///
@@ -296,11 +296,59 @@ pub enum Rule {
     ReturnError(Syscall, RawOsErrorNum, Vec<ArgCmp>),
 }
 
+/// A seccomp filter attribute to be passed to [`enable_syscall_sandboxing`]
+///
+/// See [libseccomp] for more details about their behaviors.
+///
+/// [libseccomp]: https://www.man7.org/linux/man-pages/man3/seccomp_attr_set.3.html
+pub enum FilterAttribute {
+    /// Whether to apply the current thread's syscall sandboxing [`Rule`]s to all threads in the
+    /// current process when calling [`enable_syscall_sandboxing`].
+    ///
+    /// This will not succeed if some thread(s) has diverged and contains [`Rule`]s not present
+    /// in the current thread.
+    ///
+    /// Corresponds to the [seccomp] syscall flag `SECCOMP_FILTER_FLAG_TSYNC`,
+    /// and the [libseccomp] syscall flag `SCMP_FLTATR_CTL_TSYNC`. See their man pages
+    /// for further details.
+    ///
+    /// # Examples
+    /// ```should_panic
+    /// use foundations::security::{enable_syscall_sandboxing, FilterAttribute, ViolationAction, allow_list};
+    /// use foundations::security::common_syscall_allow_lists::SERVICE_BASICS;
+    /// use std::net::TcpListener;
+    ///
+    /// let (tx, rx) = std::sync::mpsc::channel();
+    /// let _ = std::thread::spawn(move || {
+    ///     // This will succeed, as we are not yet sandboxed
+    ///     let _ = TcpListener::bind("127.0.0.1:0");
+    ///
+    ///     // Wait for the main thread to enable sandboxing with `SyncThreads(true)`
+    ///     rx.recv().unwrap();
+    ///
+    ///     // This time seccomp will kill us because the syscall is not allowed
+    ///     let _ = TcpListener::bind("127.0.0.1:0");
+    /// });
+    ///
+    /// enable_syscall_sandboxing(
+    ///     ViolationAction::KillProcess,
+    ///     &vec![],
+    ///     Some(&[FilterAttribute::SyncThreads(true)]),
+    /// ).unwrap();
+    /// tx.send(()).unwrap();
+    /// ```
+    ///
+    /// [seccomp]: https://man7.org/linux/man-pages/man2/seccomp.2.html
+    /// [libseccomp]: https://www.man7.org/linux/man-pages/man3/seccomp_attr_set.3.html
+    SyncThreads(bool),
+}
+
 /// Enables [seccomp]-based syscall sandboxing in the current thread and all the threads spawned
 /// by it.
 ///
 /// Calling the function early in the `main` function effectively enables seccomp for the whole
-/// process.
+/// process. Using [`FilterAttribute::SyncThreads`] ensures any threads started before this function
+/// is called will also have seccomp enabled.
 ///
 /// If seccomp encounters a syscall that is not in the `exception_rules` list it performs the
 /// provided [`ViolationAction`]. [`allow_list`] macro can be used to conveniently construct lists
@@ -315,10 +363,8 @@ pub enum Rule {
 /// use foundations::security::{enable_syscall_sandboxing, ViolationAction, allow_list};
 /// use foundations::security::common_syscall_allow_lists::SERVICE_BASICS;
 /// use std::net::TcpListener;
-/// use std::panic;
-/// use std::thread;
 ///
-/// enable_syscall_sandboxing(ViolationAction::KillProcess, &vec![]).unwrap();
+/// enable_syscall_sandboxing(ViolationAction::KillProcess, &vec![], None).unwrap();
 ///
 /// let _ = TcpListener::bind("127.0.0.1:0");
 /// ```
@@ -339,19 +385,22 @@ pub enum Rule {
 ///    ]
 /// }
 ///
-/// enable_syscall_sandboxing(ViolationAction::KillProcess, &ALLOW_BIND).unwrap();
+/// enable_syscall_sandboxing(ViolationAction::KillProcess, &ALLOW_BIND, None).unwrap();
 ///
 /// let _ = TcpListener::bind("127.0.0.1:0");
 /// ```
 pub fn enable_syscall_sandboxing(
     violation_action: ViolationAction,
-    exception_rules: &Vec<Rule>,
+    exception_rules: &[Rule],
+    filter_attributes: Option<&[FilterAttribute]>,
 ) -> BootstrapResult<()> {
     let ctx = unsafe { sys::seccomp_init(violation_action as u32) };
 
     if ctx.is_null() {
         bail!("failed to initialize seccomp context");
     }
+
+    set_seccomp_attributes(filter_attributes, ctx)?;
 
     for rule in exception_rules {
         let RawRule {
@@ -383,6 +432,32 @@ pub fn enable_syscall_sandboxing(
 
     if load_res != 0 {
         bail!("failed to load seccomp rules with error code {}", load_res);
+    }
+
+    Ok(())
+}
+
+fn set_seccomp_attributes(
+    filter_attributes: Option<&[FilterAttribute]>,
+    ctx: *mut std::ffi::c_void,
+) -> BootstrapResult<()> {
+    let Some(filter_attributes) = filter_attributes else {
+        return Ok(());
+    };
+
+    for attribute in filter_attributes {
+        match attribute {
+            FilterAttribute::SyncThreads(enabled) => {
+                let value = *enabled as u32;
+                let retcode = unsafe {
+                    sys::seccomp_attr_set(ctx, sys::scmp_filter_attr_SCMP_FLTATR_CTL_TSYNC, value)
+                };
+
+                if retcode != 0 {
+                    bail!("failed to set seccomp TSYNC attribute");
+                }
+            }
+        }
     }
 
     Ok(())
