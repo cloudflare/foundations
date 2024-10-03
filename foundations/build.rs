@@ -14,7 +14,7 @@ fn ensure_seccomp_sources_fetched() {
 
     if !src_dir.exists() {
         panic!(
-            "Can't find libssecomp sources. Run `git submodule update --init --recursive`. \
+            "Can't find libseccomp sources. Run `git submodule update --init --recursive`. \
             This is required even if `security` feature is disabled or the OS is not Linux, \
             to ensure that sources are always included on publishing."
         );
