@@ -297,23 +297,6 @@ pub enum Rule {
     ReturnError(Syscall, RawOsErrorNum, Vec<ArgCmp>),
 }
 
-/// See [PR_GET_SECCOMP]
-///
-/// [PR_GET_SECCOMP]: https://linuxman7.org/linux/man-pages/man2/PR_GET_SECCOMP.2const.html
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub enum SeccompMode {
-    /// The current thread is not in secure computing mode
-    None = 0,
-
-    /// The current thread is in strict secure computing mode.
-    /// Unused in practice since the syscall to get the value
-    /// would kill your process in strict computing mode.
-    _Strict = 1,
-
-    /// The current thread is in filter mode
-    Filter = 2,
-}
-
 /// Enables [seccomp]-based syscall sandboxing in the current thread and all the threads spawned
 /// by it.
 ///
@@ -444,27 +427,39 @@ pub fn forbid_x86_64_cpu_cycle_counter() {
     };
 }
 
-/// Gets the secure computing mode of the current thread.
+/// Returns whether the current thread has syscall sandboxing (seccomp) enabled.
 ///
 /// Uses the [prctl(PR_GET_SECCOMP)] syscall, so calling this without an allow_list such as
 /// the following may violate sandboxing rules if called after [`enable_syscall_sandboxing`].
 ///
 /// ```
-/// use foundations::security::{ArgCmp, allow_list, common_syscall_allow_lists::RUST_BASICS};
+/// use foundations::security::{allow_list, enable_syscall_sandboxing};
+/// use foundations::security::{is_syscall_sandboxing_enabled_for_current_thread, ViolationAction};
+/// use foundations::security::common_syscall_allow_lists::SERVICE_BASICS;
 ///
 /// allow_list! {
-///    pub static MY_ALLOW_LIST = [
-///        ..RUST_BASICS
+///    static MY_ALLOW_LIST = [
+///        ..SERVICE_BASICS
 ///    ]
 /// }
+///
+/// assert!(!is_syscall_sandboxing_enabled_for_current_thread().unwrap());
+/// enable_syscall_sandboxing(ViolationAction::KillProcess, &MY_ALLOW_LIST).unwrap();
+/// assert!(is_syscall_sandboxing_enabled_for_current_thread().unwrap());
 /// ```
 ///
 /// [prctl(PR_GET_SECCOMP)]: https://linuxman7.org/linux/man-pages/man2/PR_GET_SECCOMP.2const.html
-pub fn get_current_thread_seccomp_mode() -> BootstrapResult<SeccompMode> {
+pub fn is_syscall_sandboxing_enabled_for_current_thread() -> BootstrapResult<bool> {
+    // Note that although there is another mode not captured here - Strict,
+    // it is impossible for that to be the return value, as a process that calls prctl
+    // in Strict mode will be killed.
+    const SECCOMP_MODE_NONE: i32 = 0;
+    const SECCOMP_MODE_FILTER: i32 = 2;
+
     let current_seccomp_mode = unsafe { sys::prctl(PR_GET_SECCOMP as i32) };
     match current_seccomp_mode {
-        0 => Ok(SeccompMode::None),
-        2 => Ok(SeccompMode::Filter),
+        SECCOMP_MODE_NONE => Ok(false),
+        SECCOMP_MODE_FILTER => Ok(true),
         _ => bail!("Unable to determine the current seccomp mode. Perhaps the kernel was not configured with CONFIG_SECCOMP?")
     }
 }
