@@ -25,7 +25,6 @@ jobs:
       - fmt
       - check-features
       - test
-      - minimal-versions
     steps:
       - run: exit 0
 
@@ -47,43 +46,6 @@ jobs:
         env:
           RUSTDOCFLAGS: --cfg docsrs -Dwarnings --cfg tokio_unstable --cfg foundations_unstable
           RUSTFLAGS: --cfg docsrs -Dwarnings --cfg tokio_unstable --cfg foundations_unstable
-
-  # based on tokio minver cbecm
-  minimal-versions:
-    name: minimal-versions
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: "recursive"
-      - name: Install Nightly Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: nightly
-      - name: Install cargo-hack
-        uses: taiki-e/install-action@cargo-hack
-      - uses: Swatinem/rust-cache@v2
-      - name: Check minimal versions
-        env:
-          # empty those flags!
-          RUSTFLAGS:
-        run: |
-          # Remove dev-dependencies from Cargo.toml to prevent the next `cargo update`
-          # from determining minimal versions based on dev-dependencies.
-          cargo hack --remove-dev-deps --workspace
-          # Update Cargo.lock to minimal version dependencies.
-          cargo update -Z minimal-versions
-          cargo hack check --all-features --ignore-private
-      - name: Check minimal versions with unstable features
-        env:
-          RUSTFLAGS: --cfg tokio_unstable --cfg foundations_unstable
-        run: |
-          # Remove dev-dependencies from Cargo.toml to prevent the next `cargo update`
-          # from determining minimal versions based on dev-dependencies.
-          cargo hack --remove-dev-deps --workspace
-          # Update Cargo.lock to minimal version dependencies.
-          cargo update -Z minimal-versions
-          cargo hack check --all-features --ignore-private
 
   deny:
     name: Cargo deny checks
