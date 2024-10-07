@@ -53,6 +53,8 @@
 //! [jemalloc]: https://github.com/jemalloc/jemalloc
 //! [examples]: https://github.com/cloudflare/foundations/tree/main/examples
 
+// NOTE: required to allow cfgs like `tokio_unstable` on nightly which is used in tests.
+#![allow(unexpected_cfgs)]
 #![warn(missing_docs)]
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 #![cfg_attr(docsrs, feature(doc_cfg))]
