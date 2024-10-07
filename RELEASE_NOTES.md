@@ -1,4 +1,17 @@
+
+3.4.0
+- 2024-10-07 Disable minimal-versions check until it can be fixed
+- 2024-08-12 Fix seccomp violation in MemoryProfiler introduce by Rust 1.80.0 std
+- 2024-07-24 Rename depricated tokio metric
+- 2024-08-06 Make clippy happy
+- 2024-10-07 Backport allow of unexpected cfgs
+- 2024-07-22 Bump syn and darling (closes #50)
+- 2024-10-03 Let GitHub run CI actions for version branches (#73)
+- 2024-09-21 Provide metrics::add_extra_producer() to enable external metrics
+- 2024-03-26 Improve metrics bind error message
+
 3.3.0
+- 2024-03-21 Release 3.3.0
 - 2024-03-21 Fix new lints
 - 2024-03-19 Construct metrics registry with default() when name_in_metrics is empty
 - 2024-03-10 Fix paths in gen-syscall-enum tool
