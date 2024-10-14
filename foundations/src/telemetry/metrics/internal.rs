@@ -1,4 +1,4 @@
-use super::{info_metric, InfoMetric};
+use super::{info_metric, ExtraProducer, InfoMetric};
 use crate::telemetry::settings::{MetricsSettings, ServiceNameFormat};
 use crate::{Result, ServiceInfo};
 use once_cell::sync::OnceCell;
@@ -19,6 +19,7 @@ pub struct Registries {
     opt: parking_lot::RwLock<Registry>,
     pub(super) info: parking_lot::RwLock<HashMap<TypeId, Box<dyn ErasedInfoMetric>>>,
     extra_label: Option<(String, String)>,
+    extra_producers: parking_lot::RwLock<Vec<Box<dyn ExtraProducer>>>,
 }
 
 impl Registries {
@@ -35,6 +36,7 @@ impl Registries {
             opt: new_registry(&service_info.name_in_metrics, &settings.service_name_format),
             info: Default::default(),
             extra_label,
+            extra_producers: Default::default(),
         });
     }
 
@@ -47,6 +49,11 @@ impl Registries {
 
         if collect_optional {
             encode_registry(buffer, &registries.opt.read())?;
+        }
+
+        for producer in registries.extra_producers.read().iter() {
+            producer.produce(buffer);
+            truncate_eof(buffer);
         }
 
         Ok(())
@@ -85,12 +92,17 @@ impl Registries {
         )
     }
 
+    pub fn add_extra_producer(&self, producer: Box<dyn ExtraProducer>) {
+        self.extra_producers.write().push(producer);
+    }
+
     pub(super) fn get() -> &'static Registries {
         REGISTRIES.get_or_init(|| Registries {
             main: new_registry("undefined", &ServiceNameFormat::MetricPrefix),
             opt: new_registry("undefined", &ServiceNameFormat::MetricPrefix),
             info: Default::default(),
             extra_label: None,
+            extra_producers: Default::default(),
         })
     }
 }
@@ -164,9 +176,13 @@ pub(super) fn encode_registry(
 ) -> Result<()> {
     encode(buffer, registry)?;
 
+    truncate_eof(buffer);
+
+    Ok(())
+}
+
+fn truncate_eof(buffer: &mut Vec<u8>) {
     if buffer.ends_with(b"# EOF\n") {
         buffer.truncate(buffer.len() - b"# EOF\n".len());
     }
-
-    Ok(())
 }
