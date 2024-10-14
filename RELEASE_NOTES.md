@@ -1,5 +1,15 @@
-4.0.0-rc.1
+
+4.0.0
+- 2024-10-12 Adds guide for migrating to 4.0.0
+- 2024-10-04 Improve seccomp API by removing SeccompMode enum
+- 2024-10-03 OXY-1404: Revert most of #60 and expose get_current_thread_seccomp_mode (#74)
+- 2024-10-03 Let GitHub run CI actions for version branches (#73)
+- 2024-10-03 Fix libssecomp typo (#70)
+- 2024-10-03 Add readme for examples (#69)
+- 2024-10-01 Fix accidental 4.0 breaking changes and run example in CI (#68)
+- 2024-09-12 Release 4.0.0-rc.1
 - 2024-09-12 Update versions for 4.0.0
+- 2024-09-13 OXY-1404: Avoid crashes resulting from double seccomp initialization (#60)
 - 2024-08-20 chore: add passive sampling option to tracing
 - 2024-07-18 Remove old deserialize
 - 2024-02-03 telemetry: change LogVerbosity to an enum, use it throughout public API
@@ -40,8 +50,6 @@
 - 2024-03-10 Fix paths in gen-syscall-enum tool
 - 2024-01-17 OXY-1299: implement GaugeGuard
 - 2024-01-17 OXY-1299: Implement RangeGauge metric type
-
-3.2.2
 - 2024-02-15 Release 3.2.2
 - 2024-02-14 Fix dependencies issue then example is started from the /example dir (closes #23)
 - 2024-02-15 Fix potential deadlock in `link_new_trace_with_current`
@@ -63,15 +71,11 @@
 - 2024-01-25 Merge pull request #1 from zegevlier/fix-windows
 - 2024-01-25 Only use `socket.set_reuse_port` on supported operating systems
 - 2024-01-23 Make crates.io happy about keywords
-
-3.0.1
 - 2024-01-23 Release 3.0.1
 - 2024-01-23 Add more metadata to Cargo.toml
 - 2024-01-23 Add readme to Cargo.toml
 - 2024-01-23 Fix license type in Cargo.toml
 - 2024-01-23 Add license field to Cargo.toml metadata
-
-3.0.0
 - 2024-01-23 Release 3.0.0
 - 2024-01-23 Fix macos target in CI
 - 2024-01-23 Add jemalloc flag to CI
