@@ -73,8 +73,8 @@ client-telemetry = ["logging", "metrics", "tracing", "dep:futures-util"]
 # Enables the telemetry server.
 telemetry-server = [
     "dep:hyper",
-    "dep:routerify",
     "dep:socket2",
+    "dep:percent-encoding"
 ]
 
 # Enables telemetry reporting over gRPC
@@ -178,10 +178,10 @@ indexmap = { workspace = true, optional = true, features = ["serde"] }
 once_cell = { workspace = true, optional = true }
 opentelemetry-proto = { workspace = true, optional = true, features = ["gen-tonic-messages", "trace"] }
 parking_lot = { workspace = true, optional = true }
+percent-encoding = { workspace = true, optional = true }
 prometheus = { workspace = true, optional = true, features = ["process"] }
 prometheus-client = { workspace = true, optional = true }
 prometools = { workspace = true, optional = true, features = ["serde"] }
-routerify = { workspace = true, optional = true }
 rand = { workspace = true, optional = true }
 serde = { workspace = true, optional = true, features = ["derive", "rc"] }
 serde_path_to_error = { workspace = true, optional = true }
