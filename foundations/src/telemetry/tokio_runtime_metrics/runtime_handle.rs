@@ -53,8 +53,8 @@ impl RuntimeHandle {
             .inner()
             .store(metrics.io_driver_ready_count(), Ordering::SeqCst);
 
-        tokio_runtime_core::injection_queue_depth(&self.runtime_name, self.runtime_id)
-            .set(metrics.injection_queue_depth() as u64);
+        tokio_runtime_core::global_queue_depth(&self.runtime_name, self.runtime_id)
+            .set(metrics.global_queue_depth() as u64);
 
         tokio_runtime_core::blocking_queue_depth(&self.runtime_name, self.runtime_id)
             .set(metrics.blocking_queue_depth() as u64);

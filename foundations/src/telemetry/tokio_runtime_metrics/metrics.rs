@@ -62,11 +62,8 @@ pub(super) mod tokio_runtime_core {
         runtime_id: Option<usize>,
     ) -> Counter;
 
-    /// Current depth of the tokio runtime injection queue.
-    pub fn injection_queue_depth(
-        runtime_name: &Option<Arc<str>>,
-        runtime_id: Option<usize>,
-    ) -> Gauge;
+    /// Current depth of the tokio runtime global queue.
+    pub fn global_queue_depth(runtime_name: &Option<Arc<str>>, runtime_id: Option<usize>) -> Gauge;
 
     /// Current depth of the tokio runtime blocking queue.
     ///
