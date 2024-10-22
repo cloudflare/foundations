@@ -1,6 +1,11 @@
 
-4.0.0
+4.1.0
+- 2024-09-21 Provide metrics::add_extra_producer() to enable external metrics
+- 2024-10-21 Remove `routerify` dependency
+- 2024-10-14 Release 4.0.0
 - 2024-10-12 Adds guide for migrating to 4.0.0
+- 2024-09-25 Update semgrep.yml
+- 2024-09-22 Create semgrep.yml
 - 2024-10-04 Improve seccomp API by removing SeccompMode enum
 - 2024-10-03 OXY-1404: Revert most of #60 and expose get_current_thread_seccomp_mode (#74)
 - 2024-10-03 Let GitHub run CI actions for version branches (#73)
@@ -44,18 +49,26 @@
 - 2024-03-11 Introduce TelemetryDriver
 - 2024-03-11 Make tracer exporters configurable
 - 2024-03-26 Improve metrics bind error message
+
+3.3.0
 - 2024-03-21 Release 3.3.0
 - 2024-03-21 Fix new lints
 - 2024-03-19 Construct metrics registry with default() when name_in_metrics is empty
 - 2024-03-10 Fix paths in gen-syscall-enum tool
 - 2024-01-17 OXY-1299: implement GaugeGuard
 - 2024-01-17 OXY-1299: Implement RangeGauge metric type
+
+3.2.2
 - 2024-02-15 Release 3.2.2
 - 2024-02-14 Fix dependencies issue then example is started from the /example dir (closes #23)
 - 2024-02-15 Fix potential deadlock in `link_new_trace_with_current`
 - 2024-02-12 ci: add docsrs and minver checks (#20)
 - 2024-02-09 docs: fix typo in service_info macro doc comments (#19)
+
+3.2.1
 - 2024-02-05 Release 3.2.1
+
+3.2.0
 - 2024-02-05 Release 3.2.0
 - 2024-02-05 telemetry: add tokio runtime metrics (#12)
 - 2024-02-02 telemetry: make logger verbosity public
@@ -63,19 +76,27 @@
 - 2024-01-31 Enable feature `all` on socket2, should address #5
 - 2024-02-01 Disable `default-features` for dependency `prometheus`
 - 2024-01-31 ci: add macos to features check ci
+
+3.1.1
 - 2024-01-26 Release 3.1.1
 - 2024-01-26 Add check for missing seccomp sources to ensure that they are always published
+
+3.1.0
 - 2024-01-26 Release 3.1.0
 - 2024-01-26 Merge pull request #2 from cloudflare/android-ci
 - 2024-01-26 Introduce feature sets for clients
 - 2024-01-25 Merge pull request #1 from zegevlier/fix-windows
 - 2024-01-25 Only use `socket.set_reuse_port` on supported operating systems
 - 2024-01-23 Make crates.io happy about keywords
+
+3.0.1
 - 2024-01-23 Release 3.0.1
 - 2024-01-23 Add more metadata to Cargo.toml
 - 2024-01-23 Add readme to Cargo.toml
 - 2024-01-23 Fix license type in Cargo.toml
 - 2024-01-23 Add license field to Cargo.toml metadata
+
+3.0.0
 - 2024-01-23 Release 3.0.0
 - 2024-01-23 Fix macos target in CI
 - 2024-01-23 Add jemalloc flag to CI
