@@ -18,7 +18,7 @@
 //! | tokio_runtime_io_driver_fd_registrations_total   | [`tokio::runtime::RuntimeMetrics::io_driver_fd_registered_count`]   | runtime_name?, runtime_id?             |
 //! | tokio_runtime_io_driver_fd_deregistrations_total | [`tokio::runtime::RuntimeMetrics::io_driver_fd_deregistered_count`] | runtime_name?, runtime_id?             |
 //! | tokio_runtime_io_driver_fd_readies_total         | [`tokio::runtime::RuntimeMetrics::io_driver_ready_count`]           | runtime_name?, runtime_id?             |
-//! | tokio_runtime_injection_queue_depth              | [`tokio::runtime::RuntimeMetrics::injection_queue_depth`]           | runtime_name?, runtime_id?             |
+//! | tokio_runtime_global_queue_depth                 | [`tokio::runtime::RuntimeMetrics::global_queue_depth`]              | runtime_name?, runtime_id?             |
 //! | tokio_runtime_blocking_queue_depth               | [`tokio::runtime::RuntimeMetrics::blocking_queue_depth`]            | runtime_name?, runtime_id?             |
 //! | tokio_runtime_worker_parks_total                 | [`tokio::runtime::RuntimeMetrics::worker_park_count`]               | runtime_name?, runtime_id?, worker_idx |
 //! | tokio_runtime_worker_noops_total                 | [`tokio::runtime::RuntimeMetrics::worker_noop_count`]               | runtime_name?, runtime_id?, worker_idx |
