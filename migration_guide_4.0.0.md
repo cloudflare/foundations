@@ -15,7 +15,7 @@ This leaves users of foundations two choices:
 1. Update configs to remove unused keys. This will involve:  
    1. Remove keys fields that are fully unused  
    2. Move keys that were used purely for YAML anchors inline to their first use. For example, for the case in Apollo linked above, it would instead be something like  
-2. Opt out of this feature by updating the settings struct annotation from `#[settings]` to `#[settings(deny_unknown_fields = false)]`
+2. Opt out of this feature by updating individual settings struct annotations from `#[settings]` to `#[settings(deny_unknown_fields = false)]`, or by opting out of default features and not using the foundations feature "settings_deny_unknown_fields_by_default".
 
 ### ZTC-1648: Avoid heap profiling crash by eagerly starting long-lived profiling thread (PR [\#54](https://github.com/cloudflare/foundations/pull/54/files))
 

@@ -45,7 +45,7 @@ impl Options {
     }
 
     fn default_deny_unknown_fields() -> bool {
-        true
+        cfg!(feature = "settings_deny_unknown_fields_by_default")
     }
 }
 
