@@ -39,6 +39,7 @@ platform-common-default = [
     "telemetry",
     "cli",
     "testing",
+    "settings_deny_unknown_fields_by_default",
 ]
 
 # A subset of features that can be used both on server and client sides. Useful for libraries
@@ -54,6 +55,9 @@ settings = [
     "dep:yaml-merge-keys",
     "dep:indexmap",
 ]
+
+# Whether settings structs annotated with `#[settings]` will, by default, error on unknown fields.
+settings_deny_unknown_fields_by_default = ["foundations-macros?/settings_deny_unknown_fields_by_default"]
 
 # Enables all the telemetry-related features ("logging", "metrics", "tracing", "telemetry-server").
 telemetry = [
@@ -162,7 +166,7 @@ rustc-args = ["--cfg", "tokio_unstable", "--cfg", "foundations_unstable"]
 
 [dependencies]
 anyhow = { workspace = true, features = ["backtrace", "std"] }
-foundations-macros = { workspace = true, optional = true }
+foundations-macros = { workspace = true, optional = true, default-features = false }
 cf-rustracing = { workspace = true, optional = true }
 cf-rustracing-jaeger = { workspace = true, optional = true }
 clap = { workspace = true, optional = true }

@@ -8,6 +8,10 @@ authors = { workspace = true }
 license = { workspace = true }
 readme = "../README.md"
 
+[features]
+default = ["settings_deny_unknown_fields_by_default"]
+settings_deny_unknown_fields_by_default = []
+
 [lib]
 proc-macro = true
 

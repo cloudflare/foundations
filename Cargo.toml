@@ -26,7 +26,7 @@ debug = 1
 [workspace.dependencies]
 anyhow = "1.0.75"
 foundations = { version = "4.0.0", path = "./foundations" }
-foundations-macros = { version = "4.0.0", path = "./foundations-macros" }
+foundations-macros = { version = "4.0.0", path = "./foundations-macros", default-features = false }
 bindgen = { version = "0.68.1", default-features = false }
 cc = "1.0"
 cf-rustracing = "1.0.1"

@@ -17,7 +17,7 @@
 //! Check out [examples] for an example of how all these components can be used together.
 //!
 //! # Features
-//! Foundations can take of all aspects of service bootstrapping, but also can be used as a component
+//! Foundations can take care of all aspects of service bootstrapping, but also can be used as a component
 //! library in a modular fashion by enabling or disabling [Cargo features]:
 //!
 //! - **default**: All features are enabled by default.
@@ -26,6 +26,7 @@
 //! - **server-client-common-default**: A subset of features that can be used both on server and client sides.
 //!   Useful for libraries that can be used either way.
 //! - **settings**: Enables serializable documented settings functionality.
+//! - **settings_deny_unknown_fields_by_default**: Whether settings structs annotated with the [`settings`] attribute macro will, by default, error on unknown fields.
 //! - **telemetry**: Enables all the telemetry-related features (**metrics**, **logging**, **tracing**, **telemetry-server**).
 //! - **telemetry-otlp-grpc**: Enables [OpenTelemetry] reporting via [gRPC].
 //! - **telemetry-server**: Enables the telemetry server.
@@ -55,6 +56,7 @@
 //! [examples]: https://github.com/cloudflare/foundations/tree/main/examples
 //! [OpenTelemetry]: https://opentelemetry.io/
 //! [gRPC]: https://grpc.io/
+//! [`settings`]: crate::settings::Settings
 
 // NOTE: required to allow cfgs like `tokio_unstable` on nightly which is used in tests.
 #![allow(unexpected_cfgs)]
