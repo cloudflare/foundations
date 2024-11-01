@@ -116,6 +116,7 @@ tracing = [
     "dep:futures-util",
     "dep:tokio",
     "dep:serde",
+    "dep:slab",
 ]
 
 # Enables metrics functionality.

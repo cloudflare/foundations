@@ -11,11 +11,29 @@ use std::sync::Arc;
 
 pub(crate) type Tracer = cf_rustracing::Tracer<BoxSampler<SpanContextState>, SpanContextState>;
 
+#[cfg(not(feature = "telemetry-server"))]
+pub(crate) type SharedSpanInner = Arc<parking_lot::RwLock<Span>>;
+
+#[cfg(feature = "telemetry-server")]
+pub(crate) type SharedSpanInner = super::live::SharedSpanHandle;
+
+#[cfg(not(feature = "telemetry-server"))]
+fn track_span(span: Span) -> SharedSpanInner {
+    Arc::new(parking_lot::RwLock::new(span))
+}
+
+#[cfg(feature = "telemetry-server")]
+fn track_span(span: Span) -> SharedSpanInner {
+    TracingHarness::get()
+        .active_roots
+        .track(Arc::new(parking_lot::RwLock::new(span)))
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct SharedSpan {
     // NOTE: we intentionally use a lock without poisoning here to not
     // panic the threads if they just share telemetry with failed thread.
-    pub(crate) inner: Arc<parking_lot::RwLock<Span>>,
+    pub(crate) inner: SharedSpanInner,
     // NOTE: store sampling flag separately, so we don't need to acquire lock
     // every time we need to check the flag.
     is_sampled: bool,
@@ -26,9 +44,15 @@ impl From<Span> for SharedSpan {
         let is_sampled = inner.is_sampled();
 
         Self {
-            inner: Arc::new(parking_lot::RwLock::new(inner)),
+            inner: track_span(inner),
             is_sampled,
         }
+    }
+}
+
+impl SharedSpan {
+    pub(crate) fn into_span(self) -> Arc<parking_lot::RwLock<Span>> {
+        Arc::clone(&self.inner)
     }
 }
 

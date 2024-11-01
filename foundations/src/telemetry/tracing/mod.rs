@@ -7,6 +7,8 @@ pub(crate) mod init;
 #[cfg(any(test, feature = "testing"))]
 pub(crate) mod testing;
 
+#[cfg(feature = "telemetry-server")]
+mod live;
 mod output_jaeger_thrift_udp;
 mod rate_limit;
 
@@ -385,7 +387,7 @@ pub fn start_trace(
 ///
 /// [rustracing]: https://crates.io/crates/rustracing
 pub fn rustracing_span() -> Option<Arc<parking_lot::RwLock<Span>>> {
-    current_span().map(|span| span.inner)
+    current_span().map(|span| span.into_span())
 }
 
 // NOTE: `#[doc(hidden)]` + `#[doc(inline)]` for `pub use` trick is used to prevent these macros

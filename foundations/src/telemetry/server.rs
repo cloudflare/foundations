@@ -109,6 +109,21 @@ impl RouteMap {
                 .boxed()
             }),
         });
+
+        #[cfg(feature = "tracing")]
+        self.set(TelemetryServerRoute {
+            path: "/debug/traces".into(),
+            methods: vec![Method::GET],
+            handler: Box::new(|_, settings| {
+                async move {
+                    into_response(
+                        "application/json; charset=utf-8",
+                        tracing::output_traces(settings).await,
+                    )
+                }
+                .boxed()
+            }),
+        });
     }
 
     fn set(&mut self, route: TelemetryServerRoute) {
@@ -278,5 +293,16 @@ mod memory_profiling {
 
     pub(super) async fn heap_stats(settings: Arc<TelemetrySettings>) -> Result<String> {
         profiler(settings)?.heap_stats()
+    }
+}
+
+#[cfg(feature = "tracing")]
+mod tracing {
+    use super::*;
+    use crate::telemetry::tracing::init::TracingHarness;
+    use crate::Result;
+
+    pub(super) async fn output_traces(_settings: Arc<TelemetrySettings>) -> Result<String> {
+        Ok(TracingHarness::get().active_roots.get_active_traces())
     }
 }
