@@ -2,14 +2,13 @@ use crate::utils::feature_use;
 use crate::BootstrapResult;
 use futures_util::future::BoxFuture;
 use futures_util::stream::{FuturesUnordered, Stream};
-use futures_util::FutureExt;
+use futures_util::{ready, FutureExt};
 use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
 feature_use!(cfg(feature = "telemetry-server"), {
     use super::server::TelemetryServerFuture;
-    use anyhow::anyhow;
     use hyper::Server;
     use std::net::SocketAddr;
 });
@@ -88,25 +87,27 @@ impl Future for TelemetryDriver {
     type Output = BootstrapResult<()>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let mut ready_res = vec![];
-
         #[cfg(feature = "telemetry-server")]
         if let Some(server_fut) = &mut self.server_fut {
             if let Poll::Ready(res) = Pin::new(server_fut).poll(cx) {
-                ready_res.push(res.map_err(|err| anyhow!(err)));
+                self.server_fut = None;
+
+                res?;
             }
         }
 
-        let tele_futures_poll = Pin::new(&mut self.tele_futures).poll_next(cx);
+        ready!(Pin::new(&mut self.tele_futures).poll_next(cx)?);
 
-        if let Poll::Ready(Some(res)) = tele_futures_poll {
-            ready_res.push(res);
+        #[cfg(feature = "telemetry-server")]
+        let server_fut_is_none = self.server_fut.is_none();
+
+        #[cfg(not(feature = "telemetry-server"))]
+        let server_fut_is_none = true;
+
+        if server_fut_is_none && self.tele_futures.is_empty() {
+            return Poll::Ready(Ok(()));
         }
 
-        if ready_res.is_empty() {
-            Poll::Pending
-        } else {
-            Poll::Ready(ready_res.into_iter().collect())
-        }
+        Poll::Pending
     }
 }
