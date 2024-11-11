@@ -122,6 +122,7 @@ tracing = [
     "dep:tokio",
     "dep:serde",
     "dep:slab",
+    "dep:libc",
 ]
 
 # Enables metrics functionality.
@@ -184,6 +185,7 @@ hyper = { workspace = true, optional = true, features = [
     "server",
 ] }
 indexmap = { workspace = true, optional = true, features = ["serde"] }
+libc = { workspace = true, optional = true }
 once_cell = { workspace = true, optional = true }
 opentelemetry-proto = { workspace = true, optional = true, features = ["gen-tonic-messages", "trace"] }
 parking_lot = { workspace = true, optional = true }
