@@ -60,8 +60,71 @@ fn get_reporter_bind_addr(settings: &JaegerThriftUdpOutputSettings) -> Bootstrap
 async fn do_export(reporter: JaegerCompactReporter, mut span_rx: SpanReceiver) {
     while let Some(span) = span_rx.recv().await {
         // NOTE: we are limited with a UDP dgram size here, so doing batching is risky.
-        if let Err(err) = reporter.report(&[span][..]).await {
+        let spans = [span];
+        if let Err(err) = reporter.report(&spans).await {
+            #[cfg(feature = "logging")]
+            if self::logging::is_msgsize_error(&err) {
+                self::logging::log_span_too_large_err(&err, &spans[0]);
+                continue;
+            }
+
             reporter_error(err);
         }
+    }
+}
+
+#[cfg(feature = "logging")]
+mod logging {
+    use cf_rustracing::tag::Tag;
+    use cf_rustracing_jaeger::span::FinishedSpan;
+    use std::io;
+
+    pub(super) fn is_msgsize_error(err: &cf_rustracing::Error) -> bool {
+        err.concrete_cause::<io::Error>()
+            .and_then(io::Error::raw_os_error)
+            == Some(libc::EMSGSIZE)
+    }
+
+    pub(super) fn log_span_too_large_err(err: &cf_rustracing::Error, span: &FinishedSpan) {
+        let tag_count = span.tags().len();
+        let tag_total: usize = span.tags().iter().map(tag_size).sum();
+        let top_tag = span.tags().iter().max_by_key(|t| tag_size(t));
+
+        let log_count = span.logs().len();
+        let log_total: usize = span.logs().iter().map(log_size).sum();
+
+        let top_tag = top_tag
+            .map(|t| format!(", top: {} @ approx {}", t.name(), tag_size(t)))
+            .unwrap_or_default();
+
+        crate::telemetry::log::error!(
+            "trace span exceeded thrift UDP message size limits";
+            "error" => %err,
+            "operation" => span.operation_name(),
+            "tags" => format!("count: {tag_count}, size: approx {tag_total}{top_tag}"),
+            "logs" => format!("count: {log_count}, size: approx {log_total}"),
+        );
+    }
+
+    /// Approximates the wire size of a span `Tag`. This is not exact and
+    /// more closely resembles the non-compact thrift encoding, but should be
+    /// sufficient to determine what causes the span to trigger EMSGSIZE.
+    fn tag_size(tag: &Tag) -> usize {
+        use cf_rustracing::tag::TagValue;
+        let val_size = match tag.value() {
+            TagValue::String(s) => s.len(),
+            TagValue::Boolean(_) => 1,
+            TagValue::Integer(_) => 8,
+            TagValue::Float(_) => 8,
+        };
+        tag.name().len() + val_size
+    }
+
+    /// Approximates the wire size of a span `Log`, which is always stringified.
+    fn log_size(log: &cf_rustracing::log::Log) -> usize {
+        log.fields()
+            .iter()
+            .map(|f| f.name().len() + f.value().len())
+            .sum()
     }
 }
