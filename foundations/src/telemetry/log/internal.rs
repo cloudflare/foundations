@@ -25,8 +25,8 @@ impl LoggerWithKvNestingTracking {
     pub const MAX_NESTING: u32 = 1000;
     pub const EXCEEDED_MAX_NESTING_ERROR: &'static str = "foundations: maximum logger KV nesting exceeded (are add_fields! or set_verbosity being called in a loop?)";
 
-    // Create a new LoggerWithKvNestingTracking based on a fresh logger. The KV nesting level is
-    // initialized to zero.
+    /// Create a new LoggerWithKvNestingTracking based on a fresh logger. The KV nesting level is
+    /// initialized to zero.
     pub(crate) fn new(logger: Logger) -> Self {
         Self {
             inner: logger,
@@ -34,16 +34,20 @@ impl LoggerWithKvNestingTracking {
         }
     }
 
-    // Increment the KV nesting level. You should call this every time you have replaced the
-    // logger with a child of itself.
-    pub(crate) fn inc_nesting_level(&mut self) {
+    /// Increment the KV nesting level. You should call this every time you have replaced the
+    /// logger with a child of itself.
+    ///
+    /// If this returns true, you should first release any locks you may hold (they will be
+    /// poisoned) and then call the panic_from_too_much_nesting() associated function.
+    #[must_use]
+    pub(crate) fn has_too_much_nesting(&mut self) -> bool {
         self.nesting_level += 1;
+        self.nesting_level > Self::MAX_NESTING
+    }
 
-        assert!(
-            self.nesting_level < Self::MAX_NESTING,
-            "{}",
-            Self::EXCEEDED_MAX_NESTING_ERROR
-        );
+    /// Please call this if has_too_much_nesting() returns true.
+    pub(crate) fn panic_from_too_much_nesting() -> ! {
+        panic!("{}", Self::EXCEEDED_MAX_NESTING_ERROR);
     }
 }
 
@@ -78,7 +82,11 @@ where
     let mut log_lock = log.write();
 
     log_lock.inner = log_lock.inner.new(fields);
-    log_lock.inc_nesting_level();
+    if log_lock.has_too_much_nesting() {
+        // Drop the lock guard before panicking
+        drop(log_lock);
+        LoggerWithKvNestingTracking::panic_from_too_much_nesting();
+    }
 }
 
 pub fn current_log() -> SharedLog {
