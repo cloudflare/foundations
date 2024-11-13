@@ -50,7 +50,11 @@ pub fn set_verbosity(verbosity: LogVerbosity) -> Result<()> {
 
     let kv = OwnedKV(current_log_lock.list().clone());
     current_log_lock.inner = build_log_with_drain(&settings, kv, Arc::clone(&harness.root_drain));
-    current_log_lock.inc_nesting_level();
+    if current_log_lock.has_too_much_nesting() {
+        // Drop the lock guard before panicking
+        drop(current_log_lock);
+        crate::telemetry::log::internal::LoggerWithKvNestingTracking::panic_from_too_much_nesting();
+    }
 
     Ok(())
 }
