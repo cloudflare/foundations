@@ -1,5 +1,11 @@
 
+4.1.1
+- 2024-11-14 Upgrade minimum required tokio version to deal with deprecated unstable metric
+- 2024-11-14 Rename tokio unstable metric that was deprecated (#93)
+- 2024-11-13 ZTC-1819: If we're going to panic due to excessive nesting, release the lock first (#91)
+
 4.1.0
+- 2024-11-04 Release 4.1.0 (#86)
 - 2024-10-31 Allow opting out of settings deny_unknown_fields for foundations internal structs (#85)
 - 2024-09-21 Provide metrics::add_extra_producer() to enable external metrics
 - 2024-10-21 Remove `routerify` dependency
