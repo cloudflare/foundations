@@ -46,15 +46,16 @@ pub fn set_verbosity(verbosity: LogVerbosity) -> Result<()> {
     settings.verbosity = verbosity;
 
     let current_log = current_log();
-    let mut current_log_lock = current_log.write();
+    let current_log_lock = current_log.write();
+
+    let Some(mut current_log_lock) =
+        internal::LoggerWithKvNestingTracking::check_nesting_level(current_log_lock)
+    else {
+        return Ok(()); // avoid changes, nesting level was beyond threshold
+    };
 
     let kv = OwnedKV(current_log_lock.list().clone());
     current_log_lock.inner = build_log_with_drain(&settings, kv, Arc::clone(&harness.root_drain));
-    if current_log_lock.has_too_much_nesting() {
-        // Drop the lock guard before panicking
-        drop(current_log_lock);
-        crate::telemetry::log::internal::LoggerWithKvNestingTracking::panic_from_too_much_nesting();
-    }
 
     Ok(())
 }
