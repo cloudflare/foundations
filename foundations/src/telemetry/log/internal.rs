@@ -34,20 +34,39 @@ impl LoggerWithKvNestingTracking {
         }
     }
 
-    /// Increment the KV nesting level. You should call this every time you have replaced the
+    /// Increment the KV nesting level. You should call this before any time you're going to replace the
     /// logger with a child of itself.
     ///
-    /// If this returns true, you should first release any locks you may hold (they will be
-    /// poisoned) and then call the panic_from_too_much_nesting() associated function.
-    #[must_use]
-    pub(crate) fn has_too_much_nesting(&mut self) -> bool {
-        self.nesting_level += 1;
-        self.nesting_level > Self::MAX_NESTING
-    }
+    /// If this returns None, it will consume the logger lock, and you should not nest any further.
+    /// If panic_on_too_much_logger_nesting is enabled, instead of returning None this will free the
+    /// logger lock and then panic.
+    pub(crate) fn check_nesting_level(
+        mut current_log_lock: parking_lot::lock_api::RwLockWriteGuard<
+            parking_lot::RawRwLock,
+            LoggerWithKvNestingTracking,
+        >,
+    ) -> Option<
+        parking_lot::lock_api::RwLockWriteGuard<
+            parking_lot::RawRwLock,
+            LoggerWithKvNestingTracking,
+        >,
+    > {
+        current_log_lock.nesting_level = current_log_lock.nesting_level.saturating_add(1);
 
-    /// Please call this if has_too_much_nesting() returns true.
-    pub(crate) fn panic_from_too_much_nesting() -> ! {
-        panic!("{}", Self::EXCEEDED_MAX_NESTING_ERROR);
+        match current_log_lock.nesting_level {
+            0..Self::MAX_NESTING => Some(current_log_lock), // continue with operation
+            Self::MAX_NESTING => {
+                // Drop the lock guard before panicking
+                if cfg!(feature = "panic_on_too_much_logger_nesting") {
+                    drop(current_log_lock);
+                    panic!("{}", Self::EXCEEDED_MAX_NESTING_ERROR);
+                } else {
+                    slog::error!(current_log_lock, "{}", Self::EXCEEDED_MAX_NESTING_ERROR; "backtrace"=> std::backtrace::Backtrace::capture().to_string());
+                    None // avoid further nesting
+                }
+            }
+            Self::MAX_NESTING..=u32::MAX => None, // avoid further nesting
+        }
     }
 }
 
@@ -79,14 +98,13 @@ where
     T: SendSyncRefUnwindSafeKV + 'static,
 {
     let log = current_log();
-    let mut log_lock = log.write();
+    let log_lock = log.write();
+
+    let Some(mut log_lock) = LoggerWithKvNestingTracking::check_nesting_level(log_lock) else {
+        return; // avoid changes, nesting level was beyond threshold
+    };
 
     log_lock.inner = log_lock.inner.new(fields);
-    if log_lock.has_too_much_nesting() {
-        // Drop the lock guard before panicking
-        drop(log_lock);
-        LoggerWithKvNestingTracking::panic_from_too_much_nesting();
-    }
 }
 
 pub fn current_log() -> SharedLog {

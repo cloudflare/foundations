@@ -40,6 +40,7 @@ platform-common-default = [
     "cli",
     "testing",
     "settings_deny_unknown_fields_by_default",
+    "panic_on_too_much_logger_nesting",
 ]
 
 # A subset of features that can be used both on server and client sides. Useful for libraries
@@ -156,6 +157,9 @@ cli = ["settings", "dep:clap"]
 
 # Enables testing-related functionality.
 testing = ["dep:foundations-macros"]
+
+# Enables panicking when too much nesting is reached on the logger
+panic_on_too_much_logger_nesting = []
 
 [package.metadata.docs.rs]
 all-features = true
