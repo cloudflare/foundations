@@ -1,5 +1,9 @@
 
+4.2.0
+- 2024-11-18 Support configuring behaviour when excessive log nesting is reached (#96)
+
 4.1.1
+- 2024-11-14 Release 4.1.1
 - 2024-11-14 Upgrade minimum required tokio version to deal with deprecated unstable metric
 - 2024-11-14 Rename tokio unstable metric that was deprecated (#93)
 - 2024-11-13 ZTC-1819: If we're going to panic due to excessive nesting, release the lock first (#91)
