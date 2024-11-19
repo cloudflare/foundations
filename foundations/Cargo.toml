@@ -121,6 +121,7 @@ tracing = [
     "dep:futures-util",
     "dep:tokio",
     "dep:serde",
+    "dep:http",
 ]
 
 # Enables metrics functionality.
@@ -177,6 +178,7 @@ clap = { workspace = true, optional = true }
 erased-serde = { workspace = true, optional = true }
 futures-util = { workspace = true, optional = true }
 governor = { workspace = true, optional = true }
+http = { workspace = true, optional = true }
 hyper = { workspace = true, optional = true, features = [
     "http1",
     "runtime",
@@ -203,7 +205,7 @@ slog-term = { workspace = true, optional = true }
 socket2 = { workspace = true, optional = true }
 thread_local = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true, features = ["sync", "rt"] }
-tonic = { workspace = true, optional = true, features = ["channel", "transport"] }
+tonic = { workspace = true, optional = true, features = ["channel", "prost"] }
 tikv-jemallocator = { workspace = true, optional = true, features = [
     "profiling",
     "stats",
