@@ -5,7 +5,7 @@ use crate::{BootstrapResult, ServiceInfo};
 use anyhow::Context as _;
 use cf_rustracing_jaeger::span::SpanReceiver;
 use futures_util::future::{BoxFuture, FutureExt as _};
-use hyper::http::uri::PathAndQuery;
+use http::uri::PathAndQuery;
 use opentelemetry_proto::tonic::collector::trace::v1::{
     ExportTraceServiceRequest, ExportTraceServiceResponse,
 };
