@@ -9,7 +9,9 @@ publish = false
 anyhow = { workspace = true }
 foundations = { workspace = true }
 futures-util = { workspace = true }
+http-body-util = { workspace = true }
 hyper = { workspace = true }
+hyper-util = { workspace = true, features = ["server", "tokio"] }
 tokio = { workspace = true, features = ["full"]}
 
 [[example]]

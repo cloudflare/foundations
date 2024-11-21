@@ -77,13 +77,15 @@ client-telemetry = ["logging", "metrics", "tracing", "dep:futures-util"]
 
 # Enables the telemetry server.
 telemetry-server = [
+    "dep:http-body-util",
     "dep:hyper",
+    "dep:hyper-util",
     "dep:socket2",
-    "dep:percent-encoding"
+    "dep:percent-encoding",
 ]
 
 # Enables telemetry reporting over gRPC
-telemetry-otlp-grpc = ["dep:tonic", "dep:tokio", "dep:hyper"]
+telemetry-otlp-grpc = ["dep:tonic", "tonic/prost", "dep:tokio", "dep:hyper"]
 
 # Enables experimental tokio runtime metrics
 tokio-runtime-metrics = [
@@ -184,11 +186,9 @@ clap = { workspace = true, optional = true }
 erased-serde = { workspace = true, optional = true }
 futures-util = { workspace = true, optional = true }
 governor = { workspace = true, optional = true }
-hyper = { workspace = true, optional = true, features = [
-    "http1",
-    "runtime",
-    "server",
-] }
+http-body-util = { workspace = true, optional = true }
+hyper = { workspace = true, optional = true, features = ["http1", "server"] }
+hyper-util = { workspace = true, optional = true, features = ["tokio"] }
 indexmap = { workspace = true, optional = true, features = ["serde"] }
 libc = { workspace = true, optional = true }
 once_cell = { workspace = true, optional = true }
