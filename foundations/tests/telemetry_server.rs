@@ -1,7 +1,10 @@
 use foundations::telemetry::settings::{TelemetryServerSettings, TelemetrySettings};
 use foundations::telemetry::{TelemetryConfig, TelemetryServerRoute};
 use futures_util::FutureExt;
+use http_body_util::combinators::BoxBody;
+use http_body_util::{BodyExt, Full};
 use hyper::{Method, Response};
+use std::future::IntoFuture;
 use std::net::{Ipv4Addr, SocketAddr};
 
 #[cfg(target_os = "linux")]
@@ -43,11 +46,17 @@ async fn telemetry_server() {
                 path: "/custom-route".into(),
                 methods: vec![Method::GET],
                 handler: Box::new(|_, _| {
-                    async { Ok(Response::builder().body("Hello".into()).unwrap()) }.boxed()
+                    async {
+                        Ok(Response::new(BoxBody::new(
+                            Full::from("Hello").map_err(Into::into),
+                        )))
+                    }
+                    .boxed()
                 }),
             }],
         })
-        .unwrap(),
+        .unwrap()
+        .into_future(),
     );
 
     assert_eq!(

@@ -1,16 +1,14 @@
 use crate::utils::feature_use;
 use crate::BootstrapResult;
 use futures_util::future::BoxFuture;
-use futures_util::stream::{FuturesUnordered, Stream};
-use futures_util::FutureExt;
+use futures_util::stream::FuturesUnordered;
+use futures_util::{FutureExt, Stream};
 use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
 feature_use!(cfg(feature = "telemetry-server"), {
     use super::server::TelemetryServerFuture;
-    use anyhow::anyhow;
-    use hyper::Server;
     use std::net::SocketAddr;
 });
 
@@ -38,7 +36,7 @@ impl TelemetryDriver {
     ) -> Self {
         Self {
             #[cfg(feature = "telemetry-server")]
-            server_addr: server_fut.as_ref().map(Server::local_addr),
+            server_addr: server_fut.as_ref().map(|fut| fut.local_addr()),
 
             #[cfg(feature = "telemetry-server")]
             server_fut,
@@ -66,9 +64,11 @@ impl TelemetryDriver {
         #[cfg(feature = "telemetry-server")]
         {
             if let Some(server_fut) = self.server_fut.take() {
-                self.tele_futures.push(
-                    async move { Ok(server_fut.with_graceful_shutdown(signal).await?) }.boxed(),
-                );
+                self.tele_futures.push(Box::pin(async move {
+                    server_fut.with_graceful_shutdown(signal).await;
+
+                    Ok(())
+                }));
 
                 return;
             }
@@ -93,7 +93,7 @@ impl Future for TelemetryDriver {
         #[cfg(feature = "telemetry-server")]
         if let Some(server_fut) = &mut self.server_fut {
             if let Poll::Ready(res) = Pin::new(server_fut).poll(cx) {
-                ready_res.push(res.map_err(|err| anyhow!(err)));
+                match res {}
             }
         }
 
