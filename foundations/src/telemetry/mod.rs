@@ -131,7 +131,9 @@ pub use self::testing::TestTelemetryContext;
 pub use self::memory_profiler::MemoryProfiler;
 
 #[cfg(feature = "telemetry-server")]
-pub use self::server::{TelemetryRouteHandler, TelemetryRouteHandlerFuture, TelemetryServerRoute};
+pub use self::server::{
+    BoxError, TelemetryRouteHandler, TelemetryRouteHandlerFuture, TelemetryServerRoute,
+};
 
 pub use self::telemetry_context::{
     TelemetryContext, WithTelemetryContext, WithTelemetryContextLocal,
@@ -309,7 +311,10 @@ pub fn init(config: TelemetryConfig) -> BootstrapResult<TelemetryDriver> {
 
     #[cfg(feature = "telemetry-server")]
     {
-        let server_fut = self::server::init(config.settings.clone(), config.custom_server_routes)?;
+        let server_fut = server::TelemetryServerFuture::new(
+            config.settings.clone(),
+            config.custom_server_routes,
+        )?;
 
         Ok(TelemetryDriver::new(server_fut, tele_futures))
     }
