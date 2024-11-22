@@ -1,3 +1,5 @@
+use futures_util::future::BoxFuture;
+
 use super::TelemetryScope;
 use crate::utils::feature_use;
 use std::future::Future;
@@ -28,7 +30,7 @@ pub struct WithTelemetryContext<'f, T> {
     // NOTE: we intentionally erase type here as we can get close to the type
     // length limit, adding telemetry wrappers on top causes compiler to fail in some
     // cases.
-    inner: Pin<Box<dyn Future<Output = T> + Send + 'f>>,
+    inner: BoxFuture<'f, T>,
     ctx: TelemetryContext,
 }
 
