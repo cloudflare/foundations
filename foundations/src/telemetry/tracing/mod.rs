@@ -387,7 +387,7 @@ pub fn start_trace(
 ///
 /// [rustracing]: https://crates.io/crates/rustracing
 pub fn rustracing_span() -> Option<Arc<parking_lot::RwLock<Span>>> {
-    current_span().map(|span| span.into_span())
+    current_span().map(|span| span.inner.into())
 }
 
 // NOTE: `#[doc(hidden)]` + `#[doc(inline)]` for `pub use` trick is used to prevent these macros
