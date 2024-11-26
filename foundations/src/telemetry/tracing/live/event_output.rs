@@ -11,7 +11,7 @@ pub(crate) fn spans_to_trace_events(epoch: SystemTime, spans: &[SharedSpanHandle
     let end_timestamp = epoch
         .elapsed()
         .ok()
-        .and_then(|x| u64::try_from(x.as_nanos()).ok())
+        .and_then(|x| u64::try_from(x.as_micros()).ok())
         .unwrap_or(u64::MAX);
 
     for span in spans {
@@ -24,13 +24,13 @@ pub(crate) fn spans_to_trace_events(epoch: SystemTime, spans: &[SharedSpanHandle
             .start_time()
             .duration_since(epoch)
             .ok()
-            .and_then(|x| u64::try_from(x.as_nanos()).ok())
+            .and_then(|x| u64::try_from(x.as_micros()).ok())
             .unwrap_or_default();
 
         let end_ts = span_ref
             .finish_time()
             .and_then(|x| x.duration_since(epoch).ok())
-            .and_then(|x| u64::try_from(x.as_nanos()).ok())
+            .and_then(|x| u64::try_from(x.as_micros()).ok())
             .unwrap_or(end_timestamp);
 
         log_builder.write_event(&trace_id, name, "", TraceEventType::Begin, start_ts);

@@ -10,7 +10,7 @@ type SharedSpanInner = Arc<parking_lot::RwLock<Span>>;
 pub(crate) type SharedSpanHandle = Arc<LiveReferenceHandle<SharedSpanInner>>;
 
 pub(crate) struct ActiveRoots {
-    roots: Arc<LiveReferenceSet<SharedSpanInner>>,
+    roots: LiveReferenceSet<SharedSpanInner>,
     start: SystemTime,
 }
 
