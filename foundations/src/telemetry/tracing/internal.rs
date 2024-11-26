@@ -11,11 +11,77 @@ use std::sync::Arc;
 
 pub(crate) type Tracer = cf_rustracing::Tracer<BoxSampler<SpanContextState>, SpanContextState>;
 
+#[cfg(not(feature = "telemetry-server"))]
+mod span_inner {
+    use super::*;
+
+    /// Shared span with mutability.
+    #[derive(Clone, Debug)]
+    pub(crate) struct SharedSpanInner(Arc<parking_lot::RwLock<Span>>);
+
+    impl SharedSpanInner {
+        pub(crate) fn new(span: Span) -> Self {
+            Self(Arc::new(parking_lot::RwLock::new(span)))
+        }
+    }
+
+    impl From<SharedSpanInner> for Arc<parking_lot::RwLock<Span>> {
+        fn from(value: SharedSpanInner) -> Self {
+            value.0
+        }
+    }
+
+    impl std::ops::Deref for SharedSpanInner {
+        type Target = Arc<parking_lot::RwLock<Span>>;
+
+        fn deref(&self) -> &Self::Target {
+            &self.0
+        }
+    }
+}
+
+#[cfg(feature = "telemetry-server")]
+mod span_inner {
+    use super::*;
+    use crate::telemetry::tracing::live::SharedSpanHandle;
+
+    /// Shared span with mutability and additional reference tracking for
+    /// ad-hoc inspection.
+    #[derive(Clone, Debug)]
+    pub(crate) struct SharedSpanInner(SharedSpanHandle);
+
+    impl SharedSpanInner {
+        pub(crate) fn new(span: Span) -> Self {
+            Self(
+                TracingHarness::get()
+                    .active_roots
+                    .track(Arc::new(parking_lot::RwLock::new(span))),
+            )
+        }
+    }
+
+    impl From<SharedSpanInner> for Arc<parking_lot::RwLock<Span>> {
+        fn from(value: SharedSpanInner) -> Self {
+            Arc::clone(&value.0)
+        }
+    }
+
+    impl std::ops::Deref for SharedSpanInner {
+        type Target = SharedSpanHandle;
+
+        fn deref(&self) -> &Self::Target {
+            &self.0
+        }
+    }
+}
+
+use self::span_inner::SharedSpanInner;
+
 #[derive(Debug, Clone)]
 pub(crate) struct SharedSpan {
     // NOTE: we intentionally use a lock without poisoning here to not
     // panic the threads if they just share telemetry with failed thread.
-    pub(crate) inner: Arc<parking_lot::RwLock<Span>>,
+    pub(crate) inner: SharedSpanInner,
     // NOTE: store sampling flag separately, so we don't need to acquire lock
     // every time we need to check the flag.
     is_sampled: bool,
@@ -26,7 +92,7 @@ impl From<Span> for SharedSpan {
         let is_sampled = inner.is_sampled();
 
         Self {
-            inner: Arc::new(parking_lot::RwLock::new(inner)),
+            inner: SharedSpanInner::new(inner),
             is_sampled,
         }
     }

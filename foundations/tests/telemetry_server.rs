@@ -1,5 +1,5 @@
 use foundations::telemetry::settings::{TelemetryServerSettings, TelemetrySettings};
-use foundations::telemetry::{TelemetryConfig, TelemetryServerRoute};
+use foundations::telemetry::{TelemetryConfig, TelemetryContext, TelemetryServerRoute};
 use futures_util::FutureExt;
 use hyper::{Method, Response};
 use std::net::{Ipv4Addr, SocketAddr};
@@ -97,4 +97,53 @@ async fn telemetry_server() {
             .unwrap()
             .contains("Allocated")
     );
+
+    let telemetry_ctx = TelemetryContext::current();
+    let _scope = telemetry_ctx.scope();
+
+    // Create a broadcast channel used to keep tasks active until we fetch traces.
+    let (keep_trace_active, mut trace_waiter) = tokio::sync::broadcast::channel(2);
+
+    // Create a span with a detached child.
+    // The parent span will end before the child does.
+    let mut trace_waiter1 = keep_trace_active.subscribe();
+    #[allow(clippy::async_yields_async)]
+    let child_span_handle = foundations::telemetry::tracing::span("parent_span")
+        .into_context()
+        .apply(async move {
+            // return the JoinHandle for this task
+            tokio::spawn(
+                foundations::telemetry::tracing::span("child_span_outliving_parent")
+                    .into_context()
+                    .apply(async move {
+                        let _ = trace_waiter1.recv().await;
+                    }),
+            )
+        })
+        .await;
+
+    // Create a span that stays active
+    let traced_task = {
+        let _scope = telemetry_ctx.scope();
+        let _root = foundations::telemetry::tracing::span("my_root_span");
+
+        tokio::spawn(TelemetryContext::current().apply(async move {
+            let _ = trace_waiter.recv().await;
+        }))
+    };
+
+    let trace_output = reqwest::get(format!("http://{server_addr}/debug/traces"))
+        .await
+        .unwrap()
+        .text()
+        .await
+        .unwrap();
+
+    keep_trace_active.send(()).unwrap();
+    let _ = traced_task.await;
+    let _ = child_span_handle.await;
+
+    assert!(!trace_output.contains("parent_span"));
+    assert!(trace_output.contains("child_span_outliving_parent"));
+    assert!(trace_output.contains("my_root_span"));
 }
