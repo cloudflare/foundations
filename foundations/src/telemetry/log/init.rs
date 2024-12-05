@@ -21,6 +21,7 @@ use slog_term::{FullFormat as TextDrain, PlainDecorator, TermDecorator};
 use std::fs::File;
 use std::io;
 use std::io::BufWriter;
+use std::os::fd::FromRawFd;
 use std::panic::RefUnwindSafe;
 use std::sync::Arc;
 
@@ -61,6 +62,10 @@ impl LogHarness {
     }
 }
 
+// Buffer output up to 4KiB. For JSON output, flush will be called for each record,
+// even if the buffer isn't full.
+const BUF_SIZE: usize = 4096;
+
 // NOTE: Does nothing if logging has already been initialized in this process.
 pub(crate) fn init(service_info: &ServiceInfo, settings: &LoggingSettings) -> BootstrapResult<()> {
     // Already initialized
@@ -71,11 +76,7 @@ pub(crate) fn init(service_info: &ServiceInfo, settings: &LoggingSettings) -> Bo
     // NOTE: OXY-178, default is 128 (https://docs.rs/slog-async/2.7.0/src/slog_async/lib.rs.html#251)
     const CHANNEL_SIZE: usize = 1024;
 
-    // buffer json log lines up to 4kb characters. `set_flush` is enabled on the `JsonDrain` below
-    // so messages less than 4k will still be written even if the buffer isn't full.
-    const BUF_SIZE: usize = 4096;
-
-    let base_drain = match (&settings.output, &settings.format) {
+    let async_drain = match (&settings.output, &settings.format) {
         (LogOutput::Terminal, LogFormat::Text) => {
             let drain = TextDrain::new(TermDecorator::new().stdout().build())
                 .build()
@@ -83,8 +84,8 @@ pub(crate) fn init(service_info: &ServiceInfo, settings: &LoggingSettings) -> Bo
             AsyncDrain::new(drain).chan_size(CHANNEL_SIZE).build()
         }
         (LogOutput::Terminal, LogFormat::Json) => {
-            let buf = BufWriter::with_capacity(BUF_SIZE, io::stdout());
-            let drain = build_json_log_drain(buf);
+            let stdout_writer = stdout_writer_without_line_buffering();
+            let drain = build_json_log_drain(stdout_writer);
             AsyncDrain::new(drain).chan_size(CHANNEL_SIZE).build()
         }
         (LogOutput::File(file), LogFormat::Text) => {
@@ -100,7 +101,7 @@ pub(crate) fn init(service_info: &ServiceInfo, settings: &LoggingSettings) -> Bo
         }
     };
 
-    let root_drain = get_root_drain(settings, Arc::new(base_drain.fuse()));
+    let root_drain = get_root_drain(settings, Arc::new(async_drain.fuse()));
     let root_kv = slog::o!(
         "module" => FnValue(|record| {
             format!("{}:{}", record.module(), record.line())
@@ -122,6 +123,14 @@ pub(crate) fn init(service_info: &ServiceInfo, settings: &LoggingSettings) -> Bo
     let _ = HARNESS.set(harness);
 
     Ok(())
+}
+
+/// Opens fd 1 directly and wraps with a [`BufWriter`] with [`BUF_SIZE`] capacity.
+///
+/// [`io::Stdout`] uses a [`io::LineWriter`] which may cause unnecessary flushing.
+fn stdout_writer_without_line_buffering() -> BufWriter<File> {
+    let stdout = unsafe { File::from_raw_fd(1) };
+    BufWriter::with_capacity(BUF_SIZE, stdout)
 }
 
 fn get_root_drain(
