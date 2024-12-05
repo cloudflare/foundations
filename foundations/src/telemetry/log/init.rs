@@ -20,7 +20,8 @@ use slog_json::{Json as JsonDrain, Json};
 use slog_term::{FullFormat as TextDrain, PlainDecorator, TermDecorator};
 use std::fs::File;
 use std::io;
-use std::io::BufWriter;
+use std::io::{stdout, BufWriter};
+use std::os::fd::{FromRawFd};
 use std::panic::RefUnwindSafe;
 use std::sync::Arc;
 
@@ -71,11 +72,12 @@ pub(crate) fn init(service_info: &ServiceInfo, settings: &LoggingSettings) -> Bo
     // NOTE: OXY-178, default is 128 (https://docs.rs/slog-async/2.7.0/src/slog_async/lib.rs.html#251)
     const CHANNEL_SIZE: usize = 1024;
 
-    // buffer json log lines up to 4kb characters. `set_flush` is enabled on the `JsonDrain` below
-    // so messages less than 4k will still be written even if the buffer isn't full.
+    // Buffer output up to 4KiB. For JSON formatted Terminal output, flush will be called
+    // for each record, even if the buffer isn't full.
     const BUF_SIZE: usize = 4096;
+    const STDOUT_FILENO: i32 = 1;
 
-    let base_drain = match (&settings.output, &settings.format) {
+    let async_drain = match (&settings.output, &settings.format) {
         (LogOutput::Terminal, LogFormat::Text) => {
             let drain = TextDrain::new(TermDecorator::new().stdout().build())
                 .build()
@@ -83,8 +85,7 @@ pub(crate) fn init(service_info: &ServiceInfo, settings: &LoggingSettings) -> Bo
             AsyncDrain::new(drain).chan_size(CHANNEL_SIZE).build()
         }
         (LogOutput::Terminal, LogFormat::Json) => {
-            let buf = BufWriter::with_capacity(BUF_SIZE, io::stdout());
-            let drain = build_json_log_drain(buf);
+            let drain = build_json_log_drain(stdout(), true);
             AsyncDrain::new(drain).chan_size(CHANNEL_SIZE).build()
         }
         (LogOutput::File(file), LogFormat::Text) => {
@@ -95,12 +96,29 @@ pub(crate) fn init(service_info: &ServiceInfo, settings: &LoggingSettings) -> Bo
         }
         (LogOutput::File(file), LogFormat::Json) => {
             let buf = BufWriter::with_capacity(BUF_SIZE, File::create(file)?);
-            let drain = build_json_log_drain(buf);
+            let drain = build_json_log_drain(buf, false);
             AsyncDrain::new(drain).chan_size(CHANNEL_SIZE).build()
+        }
+        (LogOutput::Stdout, log_fmt) => {
+            let stdout = unsafe { File::from_raw_fd(STDOUT_FILENO) };
+            let buf = BufWriter::with_capacity(BUF_SIZE, stdout);
+
+            match log_fmt {
+                LogFormat::Text => {
+                    let drain = TextDrain::new(PlainDecorator::new(buf))
+                        .build()
+                        .fuse();
+                    AsyncDrain::new(drain).chan_size(CHANNEL_SIZE).build()
+                },
+                LogFormat::Json => {
+                    let drain = build_json_log_drain(buf, false);
+                    AsyncDrain::new(drain).chan_size(CHANNEL_SIZE).build()
+                }
+            }
         }
     };
 
-    let root_drain = get_root_drain(settings, Arc::new(base_drain.fuse()));
+    let root_drain = get_root_drain(settings, Arc::new(async_drain.fuse()));
     let root_kv = slog::o!(
         "module" => FnValue(|record| {
             format!("{}:{}", record.module(), record.line())
@@ -165,14 +183,14 @@ where
     Logger::root(drain, kv)
 }
 
-fn build_json_log_drain<O>(output: O) -> Fuse<Json<O>>
+fn build_json_log_drain<O>(output: O, flush: bool) -> Fuse<Json<O>>
 where
     O: io::Write + Send + 'static,
 {
     JsonDrain::new(output)
         .add_default_keys()
         .set_pretty(false)
-        .set_flush(true)
+        .set_flush(flush)
         .build()
         .fuse()
 }

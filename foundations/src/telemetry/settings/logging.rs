@@ -42,13 +42,15 @@ pub struct LoggingSettings {
 #[cfg_attr(feature = "settings", settings(crate_path = "crate"))]
 #[cfg_attr(not(feature = "settings"), derive(Clone, Debug, Default))]
 pub enum LogOutput {
-    /// Write log to terminal.
+    /// Write log to line buffered terminal.
     #[default]
     Terminal,
     /// Write log to file with the specified path.
     ///
     /// File will be created if it doesn't exist and overwritten otherwise.
     File(PathBuf),
+    /// Write log to buffer wrapped fd 1.
+    Stdout
 }
 
 /// Format of the log output.
