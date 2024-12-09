@@ -15,6 +15,7 @@ pub mod internal;
 
 #[cfg(feature = "metrics")]
 pub mod log_volume;
+mod retry_writer;
 
 use self::init::LogHarness;
 use self::internal::current_log;
