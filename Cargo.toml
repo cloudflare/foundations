@@ -29,7 +29,7 @@ foundations = { version = "4.0.0", path = "./foundations" }
 foundations-macros = { version = "4.0.0", path = "./foundations-macros" }
 bindgen = { version = "0.68.1", default-features = false }
 cc = "1.0"
-cf-rustracing = "1.0.1"
+cf-rustracing = "1.1"
 cf-rustracing-jaeger = "1.1"
 clap = "4.4"
 darling = "0.20.10"
@@ -79,6 +79,3 @@ neli = "0.6.4"
 neli-proc-macros = "0.1.3"
 parking_lot_core = "0.9.9"
 thiserror = "1.0.56"
-
-[patch.crates-io]
-cf-rustracing = { git = "https://github.com/cbranch/rustracing.git", rev = "c81f98643547e31d920c73a440c382690bc2cde1" }
