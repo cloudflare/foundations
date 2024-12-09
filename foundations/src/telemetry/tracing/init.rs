@@ -59,7 +59,7 @@ impl TracingHarness {
     }
 
     #[cfg(not(feature = "testing"))]
-    pub(crate) fn tracer(&'static self) -> &Tracer {
+    pub(crate) fn tracer(&'static self) -> &'static Tracer {
         &self.tracer
     }
 }
