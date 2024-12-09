@@ -7,6 +7,7 @@ use super::internal::{LoggerWithKvNestingTracking, SharedLog};
 use crate::telemetry::log::log_volume::LogVolumeMetricsDrain;
 
 use crate::telemetry::log::rate_limit::RateLimitingDrain;
+use crate::telemetry::log::retry_writer::RetryPipeWriter;
 use crate::telemetry::scope::ScopeStack;
 use crate::telemetry::settings::{LogFormat, LogOutput, LoggingSettings};
 use crate::{BootstrapResult, ServiceInfo};
@@ -96,14 +97,14 @@ pub(crate) fn init(service_info: &ServiceInfo, settings: &LoggingSettings) -> Bo
             let drain = build_json_log_drain(writer);
             AsyncDrain::new(drain).chan_size(CHANNEL_SIZE).build()
         }
-        (LogOutput::File(file), LogFormat::Text) => {
-            let drain = TextDrain::new(PlainDecorator::new(File::create(file)?))
-                .build()
-                .fuse();
+        (LogOutput::File(file_path), LogFormat::Text) => {
+            let file = RetryPipeWriter::new(file_path.into())?;
+            let drain = TextDrain::new(PlainDecorator::new(file)).build().fuse();
             AsyncDrain::new(drain).chan_size(CHANNEL_SIZE).build()
         }
-        (LogOutput::File(file), LogFormat::Json) => {
-            let buf = BufWriter::with_capacity(BUF_SIZE, File::create(file)?);
+        (LogOutput::File(file_path), LogFormat::Json) => {
+            let file = RetryPipeWriter::new(file_path.into())?;
+            let buf = BufWriter::with_capacity(BUF_SIZE, file);
             let drain = build_json_log_drain(buf);
             AsyncDrain::new(drain).chan_size(CHANNEL_SIZE).build()
         }
