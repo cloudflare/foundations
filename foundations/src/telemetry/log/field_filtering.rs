@@ -97,7 +97,7 @@ macro_rules! filter {
     }};
 }
 
-impl<'s, F: Filter> Serializer for FieldFilteringSerializer<'s, F> {
+impl<F: Filter> Serializer for FieldFilteringSerializer<'_, F> {
     fn emit_arguments(&mut self, key: Key, val: &Arguments) -> slog::Result {
         filter!(self.emit_arguments(key, val))
     }

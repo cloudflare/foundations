@@ -91,7 +91,7 @@ impl<'s> Iterator for TestTraceIterator<'s> {
     }
 }
 
-impl<'s> FusedIterator for TestTraceIterator<'s> {}
+impl FusedIterator for TestTraceIterator<'_> {}
 
 /// Trace span produced in the [test telemetry context].
 ///
