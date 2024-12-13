@@ -28,7 +28,6 @@ static NOOP_HARNESS: Lazy<TracingHarness> = Lazy::new(|| {
         #[cfg(feature = "testing")]
         test_tracer_scope_stack: Default::default(),
 
-        #[cfg(feature = "telemetry-server")]
         active_roots: Default::default(),
     }
 });
@@ -41,7 +40,6 @@ pub(crate) struct TracingHarness {
     #[cfg(feature = "testing")]
     pub(crate) test_tracer_scope_stack: ScopeStack<Tracer>,
 
-    #[cfg(feature = "telemetry-server")]
     pub(crate) active_roots: crate::telemetry::tracing::live::ActiveRoots,
 }
 
@@ -102,7 +100,6 @@ pub(crate) fn init(
             #[cfg(feature = "testing")]
             test_tracer_scope_stack: Default::default(),
 
-            #[cfg(feature = "telemetry-server")]
             active_roots: Default::default(),
         };
 

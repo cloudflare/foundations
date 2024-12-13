@@ -7,7 +7,6 @@ pub(crate) mod init;
 #[cfg(any(test, feature = "testing"))]
 pub(crate) mod testing;
 
-#[cfg(feature = "telemetry-server")]
 mod live;
 mod output_jaeger_thrift_udp;
 mod rate_limit;
@@ -28,6 +27,17 @@ pub use self::testing::{TestSpan, TestTrace, TestTraceIterator, TestTraceOptions
 
 pub use cf_rustracing::tag::TagValue;
 pub use cf_rustracing_jaeger::span::{SpanContextState as SerializableTraceState, TraceId};
+
+/// Returns active traces as a JSON dump.
+///
+/// The model for this functionality is <https://pkg.go.dev/golang.org/x/net/trace>
+/// although there is no built-in viewer here, we expect you to use Chrome's
+/// `about:tracing` or anything that supports the same JSON log format.
+///
+/// The same output is also available through the telemetry server at `/debug/traces`.
+pub fn get_active_traces() -> String {
+    TracingHarness::get().active_roots.get_active_traces()
+}
 
 /// A macro that wraps function body with a tracing span that is active as long as the function
 /// call lasts.

@@ -1,6 +1,8 @@
 #[cfg(feature = "metrics")]
 use super::metrics;
 use super::settings::TelemetrySettings;
+#[cfg(feature = "tracing")]
+use super::tracing;
 use crate::BootstrapResult;
 use anyhow::Context as _;
 use futures_util::future::{BoxFuture, FutureExt};
@@ -114,11 +116,11 @@ impl RouteMap {
         self.set(TelemetryServerRoute {
             path: "/debug/traces".into(),
             methods: vec![Method::GET],
-            handler: Box::new(|_, settings| {
+            handler: Box::new(|_, _settings| {
                 async move {
                     into_response(
                         "application/json; charset=utf-8",
-                        tracing::output_traces(settings).await,
+                        Ok(tracing::get_active_traces()),
                     )
                 }
                 .boxed()
@@ -293,16 +295,5 @@ mod memory_profiling {
 
     pub(super) async fn heap_stats(settings: Arc<TelemetrySettings>) -> Result<String> {
         profiler(settings)?.heap_stats()
-    }
-}
-
-#[cfg(feature = "tracing")]
-mod tracing {
-    use super::*;
-    use crate::telemetry::tracing::init::TracingHarness;
-    use crate::Result;
-
-    pub(super) async fn output_traces(_settings: Arc<TelemetrySettings>) -> Result<String> {
-        Ok(TracingHarness::get().active_roots.get_active_traces())
     }
 }

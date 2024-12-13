@@ -1,4 +1,5 @@
 use super::init::TracingHarness;
+use super::live::SharedSpanHandle;
 use super::StartTraceOptions;
 use rand::{self, Rng};
 
@@ -11,71 +12,34 @@ use std::sync::Arc;
 
 pub(crate) type Tracer = cf_rustracing::Tracer<BoxSampler<SpanContextState>, SpanContextState>;
 
-#[cfg(not(feature = "telemetry-server"))]
-mod span_inner {
-    use super::*;
+/// Shared span with mutability and additional reference tracking for
+/// ad-hoc inspection.
+#[derive(Clone, Debug)]
+pub(crate) struct SharedSpanInner(SharedSpanHandle);
 
-    /// Shared span with mutability.
-    #[derive(Clone, Debug)]
-    pub(crate) struct SharedSpanInner(Arc<parking_lot::RwLock<Span>>);
-
-    impl SharedSpanInner {
-        pub(crate) fn new(span: Span) -> Self {
-            Self(Arc::new(parking_lot::RwLock::new(span)))
-        }
-    }
-
-    impl From<SharedSpanInner> for Arc<parking_lot::RwLock<Span>> {
-        fn from(value: SharedSpanInner) -> Self {
-            value.0
-        }
-    }
-
-    impl std::ops::Deref for SharedSpanInner {
-        type Target = Arc<parking_lot::RwLock<Span>>;
-
-        fn deref(&self) -> &Self::Target {
-            &self.0
-        }
+impl SharedSpanInner {
+    pub(crate) fn new(span: Span) -> Self {
+        Self(
+            TracingHarness::get()
+                .active_roots
+                .track(Arc::new(parking_lot::RwLock::new(span))),
+        )
     }
 }
 
-#[cfg(feature = "telemetry-server")]
-mod span_inner {
-    use super::*;
-    use crate::telemetry::tracing::live::SharedSpanHandle;
-
-    /// Shared span with mutability and additional reference tracking for
-    /// ad-hoc inspection.
-    #[derive(Clone, Debug)]
-    pub(crate) struct SharedSpanInner(SharedSpanHandle);
-
-    impl SharedSpanInner {
-        pub(crate) fn new(span: Span) -> Self {
-            Self(
-                TracingHarness::get()
-                    .active_roots
-                    .track(Arc::new(parking_lot::RwLock::new(span))),
-            )
-        }
-    }
-
-    impl From<SharedSpanInner> for Arc<parking_lot::RwLock<Span>> {
-        fn from(value: SharedSpanInner) -> Self {
-            Arc::clone(&value.0)
-        }
-    }
-
-    impl std::ops::Deref for SharedSpanInner {
-        type Target = SharedSpanHandle;
-
-        fn deref(&self) -> &Self::Target {
-            &self.0
-        }
+impl From<SharedSpanInner> for Arc<parking_lot::RwLock<Span>> {
+    fn from(value: SharedSpanInner) -> Self {
+        Arc::clone(&value.0)
     }
 }
 
-use self::span_inner::SharedSpanInner;
+impl std::ops::Deref for SharedSpanInner {
+    type Target = SharedSpanHandle;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
 
 #[derive(Debug, Clone)]
 pub(crate) struct SharedSpan {
