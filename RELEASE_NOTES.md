@@ -1,5 +1,10 @@
 
+4.3.0
+- 2024-12-13 Expose active traces without telemetry server
+- 2024-12-09 Expose active traces through telemetry server (#87)
+
 4.2.0
+- 2024-11-18 Release 4.2.0 (#97)
 - 2024-11-18 Support configuring behaviour when excessive log nesting is reached (#96)
 
 4.1.1
