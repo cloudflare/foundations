@@ -25,10 +25,10 @@ impl RetryPipeWriter {
         if !meta.file_type().is_fifo() {
             return Err(io::Error::new(io::ErrorKind::InvalidInput, "Not a fifo"));
         }
-        let writer = Self::open_file(&path)?;
+        let file = Self::open_file(&path)?;
         Ok(Self {
             path,
-            pipe_file: writer,
+            pipe_file: file,
             max_attempts: 1,
         })
     }
@@ -38,8 +38,7 @@ impl RetryPipeWriter {
     }
 
     fn reopen_file(&mut self) -> Result<(), io::Error> {
-        let new_writer = Self::open_file(&self.path)?;
-        let _ = std::mem::replace(&mut self.pipe_file, new_writer);
+        let _ = std::mem::replace(&mut self.pipe_file, Self::open_file(&self.path)?);
         Ok(())
     }
 }
