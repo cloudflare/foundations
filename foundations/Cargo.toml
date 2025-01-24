@@ -241,7 +241,6 @@ serde = { workspace = true, features = ["rc"] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 ipnetwork = { workspace = true }
 nix = { workspace = true , features = ["fs"] }
-nanoid = { workspace = true }
 
 [build-dependencies]
 bindgen = { workspace = true, features = ["runtime"], optional = true }
