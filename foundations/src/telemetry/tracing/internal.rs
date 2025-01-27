@@ -1,6 +1,7 @@
 use super::init::TracingHarness;
 use super::live::SharedSpanHandle;
 use super::StartTraceOptions;
+use parking_lot::RwLock;
 use rand::{self, Rng};
 
 use cf_rustracing::sampler::BoxSampler;
@@ -15,29 +16,45 @@ pub(crate) type Tracer = cf_rustracing::Tracer<BoxSampler<SpanContextState>, Spa
 /// Shared span with mutability and additional reference tracking for
 /// ad-hoc inspection.
 #[derive(Clone, Debug)]
-pub(crate) struct SharedSpanInner(SharedSpanHandle);
+pub(crate) enum SharedSpanInner {
+    Tracked(SharedSpanHandle),
+    Unsampled(Arc<RwLock<Span>>),
+}
 
 impl SharedSpanInner {
     pub(crate) fn new(span: Span) -> Self {
-        Self(
-            TracingHarness::get()
-                .active_roots
-                .track(Arc::new(parking_lot::RwLock::new(span))),
-        )
+        if span.is_sampled() {
+            Self::Tracked(
+                TracingHarness::get()
+                    .active_roots
+                    .track(Arc::new(RwLock::new(span))),
+            )
+        } else {
+            Self::Unsampled(Arc::new(RwLock::new(span)))
+        }
+    }
+
+    pub(crate) fn read(&self) -> parking_lot::RwLockReadGuard<'_, Span> {
+        match self {
+            SharedSpanInner::Tracked(handle) => handle.read(),
+            SharedSpanInner::Unsampled(rw_lock) => rw_lock.read(),
+        }
+    }
+
+    pub(crate) fn write(&self) -> parking_lot::RwLockWriteGuard<'_, Span> {
+        match self {
+            SharedSpanInner::Tracked(handle) => handle.write(),
+            SharedSpanInner::Unsampled(rw_lock) => rw_lock.write(),
+        }
     }
 }
 
-impl From<SharedSpanInner> for Arc<parking_lot::RwLock<Span>> {
+impl From<SharedSpanInner> for Arc<RwLock<Span>> {
     fn from(value: SharedSpanInner) -> Self {
-        Arc::clone(&value.0)
-    }
-}
-
-impl std::ops::Deref for SharedSpanInner {
-    type Target = SharedSpanHandle;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
+        match value {
+            SharedSpanInner::Tracked(handle) => Arc::clone(&handle),
+            SharedSpanInner::Unsampled(rw_lock) => Arc::clone(&rw_lock),
+        }
     }
 }
 
