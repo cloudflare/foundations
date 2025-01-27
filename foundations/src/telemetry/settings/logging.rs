@@ -45,6 +45,8 @@ pub enum LogOutput {
     /// Write log to terminal.
     #[default]
     Terminal,
+    /// Write log to [`std::io::Stderr`].
+    Stderr,
     /// Write log to file with the specified path.
     ///
     /// File will be created if it doesn't exist and overwritten otherwise.

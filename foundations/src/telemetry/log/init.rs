@@ -77,15 +77,23 @@ pub(crate) fn init(service_info: &ServiceInfo, settings: &LoggingSettings) -> Bo
     const CHANNEL_SIZE: usize = 1024;
 
     let async_drain = match (&settings.output, &settings.format) {
-        (LogOutput::Terminal, LogFormat::Text) => {
-            let drain = TextDrain::new(TermDecorator::new().stdout().build())
-                .build()
-                .fuse();
+        (output @ (LogOutput::Terminal | LogOutput::Stderr), LogFormat::Text) => {
+            let decorator = if matches!(output, LogOutput::Terminal) {
+                TermDecorator::new().stdout().build()
+            } else {
+                TermDecorator::new().stderr().build()
+            };
+
+            let drain = TextDrain::new(decorator).build().fuse();
             AsyncDrain::new(drain).chan_size(CHANNEL_SIZE).build()
         }
-        (LogOutput::Terminal, LogFormat::Json) => {
-            let stdout_writer = stdout_writer_without_line_buffering();
-            let drain = build_json_log_drain(stdout_writer);
+        (output @ (LogOutput::Terminal | LogOutput::Stderr), LogFormat::Json) => {
+            let writer = if matches!(output, LogOutput::Terminal) {
+                stdout_writer_without_line_buffering()
+            } else {
+                stderr_writer_without_line_buffering()
+            };
+            let drain = build_json_log_drain(writer);
             AsyncDrain::new(drain).chan_size(CHANNEL_SIZE).build()
         }
         (LogOutput::File(file), LogFormat::Text) => {
@@ -131,6 +139,12 @@ pub(crate) fn init(service_info: &ServiceInfo, settings: &LoggingSettings) -> Bo
 fn stdout_writer_without_line_buffering() -> BufWriter<File> {
     let stdout = unsafe { File::from_raw_fd(1) };
     BufWriter::with_capacity(BUF_SIZE, stdout)
+}
+
+/// Opens fd 2 directly and wraps with a [`BufWriter`] with [`BUF_SIZE`] capacity.
+fn stderr_writer_without_line_buffering() -> BufWriter<File> {
+    let stderr = unsafe { File::from_raw_fd(2) };
+    BufWriter::with_capacity(BUF_SIZE, stderr)
 }
 
 fn get_root_drain(
