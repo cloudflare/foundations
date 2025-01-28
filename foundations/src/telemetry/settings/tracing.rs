@@ -26,6 +26,14 @@ pub struct TracingSettings {
 
     /// The strategy used to sample traces.
     pub sampling_strategy: SamplingStrategy,
+    /// Enable liveness tracking of all generated spans. Even if the spans are
+    /// unsampled. This can be useful for debugging potential hangs cause by
+    /// some objects remaining in memory.  The default value is false, meaning
+    /// only sampled spans are tracked.
+    ///
+    /// To get a json dump of the currently active spans, query the telemetry
+    /// server's route at `/debug/traces`.
+    pub liveness_tracking: LivenessTrackingSettings,
 }
 
 #[cfg(not(feature = "settings"))]
@@ -35,6 +43,7 @@ impl Default for TracingSettings {
             enabled: TracingSettings::default_enabled(),
             output: Default::default(),
             sampling_strategy: Default::default(),
+            liveness_tracking: Default::default(),
         }
     }
 }
@@ -171,5 +180,38 @@ pub enum SamplingStrategy {
 impl Default for SamplingStrategy {
     fn default() -> Self {
         Self::Active(Default::default())
+    }
+}
+
+/// Controls liveness tracking of all generated spans. When liveness tracking is
+/// enabled, a sample of spans are kept in-memory until they are finished.
+/// Querying the telemetry server at `/debug/traces` will dump all tracked spans
+/// as a Chrome JSON trace log. See `chrome://tracing/`.
+///
+/// When tracking is enabled, by default only sampled spans are tracked.
+#[cfg_attr(
+    feature = "settings",
+    settings(crate_path = "crate", impl_default = false)
+)]
+#[cfg_attr(not(feature = "settings"), derive(Clone, Debug, serde::Deserialize))]
+pub struct LivenessTrackingSettings {
+    /// Enables liveness tracking.
+    pub enabled: bool,
+    /// Enable liveness tracking of all generated spans. Even if the spans are
+    /// unsampled. This can be useful for debugging potential hangs caused by
+    /// some objects remaining in memory. The default value is `false`, meaning
+    /// _only sampled_ spans are tracked.
+    pub track_all_spans: bool,
+}
+
+// we want liveness tracking to be enabled for tests and clippy only sees
+// `enabled: false`.
+#[allow(clippy::derivable_impls)]
+impl Default for LivenessTrackingSettings {
+    fn default() -> Self {
+        Self {
+            enabled: cfg!(test),
+            track_all_spans: false,
+        }
     }
 }

@@ -1,4 +1,6 @@
-use foundations::telemetry::settings::{TelemetryServerSettings, TelemetrySettings};
+use foundations::telemetry::settings::{
+    LivenessTrackingSettings, TelemetryServerSettings, TelemetrySettings, TracingSettings,
+};
 use foundations::telemetry::{TelemetryConfig, TelemetryContext, TelemetryServerRoute};
 use futures_util::FutureExt;
 use hyper::{Method, Response};
@@ -22,6 +24,13 @@ async fn telemetry_server() {
         #[cfg(target_os = "linux")]
         memory_profiler: MemoryProfilerSettings {
             enabled: true,
+            ..Default::default()
+        },
+        tracing: TracingSettings {
+            liveness_tracking: LivenessTrackingSettings {
+                enabled: true,
+                track_all_spans: true,
+            },
             ..Default::default()
         },
         ..Default::default()

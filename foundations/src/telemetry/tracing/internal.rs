@@ -1,12 +1,12 @@
 use super::init::TracingHarness;
-use super::live::SharedSpanHandle;
 use super::StartTraceOptions;
-use parking_lot::RwLock;
-use rand::{self, Rng};
 
+use crate::telemetry::tracing::live::LiveReferenceHandle;
 use cf_rustracing::sampler::BoxSampler;
 use cf_rustracing::tag::Tag;
 use cf_rustracing_jaeger::span::{Span, SpanContext, SpanContextState};
+use parking_lot::RwLock;
+use rand::{self, Rng};
 use std::borrow::Cow;
 use std::error::Error;
 use std::sync::Arc;
@@ -16,44 +16,40 @@ pub(crate) type Tracer = cf_rustracing::Tracer<BoxSampler<SpanContextState>, Spa
 /// Shared span with mutability and additional reference tracking for
 /// ad-hoc inspection.
 #[derive(Clone, Debug)]
-pub(crate) enum SharedSpanInner {
-    Tracked(SharedSpanHandle),
-    Unsampled(Arc<RwLock<Span>>),
+pub(crate) enum SharedSpanHandle {
+    Tracked(Arc<LiveReferenceHandle<Arc<RwLock<Span>>>>),
+    Untracked(Arc<RwLock<Span>>),
 }
 
-impl SharedSpanInner {
+impl SharedSpanHandle {
     pub(crate) fn new(span: Span) -> Self {
-        if span.is_sampled() {
-            Self::Tracked(
-                TracingHarness::get()
-                    .active_roots
-                    .track(Arc::new(RwLock::new(span))),
-            )
-        } else {
-            Self::Unsampled(Arc::new(RwLock::new(span)))
-        }
+        let is_sampled = span.is_sampled();
+
+        TracingHarness::get()
+            .active_roots
+            .track(Arc::new(RwLock::new(span)), is_sampled)
     }
 
     pub(crate) fn read(&self) -> parking_lot::RwLockReadGuard<'_, Span> {
         match self {
-            SharedSpanInner::Tracked(handle) => handle.read(),
-            SharedSpanInner::Unsampled(rw_lock) => rw_lock.read(),
+            SharedSpanHandle::Tracked(handle) => handle.read(),
+            SharedSpanHandle::Untracked(rw_lock) => rw_lock.read(),
         }
     }
 
     pub(crate) fn write(&self) -> parking_lot::RwLockWriteGuard<'_, Span> {
         match self {
-            SharedSpanInner::Tracked(handle) => handle.write(),
-            SharedSpanInner::Unsampled(rw_lock) => rw_lock.write(),
+            SharedSpanHandle::Tracked(handle) => handle.write(),
+            SharedSpanHandle::Untracked(rw_lock) => rw_lock.write(),
         }
     }
 }
 
-impl From<SharedSpanInner> for Arc<RwLock<Span>> {
-    fn from(value: SharedSpanInner) -> Self {
+impl From<SharedSpanHandle> for Arc<RwLock<Span>> {
+    fn from(value: SharedSpanHandle) -> Self {
         match value {
-            SharedSpanInner::Tracked(handle) => Arc::clone(&handle),
-            SharedSpanInner::Unsampled(rw_lock) => Arc::clone(&rw_lock),
+            SharedSpanHandle::Tracked(handle) => Arc::clone(&handle),
+            SharedSpanHandle::Untracked(rw_lock) => Arc::clone(&rw_lock),
         }
     }
 }
@@ -62,7 +58,7 @@ impl From<SharedSpanInner> for Arc<RwLock<Span>> {
 pub(crate) struct SharedSpan {
     // NOTE: we intentionally use a lock without poisoning here to not
     // panic the threads if they just share telemetry with failed thread.
-    pub(crate) inner: SharedSpanInner,
+    pub(crate) inner: SharedSpanHandle,
     // NOTE: store sampling flag separately, so we don't need to acquire lock
     // every time we need to check the flag.
     is_sampled: bool,
@@ -73,7 +69,7 @@ impl From<Span> for SharedSpan {
         let is_sampled = inner.is_sampled();
 
         Self {
-            inner: SharedSpanInner::new(inner),
+            inner: SharedSpanHandle::new(inner),
             is_sampled,
         }
     }

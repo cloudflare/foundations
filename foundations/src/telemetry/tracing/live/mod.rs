@@ -1,17 +1,20 @@
 mod event_output;
 mod live_reference_set;
 
-use cf_rustracing_jaeger::span::Span;
-use live_reference_set::{LiveReferenceHandle, LiveReferenceSet};
+use crate::telemetry::settings::LivenessTrackingSettings;
+use crate::telemetry::tracing::internal::SharedSpanHandle;
+use cf_rustracing_jaeger::Span;
+use live_reference_set::LiveReferenceSet;
+use parking_lot::RwLock;
 use std::sync::Arc;
 use std::time::SystemTime;
 
-type SharedSpanInner = Arc<parking_lot::RwLock<Span>>;
-pub(crate) type SharedSpanHandle = Arc<LiveReferenceHandle<SharedSpanInner>>;
+pub(crate) use live_reference_set::LiveReferenceHandle;
 
 pub(crate) struct ActiveRoots {
-    roots: LiveReferenceSet<SharedSpanInner>,
+    roots: LiveReferenceSet<Arc<RwLock<Span>>>,
     start: SystemTime,
+    settings: LivenessTrackingSettings,
 }
 
 impl Default for ActiveRoots {
@@ -19,17 +22,29 @@ impl Default for ActiveRoots {
         Self {
             roots: Default::default(),
             start: SystemTime::now(),
+            settings: Default::default(),
         }
     }
 }
 
 impl ActiveRoots {
+    pub(crate) fn new(settings: LivenessTrackingSettings) -> Self {
+        Self {
+            settings,
+            ..Default::default()
+        }
+    }
+
     pub(crate) fn get_active_traces(&self) -> String {
         event_output::spans_to_trace_events(self.start, &self.roots.get_live_references())
     }
 
-    pub(crate) fn track(&self, value: SharedSpanInner) -> SharedSpanHandle {
-        self.roots.track(value)
+    pub(crate) fn track(&self, value: Arc<RwLock<Span>>, is_sampled: bool) -> SharedSpanHandle {
+        if self.settings.enabled && (self.settings.track_all_spans || is_sampled) {
+            SharedSpanHandle::Tracked(self.roots.track(value))
+        } else {
+            SharedSpanHandle::Untracked(value)
+        }
     }
 }
 
