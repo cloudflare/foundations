@@ -14,7 +14,7 @@ use std::path::PathBuf;
 /// where actually processed by the read side.
 pub(crate) struct RetryPipeWriter {
     path: PathBuf,
-    pipe_file: Box<File>,
+    pipe_file: File,
     max_attempts: i32,
 }
 
@@ -32,8 +32,8 @@ impl RetryPipeWriter {
         })
     }
 
-    fn open_file(path: &PathBuf) -> io::Result<Box<File>> {
-        Ok(Box::new(OpenOptions::new().write(true).open(path)?))
+    fn open_file(path: &PathBuf) -> io::Result<File> {
+        Ok(OpenOptions::new().write(true).open(path)?)
     }
 
     fn reopen_file(&mut self) -> Result<(), io::Error> {
