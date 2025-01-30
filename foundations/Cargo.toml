@@ -238,6 +238,7 @@ neli-proc-macros = { workspace = true, optional = true }
 [dev-dependencies]
 reqwest = { workspace = true }
 serde = { workspace = true, features = ["rc"] }
+tempfile = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 ipnetwork = { workspace = true }
 nix = { workspace = true , features = ["fs"] }
