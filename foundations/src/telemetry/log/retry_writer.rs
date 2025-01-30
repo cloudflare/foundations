@@ -19,7 +19,7 @@ pub(crate) struct RetryPipeWriter {
 }
 
 impl RetryPipeWriter {
-    pub fn new(path: PathBuf) -> io::Result<Self> {
+    pub(super) fn new(path: PathBuf) -> io::Result<Self> {
         let file = Self::open_file(&path)?;
         Ok(Self {
             path,
@@ -33,7 +33,7 @@ impl RetryPipeWriter {
     }
 
     fn open_file(path: &PathBuf) -> io::Result<File> {
-        Ok(OpenOptions::new().write(true).open(path)?)
+        OpenOptions::new().write(true).open(path)
     }
 
     fn reopen_file(&mut self) -> Result<(), io::Error> {
