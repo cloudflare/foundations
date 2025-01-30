@@ -26,6 +26,13 @@ pub struct TracingSettings {
 
     /// The strategy used to sample traces.
     pub sampling_strategy: SamplingStrategy,
+    /// Enable liveness tracking of all generated spans. Even if the spans are
+    /// unsampled. This can be useful for debugging potential hangs cause by
+    /// some objects remaining in memory.  The default value is false, meaning
+    /// only sampled spans are tracked.
+    ///
+    /// To get a json dump of the currently active spans, query: `/debug/traces`
+    pub track_all_spans: bool,
 }
 
 #[cfg(not(feature = "settings"))]
@@ -35,6 +42,7 @@ impl Default for TracingSettings {
             enabled: TracingSettings::default_enabled(),
             output: Default::default(),
             sampling_strategy: Default::default(),
+            track_all_spans: false,
         }
     }
 }
