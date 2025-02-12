@@ -23,7 +23,9 @@ pub(crate) fn spans_to_trace_events(
 
     for span in spans {
         let span_ref = span.read();
-        let span_state = span_ref.context().unwrap().state();
+        let Some(span_state) = span_ref.context().map(|c| c.state()) else {
+            continue;
+        };
         let trace_id = span_state.trace_id().to_string();
         let name = span_ref.operation_name();
 
