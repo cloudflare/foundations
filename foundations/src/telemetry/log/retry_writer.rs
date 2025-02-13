@@ -5,13 +5,15 @@ use std::path::PathBuf;
 
 /// A writer which retries if an [`io::ErrorKind::BrokenPipe`] is returned.
 ///
-/// Gives up and return an error after the max number of attempts or if any other errors are encountered.
-///
 /// Intended for use when writing to a pipe (fifo) with a reader which may randomly close and then
-/// reopen read side.
+/// reopen read side it will give and return an error after the max number of attempts or if any
+/// other type of error occures during reconnect or subsequent write operations.
 ///
-/// *WARNING*: This may cause duplication of data as it's not possible to know what bytes
-/// where actually processed by the read side.
+/// Writes will be blocked while re-opening the pipe and once connected the next writes
+/// may block until the reader has connected. Blocking is prefered over dropping since this will provide
+/// backpressure to wrappers like [`slog_async::Async`] which by default will drop and report
+/// records once the internal channel is overflowed. Dropped record reports may also be dropped if
+/// the reader does not recover in a timely manner.
 pub(crate) struct RetryPipeWriter {
     path: PathBuf,
     pipe_file: File,
@@ -25,8 +27,8 @@ impl RetryPipeWriter {
             path,
             pipe_file: file,
             // This number was selected by casually observing unit test failures.
-            // It's assumed that this simple approach will cover most cases.
-            // Further observation may show the need to either make this configurable
+            // It's assumed that this simple approach will cover most cases but
+            // further usage and observation may show the need to either make this configurable
             // or use an entirely differeing retry strategy.
             max_attempts: 10,
         })
