@@ -1,9 +1,16 @@
 //! Outputs telemetry spans in Chrome JSON trace format (i.e. the format used by about:tracing).
-use super::SharedSpanHandle;
+
+use crate::telemetry::tracing::live::LiveReferenceHandle;
+use cf_rustracing_jaeger::Span;
+use parking_lot::RwLock;
+use std::sync::Arc;
 use std::time::SystemTime;
 
 /// Outputs a slice of shared spans as a Chrome JSON trace log.
-pub(crate) fn spans_to_trace_events(epoch: SystemTime, spans: &[SharedSpanHandle]) -> String {
+pub(crate) fn spans_to_trace_events(
+    epoch: SystemTime,
+    spans: &[Arc<LiveReferenceHandle<Arc<RwLock<Span>>>>],
+) -> String {
     use cf_rustracing::span::InspectableSpan;
 
     let mut log_builder = TraceLogBuilder::new();
@@ -16,7 +23,9 @@ pub(crate) fn spans_to_trace_events(epoch: SystemTime, spans: &[SharedSpanHandle
 
     for span in spans {
         let span_ref = span.read();
-        let span_state = span_ref.context().unwrap().state();
+        let Some(span_state) = span_ref.context().map(|c| c.state()) else {
+            continue;
+        };
         let trace_id = span_state.trace_id().to_string();
         let name = span_ref.operation_name();
 

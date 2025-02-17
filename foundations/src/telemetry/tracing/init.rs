@@ -2,6 +2,7 @@ use super::internal::{SharedSpan, Tracer};
 use super::output_jaeger_thrift_udp;
 use crate::telemetry::scope::ScopeStack;
 use crate::telemetry::settings::{SamplingStrategy, TracesOutput, TracingSettings};
+use crate::telemetry::tracing::live::ActiveRoots;
 use crate::{BootstrapResult, ServiceInfo};
 use cf_rustracing_jaeger::span::SpanReceiver;
 use futures_util::future::BoxFuture;
@@ -100,7 +101,7 @@ pub(crate) fn init(
             #[cfg(feature = "testing")]
             test_tracer_scope_stack: Default::default(),
 
-            active_roots: Default::default(),
+            active_roots: ActiveRoots::new(settings.liveness_tracking.clone()),
         };
 
         let _ = HARNESS.set(harness);
