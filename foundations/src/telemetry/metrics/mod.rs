@@ -25,6 +25,7 @@ pub mod internal;
 use internal::{ErasedInfoMetric, Registries};
 
 pub use gauge::{GaugeGuard, RangeGauge};
+pub use prometheus_client::metrics::exemplar::{CounterWithExemplar, HistogramWithExemplars};
 pub use prometheus_client::metrics::family::MetricConstructor;
 pub use prometheus_client::metrics::gauge::Gauge;
 pub use prometheus_client::metrics::histogram::Histogram;
@@ -60,8 +61,10 @@ pub fn collect(settings: &MetricsSettings) -> Result<String> {
 /// are reexported from this module for convenience:
 ///
 /// * [`Counter`]
+/// * [`CounterWithExemplar`]
 /// * [`Gauge`]
 /// * [`Histogram`]
+/// * [`HistogramWithExemplars`]
 /// * [`TimeHistogram`]
 ///
 /// The metrics associated with the functions are automatically registered in a global
@@ -361,6 +364,12 @@ pub struct HistogramBuilder {
 impl MetricConstructor<Histogram> for HistogramBuilder {
     fn new_metric(&self) -> Histogram {
         Histogram::new(self.buckets.iter().cloned())
+    }
+}
+
+impl<S> MetricConstructor<HistogramWithExemplars<S>> for HistogramBuilder {
+    fn new_metric(&self) -> HistogramWithExemplars<S> {
+        HistogramWithExemplars::new(self.buckets.iter().cloned())
     }
 }
 
