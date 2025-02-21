@@ -1,5 +1,19 @@
 
-4.3.0
+4.4.0
+- 2025-02-20 Re-export CounterWithExemplar and HistogramWithExemplars
+- 2025-02-17 OXY-1514: only track sampled spans and through a setting track all spans. (#107)
+- 2025-02-13 Rewrite docs noting blocking behavior and expectations when used with
+- 2025-01-30 Add tempfile dep to dev-dependencies
+- 2025-01-30 Fix clippy warnings
+- 2025-01-29 Remove unnecessary Box
+- 2025-01-24 Cleanup unit tests
+- 2025-01-08 Fix inconsistent naming
+- 2024-12-09 Add RetryFileWriter to handle BrokenPipe errors
+- 2024-11-11 More expressive error for EMSGSIZE from Jaeger reporter
+- 2024-11-21 ci: don't run semgrep so often
+- 2025-01-27 OXY-1516: support stderr as a log output target
+- 2024-12-05  Use BufWriter wrapped fd 1 instead of line buffered io::Stdout for Terminal+JSON. This helps avoid unnecessary flushing.
+- 2024-12-18 Release 4.3.0 (#104)
 - 2024-12-13 Expose active traces without telemetry server
 - 2024-12-09 Expose active traces through telemetry server (#87)
 
