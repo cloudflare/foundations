@@ -1,4 +1,4 @@
-use std::fs::{File, OpenOptions};
+use std::fs::File;
 use std::io;
 use std::io::Write;
 use std::path::PathBuf;
@@ -22,24 +22,20 @@ pub(crate) struct RetryPipeWriter {
 
 impl RetryPipeWriter {
     pub(super) fn new(path: PathBuf) -> io::Result<Self> {
-        let file = Self::open_file(&path)?;
+        let file = File::create(&path)?;
         Ok(Self {
             path,
             pipe_file: file,
             // This number was selected by casually observing unit test failures.
             // It's assumed that this simple approach will cover most cases but
             // further usage and observation may show the need to either make this configurable
-            // or use an entirely differeing retry strategy.
+            // or use an entirely different retry strategy.
             max_attempts: 10,
         })
     }
 
-    fn open_file(path: &PathBuf) -> io::Result<File> {
-        OpenOptions::new().write(true).open(path)
-    }
-
     fn reopen_file(&mut self) -> Result<(), io::Error> {
-        let _ = std::mem::replace(&mut self.pipe_file, Self::open_file(&self.path)?);
+        let _ = std::mem::replace(&mut self.pipe_file, File::create(&self.path)?);
         Ok(())
     }
 }
@@ -87,7 +83,29 @@ mod tests {
     use tempfile::NamedTempFile;
 
     #[test]
-    fn test_retry_file() {
+    fn test_regular_file() {
+        let tmp_path = NamedTempFile::new().unwrap().into_temp_path();
+        let file_path = tmp_path.to_path_buf();
+        tmp_path.close().unwrap();
+        // The tmpfile should now be gone and
+        // the retry writer can create it.
+        assert!(!file_path.exists());
+        const TEST_MSG: &[u8] = "test log message".as_bytes();
+        {
+            let mut retrying_file = RetryPipeWriter::new(file_path.clone()).unwrap();
+            let _ = retrying_file.write(TEST_MSG).unwrap();
+        }
+        let mut reader = OpenOptions::new()
+            .read(true)
+            .open(file_path.clone())
+            .unwrap();
+        let mut buffer = [0; TEST_MSG.len()];
+        let _ = reader.read(&mut buffer[..]).unwrap();
+        assert_eq!(TEST_MSG, buffer);
+    }
+
+    #[test]
+    fn test_retry_pipe() {
         let tmp_path = NamedTempFile::new().unwrap().into_temp_path();
         let fifo_path = tmp_path.to_path_buf();
         tmp_path.close().unwrap();
