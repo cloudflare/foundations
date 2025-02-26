@@ -1,5 +1,9 @@
 
+4.4.1
+- 2025-02-26 Report metrics format as openmetrics to allow exemplars
+
 4.4.0
+- 2025-02-21 Release 4.4.0
 - 2025-02-20 Re-export CounterWithExemplar and HistogramWithExemplars
 - 2025-02-17 OXY-1514: only track sampled spans and through a setting track all spans. (#107)
 - 2025-02-13 Rewrite docs noting blocking behavior and expectations when used with
