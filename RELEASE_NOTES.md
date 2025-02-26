@@ -1,5 +1,8 @@
+4.4.2
+- 2025-02-26 Logging: Use File::create when opening output file
 
 4.4.1
+- 2025-02-26 Release 4.4.1
 - 2025-02-26 Report metrics format as openmetrics to allow exemplars
 
 4.4.0
@@ -85,8 +88,6 @@
 - 2024-03-11 Introduce TelemetryDriver
 - 2024-03-11 Make tracer exporters configurable
 - 2024-03-26 Improve metrics bind error message
-
-3.3.0
 - 2024-03-21 Release 3.3.0
 - 2024-03-21 Fix new lints
 - 2024-03-19 Construct metrics registry with default() when name_in_metrics is empty
@@ -100,11 +101,7 @@
 - 2024-02-15 Fix potential deadlock in `link_new_trace_with_current`
 - 2024-02-12 ci: add docsrs and minver checks (#20)
 - 2024-02-09 docs: fix typo in service_info macro doc comments (#19)
-
-3.2.1
 - 2024-02-05 Release 3.2.1
-
-3.2.0
 - 2024-02-05 Release 3.2.0
 - 2024-02-05 telemetry: add tokio runtime metrics (#12)
 - 2024-02-02 telemetry: make logger verbosity public
@@ -112,12 +109,8 @@
 - 2024-01-31 Enable feature `all` on socket2, should address #5
 - 2024-02-01 Disable `default-features` for dependency `prometheus`
 - 2024-01-31 ci: add macos to features check ci
-
-3.1.1
 - 2024-01-26 Release 3.1.1
 - 2024-01-26 Add check for missing seccomp sources to ensure that they are always published
-
-3.1.0
 - 2024-01-26 Release 3.1.0
 - 2024-01-26 Merge pull request #2 from cloudflare/android-ci
 - 2024-01-26 Introduce feature sets for clients
