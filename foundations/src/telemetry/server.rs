@@ -74,7 +74,7 @@ impl RouteMap {
             handler: Box::new(|_, settings| {
                 async move {
                     into_response(
-                        "text/plain; version=0.0.4",
+                        "application/openmetrics-text; version=1.0.0; charset=utf-8",
                         metrics::collect(&settings.metrics),
                     )
                 }
