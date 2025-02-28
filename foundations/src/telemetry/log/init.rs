@@ -22,7 +22,6 @@ use slog_term::{FullFormat as TextDrain, PlainDecorator, TermDecorator};
 use std::fs::File;
 use std::io;
 use std::io::BufWriter;
-use std::os::fd::FromRawFd;
 use std::panic::RefUnwindSafe;
 use std::sync::Arc;
 
@@ -137,14 +136,44 @@ pub(crate) fn init(service_info: &ServiceInfo, settings: &LoggingSettings) -> Bo
 /// Opens fd 1 directly and wraps with a [`BufWriter`] with [`BUF_SIZE`] capacity.
 ///
 /// [`io::Stdout`] uses a [`io::LineWriter`] which may cause unnecessary flushing.
+#[cfg(not(target_family = "windows"))]
 fn stdout_writer_without_line_buffering() -> BufWriter<File> {
-    let stdout = unsafe { File::from_raw_fd(1) };
+    use std::os::fd::{AsRawFd, FromRawFd};
+
+    let stdout = std::io::stdout();
+    let stdout = unsafe { File::from_raw_fd(stdout.as_raw_fd()) };
+    BufWriter::with_capacity(BUF_SIZE, stdout)
+}
+
+/// Opens fd 1 directly and wraps with a [`BufWriter`] with [`BUF_SIZE`] capacity.
+///
+/// [`io::Stdout`] uses a [`io::LineWriter`] which may cause unnecessary flushing.
+#[cfg(target_family = "windows")]
+fn stdout_writer_without_line_buffering() -> BufWriter<File> {
+    use std::os::windows::io::{AsRawHandle, FromRawHandle};
+
+    let stdout = std::io::stdout();
+    let stdout = unsafe { File::from_raw_handle(stdout.as_raw_handle()) };
     BufWriter::with_capacity(BUF_SIZE, stdout)
 }
 
 /// Opens fd 2 directly and wraps with a [`BufWriter`] with [`BUF_SIZE`] capacity.
+#[cfg(not(target_family = "windows"))]
 fn stderr_writer_without_line_buffering() -> BufWriter<File> {
-    let stderr = unsafe { File::from_raw_fd(2) };
+    use std::os::fd::{AsRawFd, FromRawFd};
+
+    let stderr = std::io::stderr();
+    let stderr = unsafe { File::from_raw_fd(stderr.as_raw_fd()) };
+    BufWriter::with_capacity(BUF_SIZE, stderr)
+}
+
+/// Opens fd 2 directly and wraps with a [`BufWriter`] with [`BUF_SIZE`] capacity.
+#[cfg(target_family = "windows")]
+fn stderr_writer_without_line_buffering() -> BufWriter<File> {
+    use std::os::windows::io::{AsRawHandle, FromRawHandle};
+
+    let stderr = std::io::stderr();
+    let stderr = unsafe { File::from_raw_handle(stderr.as_raw_handle()) };
     BufWriter::with_capacity(BUF_SIZE, stderr)
 }
 
