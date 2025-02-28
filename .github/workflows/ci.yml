@@ -221,6 +221,7 @@ jobs:
           - arm-android
           - aarch64-ios
           - x86_64-macos
+          - x86_64-windows
         include:
           - apt_packages: ""
           - custom_env: {}
@@ -268,6 +269,13 @@ jobs:
             target: x86_64-apple-darwin
             rust: stable
             os: macos-latest
+
+          - thing: x86_64-windows
+            build_only: true
+            target: x86_64-pc-windows-msvc
+            rust: stable
+            os: windows-latest
+            cargo_args: --no-default-features --features server-client-common-default
 
     steps:
       - uses: actions/checkout@v4
