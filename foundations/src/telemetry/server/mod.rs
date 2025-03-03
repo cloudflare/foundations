@@ -131,7 +131,7 @@ impl TelemetryListener {
 }
 
 pub use router::{
-    BoxError, TelemetryRouteHandler, TelemetryRouteHandlerFuture, TelemetryServerRoute,
+    TelemetryRouteBody, TelemetryRouteHandler, TelemetryRouteHandlerFuture, TelemetryServerRoute,
 };
 
 pub(super) struct TelemetryServerFuture {

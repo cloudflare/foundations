@@ -16,12 +16,12 @@ use std::collections::HashMap;
 use std::convert::Infallible;
 use std::sync::Arc;
 
+/// Body type used in [`TelemetryServerRoute`] responses.
+pub type TelemetryRouteBody = BoxBody<Bytes, crate::Error>;
+
 /// Future returned by [`TelemetryServerRoute::handler`].
 pub type TelemetryRouteHandlerFuture =
-    BoxFuture<'static, std::result::Result<Response<BoxBody<Bytes, BoxError>>, Infallible>>;
-
-/// Error type returned by [`TelemetryRouteHandlerFuture`].
-pub type BoxError = Box<dyn std::error::Error + Send + Sync>;
+    BoxFuture<'static, Result<Response<TelemetryRouteBody>, Infallible>>;
 
 /// Telemetry route handler.
 pub type TelemetryRouteHandler = Box<
@@ -156,7 +156,7 @@ impl Router {
         }
     }
 
-    async fn handle_request(&self, req: Request<Incoming>) -> Response<BoxBody<Bytes, BoxError>> {
+    async fn handle_request(&self, req: Request<Incoming>) -> Response<TelemetryRouteBody> {
         let res = Response::builder();
 
         let Ok(path) = percent_decode_str(req.uri().path()).decode_utf8() else {
@@ -188,7 +188,7 @@ impl Router {
 }
 
 impl Service<Request<Incoming>> for Router {
-    type Response = Response<BoxBody<Bytes, BoxError>>;
+    type Response = Response<TelemetryRouteBody>;
     type Error = Infallible;
     type Future = BoxFuture<'static, Result<Self::Response, Self::Error>>;
 
@@ -202,7 +202,7 @@ impl Service<Request<Incoming>> for Router {
 fn into_response(
     content_type: &str,
     res: crate::Result<impl Into<Full<Bytes>>>,
-) -> std::result::Result<Response<BoxBody<Bytes, BoxError>>, Infallible> {
+) -> Result<Response<TelemetryRouteBody>, Infallible> {
     Ok(match res {
         Ok(data) => Response::builder()
             .header(header::CONTENT_TYPE, content_type)
