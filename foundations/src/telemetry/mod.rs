@@ -132,8 +132,14 @@ pub use self::memory_profiler::MemoryProfiler;
 
 #[cfg(feature = "telemetry-server")]
 pub use self::server::{
-    BoxError, TelemetryRouteHandler, TelemetryRouteHandlerFuture, TelemetryServerRoute,
+    TelemetryRouteBody, TelemetryRouteHandler, TelemetryRouteHandlerFuture, TelemetryServerRoute,
 };
+
+#[cfg(feature = "telemetry-server")]
+/// Re-exported crates which are used in public `telemetry` APIs.
+pub mod reexports {
+    pub use hyper;
+}
 
 pub use self::telemetry_context::{
     TelemetryContext, WithTelemetryContext, WithTelemetryContextLocal,
