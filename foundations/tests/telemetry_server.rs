@@ -1,9 +1,11 @@
 use foundations::telemetry::settings::{
     LivenessTrackingSettings, TelemetryServerSettings, TelemetrySettings, TracingSettings,
 };
-use foundations::telemetry::{TelemetryConfig, TelemetryContext, TelemetryServerRoute};
+use foundations::telemetry::{
+    hyper::{Method, Response},
+    TelemetryConfig, TelemetryContext, TelemetryServerRoute,
+};
 use futures_util::FutureExt;
-use hyper::{Method, Response};
 use std::net::{Ipv4Addr, SocketAddr};
 
 #[cfg(target_os = "linux")]
