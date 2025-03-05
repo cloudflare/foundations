@@ -1,5 +1,10 @@
 
+4.4.2
+- 2025-03-05 Fix build on Windows (#115)
+- 2025-02-26 Logging: Use File::create when opening output file
+
 4.4.1
+- 2025-02-26 Release 4.4.1
 - 2025-02-26 Report metrics format as openmetrics to allow exemplars
 
 4.4.0
