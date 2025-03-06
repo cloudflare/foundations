@@ -119,6 +119,12 @@ pub use self::memory_profiler::MemoryProfiler;
 #[cfg(feature = "telemetry-server")]
 pub use self::server::{TelemetryRouteHandler, TelemetryRouteHandlerFuture, TelemetryServerRoute};
 
+#[cfg(feature = "telemetry-server")]
+/// Re-exported types from Hyper which are used in foundations public API
+pub mod hyper {
+    pub use hyper::{Body, Method, Request, Response};
+}
+
 pub use self::driver::TelemetryDriver;
 pub use self::telemetry_context::{
     TelemetryContext, WithTelemetryContext, WithTelemetryContextLocal,

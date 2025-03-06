@@ -4,11 +4,12 @@ use super::settings::TelemetrySettings;
 #[cfg(feature = "tracing")]
 use super::tracing;
 use crate::BootstrapResult;
+use crate::telemetry::hyper::{Body, Method, Request, Response};
 use anyhow::Context as _;
 use futures_util::future::{BoxFuture, FutureExt};
 use hyper::server::conn::{AddrIncoming, AddrStream};
 use hyper::service::Service;
-use hyper::{header, Body, Method, Request, Response, Server, StatusCode};
+use hyper::{header, Server, StatusCode};
 use percent_encoding::percent_decode_str;
 use socket2::{Domain, SockAddr, Socket, Type};
 use std::collections::HashMap;

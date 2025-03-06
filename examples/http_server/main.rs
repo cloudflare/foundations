@@ -15,12 +15,15 @@ use self::settings::{EndpointSettings, HttpServerSettings, ResponseSettings};
 use anyhow::anyhow;
 use foundations::cli::{Arg, ArgAction, Cli};
 use foundations::settings::collections::Map;
-use foundations::telemetry::{self, log, tracing, TelemetryConfig, TelemetryContext};
+use foundations::telemetry::{
+    self,
+    hyper::{Body, Request, Response},
+    log, tracing, TelemetryConfig, TelemetryContext,
+};
 use foundations::BootstrapResult;
 use futures_util::stream::{FuturesUnordered, StreamExt};
 use hyper::server::conn::Http;
 use hyper::service::service_fn;
-use hyper::{Body, Request, Response};
 use std::convert::Infallible;
 use std::net::{SocketAddr, TcpListener as StdTcpListener};
 use std::sync::Arc;
