@@ -107,6 +107,10 @@ pub(crate) fn init(service_info: &ServiceInfo, settings: &LoggingSettings) -> Bo
             let drain = build_json_log_drain(buf);
             AsyncDrain::new(drain).chan_size(CHANNEL_SIZE).build()
         }
+        #[cfg(feature = "tracing-rs-compat")]
+        (LogOutput::TracingRsCompat, _) => AsyncDrain::new(tracing_slog::TracingSlogDrain {})
+            .chan_size(CHANNEL_SIZE)
+            .build(),
     };
 
     let root_drain = get_root_drain(settings, Arc::new(async_drain.fuse()));

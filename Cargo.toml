@@ -69,6 +69,8 @@ tokio = "1.41.0"
 thread_local = "1.1"
 tikv-jemallocator = "0.5"
 tikv-jemalloc-ctl = "0.5"
+tracing-slog = "0.3.0"
+tracing-subscriber = "0.3"
 yaml-merge-keys = "0.5"
 
 # needed for minver

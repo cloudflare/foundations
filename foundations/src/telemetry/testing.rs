@@ -88,6 +88,18 @@ impl TestTelemetryContext {
         self.log_records = log_records;
     }
 
+    /// Overrides the logging settings on the test telemetry context with the tracing-rs compat
+    /// layer. The `logging_settings` provided must use the [tracing compat] output format
+    ///
+    /// [tracing compat]: super::settings::LogOutput::TracingRsCompat
+    #[cfg(all(feature = "logging", feature = "tracing-rs-compat"))]
+    pub fn set_tracing_rs_log_drain(&mut self, logging_settings: LoggingSettings) {
+        use crate::telemetry::log::testing::create_test_log_for_tracing_compat;
+        let (log, log_records) = { create_test_log_for_tracing_compat(&logging_settings) };
+        *self.inner.log.write() = log;
+        self.log_records = log_records;
+    }
+
     /// Overrides the tracing settings on the test telemetry context, creating a new test tracer
     /// with the settings
     #[cfg(feature = "tracing")]
