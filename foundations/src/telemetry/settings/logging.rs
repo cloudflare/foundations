@@ -51,6 +51,13 @@ pub enum LogOutput {
     ///
     /// File will be created if it doesn't exist and overwritten otherwise.
     File(PathBuf),
+
+    ///Install a logging drain that forwards to `tracing-rs`
+    ///
+    ///WARN: If this output format is used, the settings in [`LoggingSettings`] other than the
+    ///verbosity will not be respected
+    #[cfg(feature = "tracing-rs-compat")]
+    TracingRsCompat,
 }
 
 /// Format of the log output.
