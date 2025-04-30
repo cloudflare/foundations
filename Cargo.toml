@@ -24,7 +24,7 @@ publish = false
 debug = 1
 
 [workspace.dependencies]
-anyhow = "1.0.75"
+anyhow = "1.0"
 foundations = { version = "4.4.2", path = "./foundations" }
 foundations-macros = { version = "4.4.2", path = "./foundations-macros", default-features = false }
 bindgen = { version = "0.71", default-features = false }
@@ -32,40 +32,40 @@ cc = "1.0"
 cf-rustracing = "1.1"
 cf-rustracing-jaeger = "1.1"
 clap = "4.4"
-darling = "0.20.10"
+darling = "0.20"
 erased-serde = "0.4"
-futures-util = "0.3.28"
+futures-util = "0.3"
 governor = "0.6"
 hyper = { version = "0.14", default-features = false }
-indexmap = "2.0.0"
-ipnetwork = "0.20"
+indexmap = "2.0"
+ipnetwork = { version = "0.21", features = ["serde"] }
 libc = "0.2"
 once_cell = "1.5"
-tonic = { version = "0.11.0", default-features = false }
-opentelemetry-proto = "0.5.0"
-parking_lot = "0.12.1"
+tonic = { version = "0.11", default-features = false }
+opentelemetry-proto = "0.5"
+parking_lot = "0.12"
 proc-macro2 = { version = "1", default-features = false }
-prometheus = { version = "0.13.3", default-features = false }
-prometheus-client = "0.18.1"
-prometools = "0.2.1"
+prometheus = { version = "0.13", default-features = false }
+prometheus-client = "0.18"
+prometools = "0.2"
 rand = "0.8"
-percent-encoding = "2.3.1"
+percent-encoding = "2.3"
 quote = "1"
 regex = "1.8"
 reqwest = { version = "0.12", default-features = false }
-socket2 = { version = "0.5.3", features = [ "all" ] }
+socket2 = { version = "0.5", features = [ "all" ] }
 syn = "2"
 serde = "1"
-serde_path_to_error = "0.1.15"
+serde_path_to_error = "0.1"
 serde_yaml = "0.8"
-serde_with = "3.3.0"
-slab = "0.4.9"
+serde_with = "3.3"
+slab = "0.4"
 slog = "2.7"
 slog-async = "2.3"
 slog-json = "2.3"
 slog-term = "2.4"
 tempfile = "3.7"
-tokio = "1.41.0"
+tokio = "1.41"
 thread_local = "1.1"
 tikv-jemallocator = "0.6"
 tikv-jemalloc-ctl = "0.6"
