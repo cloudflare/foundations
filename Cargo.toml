@@ -27,7 +27,7 @@ debug = 1
 anyhow = "1.0.75"
 foundations = { version = "4.4.2", path = "./foundations" }
 foundations-macros = { version = "4.4.2", path = "./foundations-macros", default-features = false }
-bindgen = { version = "0.68.1", default-features = false }
+bindgen = { version = "0.71", default-features = false }
 cc = "1.0"
 cf-rustracing = "1.1"
 cf-rustracing-jaeger = "1.1"
@@ -57,7 +57,7 @@ socket2 = { version = "0.5.3", features = [ "all" ] }
 syn = "2"
 serde = "1"
 serde_path_to_error = "0.1.15"
-serde_yaml = "0.8.26"
+serde_yaml = "0.8"
 serde_with = "3.3.0"
 slab = "0.4.9"
 slog = "2.7"
@@ -67,9 +67,9 @@ slog-term = "2.4"
 tempfile = "3.7"
 tokio = "1.41.0"
 thread_local = "1.1"
-tikv-jemallocator = "0.5"
-tikv-jemalloc-ctl = "0.5"
-yaml-merge-keys = "0.5"
+tikv-jemallocator = "0.6"
+tikv-jemalloc-ctl = "0.6"
+yaml-merge-keys = { version = "0.5", features = ["serde_yaml"] }
 
 # needed for minver
 async-stream = "0.3.5"
