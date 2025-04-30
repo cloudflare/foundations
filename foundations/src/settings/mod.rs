@@ -443,7 +443,6 @@ pub fn to_yaml_string(settings: &impl Settings) -> BootstrapResult<String> {
         // spaces divided by 2.
         key_stack.truncate(spaces / 2);
 
-
         if let Some(colon_idx) = line.find(':') {
             let mut field_name = line[spaces..colon_idx].trim().to_string();
             let is_list_item = field_name.starts_with(LIST_ITEM_PREFIX);
