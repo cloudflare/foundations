@@ -73,7 +73,7 @@ yaml-merge-keys = { version = "0.5", features = ["serde_yaml"] }
 
 # needed for minver
 async-stream = "0.3"
-local-ip-address = "0.5"
+local-ip-address = "0.6"
 lock_api = "0.4"
 log = "0.4"
 neli = "0.6"
