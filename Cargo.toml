@@ -33,7 +33,7 @@ cf-rustracing = "1.1"
 cf-rustracing-jaeger = "1.1"
 clap = "4.4"
 darling = "0.20.10"
-erased-serde = "0.3.28"
+erased-serde = "0.4"
 futures-util = "0.3.28"
 governor = "0.6"
 hyper = { version = "0.14", default-features = false }
