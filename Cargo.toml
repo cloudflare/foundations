@@ -48,7 +48,7 @@ proc-macro2 = { version = "1", default-features = false }
 prometheus = { version = "0.13", default-features = false }
 prometheus-client = "0.18"
 prometools = "0.2"
-rand = "0.8"
+rand = "0.9"
 percent-encoding = "2.3"
 quote = "1"
 regex = "1.8"
