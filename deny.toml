@@ -4,8 +4,7 @@ ignore = [
     # NOTE: paste which is unmaintained, but
     # is a dependency of tykv-jemalloc-sys
     "RUSTSEC-2024-0436",
-    # NOTE: serde_yaml will have to be replaced with
-    # `serde_yml` which is not a drop-in replacement
+    # serde_yaml is unmaintained
     "RUSTSEC-2024-0320",
 ]
 
@@ -25,31 +24,13 @@ allow-git = []
 [licenses]
 private.ignore = true
 unused-allowed-license = "allow"
-# List of explicitly allowed licenses
-# These are explicitly allowed by Cloudflare.
+# Licences should be at least osi or fsf-free
+# and not copyleft
 allow = [
-    "Zlib",
     "MIT",
-    "0BSD",
-    "BSD-2-Clause",
-    "BSD-3-Clause",
     "Apache-2.0",
-    "Apache-2.0 WITH LLVM-exception",
-    "MPL-1.0",
-    "MPL-1.1",
-    "MPL-2.0",
-
-    "GPL-2.0",
-    "GPL-3.0",
-    "LGPL-3.0",
-    "ISC",
-    "CC0-1.0",
-    "Unicode-DFS-2016",
+    "BSD-3-Clause",
     "Unicode-3.0",
-    "OpenSSL",
-
-    # for use with internal unpublished code only
-    # (ie crates pulled via git refs)
-    "LicenseRef-Cloudflare-Proprietary",
+    "ISC",
 ]
 confidence-threshold = 0.9
