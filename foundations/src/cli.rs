@@ -37,7 +37,7 @@ pub struct Cli<S: Settings> {
     pub arg_matches: ArgMatches,
 }
 
-impl<S: Settings> Cli<S> {
+impl<S: Default + Settings> Cli<S> {
     /// Bootstraps a new command line interface (CLI) for the service.
     ///
     /// `custom_args` argument can be used to add extra service-specific arguments to the CLI.
@@ -116,7 +116,7 @@ fn get_arg_matches(
     })
 }
 
-fn get_settings<S: Settings>(arg_matches: &ArgMatches) -> BootstrapResult<S> {
+fn get_settings<S: Default + Settings>(arg_matches: &ArgMatches) -> BootstrapResult<S> {
     if let Some(path) = arg_matches.get_one::<String>(GENERATE_CONFIG_OPT_ID) {
         let settings = S::default();
 

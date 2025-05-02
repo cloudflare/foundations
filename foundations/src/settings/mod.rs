@@ -341,7 +341,7 @@ pub use foundations_macros::settings;
 /// [`settings`] macro.
 ///
 /// [`settings`]: crate::settings::settings
-pub trait Settings: Default + Clone + Serialize + DeserializeOwned + Debug + 'static {
+pub trait Settings: Clone + Serialize + DeserializeOwned + Debug + 'static {
     /// Add Rust doc comments for the settings fields.
     ///
     /// Docs for each field need to be added to the provided hashmap with the key consisting of the
