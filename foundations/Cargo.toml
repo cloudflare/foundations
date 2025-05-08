@@ -145,6 +145,7 @@ memory-profiling = [
     "dep:tikv-jemalloc-ctl",
     "dep:tempfile",
     "dep:tokio",
+    "dep:serde",
     "jemalloc",
 ]
 

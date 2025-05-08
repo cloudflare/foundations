@@ -76,7 +76,8 @@ pub mod settings;
     feature = "logging",
     feature = "metrics",
     feature = "telemetry",
-    feature = "tracing"
+    feature = "tracing",
+    feature = "memory-profiling",
 ))]
 pub mod telemetry;
 
