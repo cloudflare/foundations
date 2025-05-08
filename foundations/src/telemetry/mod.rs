@@ -53,7 +53,6 @@
 #[cfg(any(feature = "logging", feature = "tracing"))]
 mod scope;
 
-mod driver;
 mod telemetry_context;
 
 #[cfg(all(feature = "tracing", feature = "telemetry-otlp-grpc"))]
@@ -94,10 +93,25 @@ pub mod tokio_runtime_metrics;
 #[cfg(feature = "telemetry-server")]
 mod server;
 
+feature_use!(
+    cfg(any(
+        feature = "logging",
+        feature = "tracing",
+        feature = "metrics",
+        feature = "telemetry-server",
+    )),
+    {
+        mod driver;
+
+        pub use self::driver::TelemetryDriver;
+        use crate::BootstrapResult;
+        use futures_util::stream::FuturesUnordered;
+    }
+);
+
 use self::settings::TelemetrySettings;
 use crate::utils::feature_use;
-use crate::{BootstrapResult, ServiceInfo};
-use futures_util::stream::FuturesUnordered;
+use crate::ServiceInfo;
 
 feature_use!(cfg(feature = "tracing"), {
     use self::tracing::SpanScope;
@@ -119,7 +133,6 @@ pub use self::memory_profiler::MemoryProfiler;
 #[cfg(feature = "telemetry-server")]
 pub use self::server::{TelemetryRouteHandler, TelemetryRouteHandlerFuture, TelemetryServerRoute};
 
-pub use self::driver::TelemetryDriver;
 pub use self::telemetry_context::{
     TelemetryContext, WithTelemetryContext, WithTelemetryContextLocal,
 };
@@ -270,6 +283,12 @@ pub struct TelemetryConfig<'c> {
 /// [jemalloc]: https://github.com/jemalloc/jemalloc
 /// [`TelemetryServerSettings::enabled`]: `crate::telemetry::settings::TelemetryServerSettings::enabled`
 /// [syscall sandboxing]: `crate::security`
+#[cfg(any(
+    feature = "logging",
+    feature = "tracing",
+    feature = "metrics",
+    feature = "telemetry-server",
+))]
 pub fn init(config: TelemetryConfig) -> BootstrapResult<TelemetryDriver> {
     let tele_futures: FuturesUnordered<_> = Default::default();
 
