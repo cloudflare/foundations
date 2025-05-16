@@ -24,13 +24,13 @@ publish = false
 debug = 1
 
 [workspace.dependencies]
-anyhow = "1.0"
+anyhow = "1.0.98"
 foundations = { version = "4.4.2", path = "./foundations" }
 foundations-macros = { version = "4.4.2", path = "./foundations-macros", default-features = false }
 bindgen = { version = "0.71", default-features = false }
 cc = "1.2"
 cf-rustracing = "1.1"
-cf-rustracing-jaeger = "1.1"
+cf-rustracing-jaeger = "1.2"
 clap = "4.4"
 darling = "0.20"
 erased-serde = "0.4"
@@ -73,11 +73,11 @@ yaml-merge-keys = { version = "0.5", features = ["serde_yaml"] }
 
 # needed for minver
 async-stream = "0.3"
-local-ip-address = "0.6"
+local-ip-address = "0.6.5"
 lock_api = "0.4"
-log = "0.4"
+log = "0.4.27"
 neli = "0.6.5"
 neli-proc-macros = "0.1.4"
 nix = "0.30"
 parking_lot_core = "0.9"
-thiserror = "2.0"
+thiserror = "2.0.12"
