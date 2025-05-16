@@ -65,7 +65,7 @@ impl LoggerWithKvNestingTracking {
                     None // avoid further nesting
                 }
             }
-            Self::MAX_NESTING..=u32::MAX => None, // avoid further nesting
+            _ => None, // avoid further nesting
         }
     }
 }
