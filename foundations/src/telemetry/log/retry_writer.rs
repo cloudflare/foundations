@@ -60,8 +60,7 @@ impl Write for RetryPipeWriter {
             }
             attempts += 1;
         }
-        Err(io::Error::new(
-            io::ErrorKind::Other,
+        Err(io::Error::other(
             "retry attempts exhausted",
         ))
     }
