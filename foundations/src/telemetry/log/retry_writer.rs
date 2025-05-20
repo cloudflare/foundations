@@ -60,9 +60,7 @@ impl Write for RetryPipeWriter {
             }
             attempts += 1;
         }
-        Err(io::Error::other(
-            "retry attempts exhausted",
-        ))
+        Err(io::Error::other("retry attempts exhausted"))
     }
 
     /// Flushes the file. On *nix this does nothing.
