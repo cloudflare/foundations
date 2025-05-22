@@ -1,5 +1,11 @@
 
+4.5.0
+- 2025-03-10 feat: Add tracing-rs-compat feature with tracing compat logging drain
+- 2025-05-08 ZTC-2169: Allow use of memory-profiling feature with no other features
+- 2025-05-16 Resolve Clippy lints from Rust 1.86 and 1.87
+
 4.4.2
+- 2025-03-05 Release 4.4.2
 - 2025-03-05 Fix build on Windows (#115)
 - 2025-02-26 Logging: Use File::create when opening output file
 
