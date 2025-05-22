@@ -72,3 +72,82 @@ fn test_not_exceed_limit_kv_nesting(_ctx: TestTelemetryContext) {
         set_verbosity(LogVerbosity::Info).expect("set_verbosity");
     }
 }
+
+#[cfg(feature = "tracing-rs-compat")]
+mod tracing_rs_compat {
+    use std::io;
+    use std::sync::{Arc, Mutex};
+
+    use foundations::telemetry::log::{warn, TestLogRecord};
+    use foundations::telemetry::settings::LoggingSettings;
+    use foundations::telemetry::TelemetryContext;
+    use tracing_subscriber::filter::LevelFilter;
+    use tracing_subscriber::util::SubscriberInitExt as _;
+
+    struct TestWriter {
+        log_entries: Arc<Mutex<Vec<String>>>,
+    }
+
+    impl TestWriter {
+        fn with_entries(entries: Arc<Mutex<Vec<String>>>) -> Self {
+            Self {
+                log_entries: entries,
+            }
+        }
+    }
+
+    impl io::Write for TestWriter {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            let s = String::from_utf8(buf.to_vec()).unwrap();
+            self.log_entries.lock().unwrap().push(s.trim().to_string());
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            unimplemented!()
+        }
+    }
+
+    #[test]
+    fn test_tracing_rs_compat() {
+        let entries = Arc::new(Mutex::new(Vec::new()));
+        let tracing_log_entries = entries.clone();
+        let _subscriber = tracing_subscriber::fmt()
+            .with_max_level(LevelFilter::TRACE)
+            .with_writer(move || TestWriter::with_entries(entries.clone()))
+            .without_time()
+            .with_level(true)
+            .with_ansi(false)
+            .set_default();
+
+        let settings = LoggingSettings {
+            output: foundations::telemetry::settings::LogOutput::TracingRsCompat,
+            ..Default::default()
+        };
+
+        let mut ctx = TelemetryContext::test();
+        ctx.set_tracing_rs_log_drain(settings);
+
+        let _scope = ctx.scope();
+
+        warn!("compat-layer-works");
+
+        // Validate slog is seeing all of the records
+        let slog_records = ctx.log_records();
+        let expected_slog_records = TestLogRecord {
+            level: slog::Level::Warning,
+            message: "compat-layer-works".to_string(),
+            fields: vec![],
+        };
+
+        assert_eq!(*slog_records, vec![expected_slog_records]);
+
+        let tracing_record = tracing_log_entries
+            .lock()
+            .unwrap()
+            .first()
+            .cloned()
+            .unwrap();
+        assert!(tracing_record.contains("WARN slog: compat-layer-works"));
+    }
+}

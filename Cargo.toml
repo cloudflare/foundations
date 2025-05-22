@@ -8,7 +8,7 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "4.4.2"
+version = "4.5.0"
 repository = "https://github.com/cloudflare/foundations"
 edition = "2021"
 authors = ["Cloudflare"]
@@ -24,11 +24,11 @@ publish = false
 debug = 1
 
 [workspace.dependencies]
-anyhow = "1.0.98"
-foundations = { version = "4.4.2", path = "./foundations" }
-foundations-macros = { version = "4.4.2", path = "./foundations-macros", default-features = false }
-bindgen = { version = "0.71", default-features = false }
-cc = "1.2"
+anyhow = "1.0.75"
+foundations = { version = "4.5.0", path = "./foundations" }
+foundations-macros = { version = "4.5.0", path = "./foundations-macros", default-features = false }
+bindgen = { version = "0.68.1", default-features = false }
+cc = "1.0"
 cf-rustracing = "1.1"
 cf-rustracing-jaeger = "1.2"
 clap = "4.4"
@@ -70,6 +70,8 @@ thread_local = "1.1"
 tikv-jemallocator = "0.6"
 tikv-jemalloc-ctl = "0.6"
 yaml-merge-keys = { version = "0.5", features = ["serde_yaml"] }
+tracing-slog = "0.3.0"
+tracing-subscriber = "0.3"
 
 # needed for minver
 async-stream = "0.3"

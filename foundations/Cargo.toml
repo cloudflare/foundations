@@ -164,6 +164,10 @@ testing = ["dep:foundations-macros"]
 # Enables panicking when too much nesting is reached on the logger
 panic_on_too_much_logger_nesting = []
 
+# Enables compatibility with `tracing-rs` by adding the ability to configure a
+# logging drain that forwards logs
+tracing-rs-compat = ["dep:tracing-slog"]
+
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs", "--cfg", "tokio_unstable", "--cfg", "foundations_unstable"]
@@ -205,6 +209,7 @@ slog-async = { workspace = true, optional = true }
 slog-json = { workspace = true, optional = true }
 slog-term = { workspace = true, optional = true }
 socket2 = { workspace = true, optional = true }
+tracing-slog = { workspace = true, optional = true }
 thread_local = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true, features = ["sync", "rt"] }
 tonic = { workspace = true, optional = true, features = ["prost", "channel", "transport"] }
@@ -243,6 +248,7 @@ tempfile = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 ipnetwork = { workspace = true }
 nix = { workspace = true , features = ["fs"] }
+tracing-subscriber = { workspace = true }
 
 [build-dependencies]
 bindgen = { workspace = true, features = ["runtime"], optional = true }
