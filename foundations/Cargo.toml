@@ -212,7 +212,7 @@ socket2 = { workspace = true, optional = true }
 tracing-slog = { workspace = true, optional = true }
 thread_local = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true, features = ["sync", "rt"] }
-tonic = { workspace = true, optional = true, features = ["channel", "transport"] }
+tonic = { workspace = true, optional = true, features = ["prost", "channel", "transport"] }
 tikv-jemallocator = { workspace = true, optional = true, features = [
     "profiling",
     "stats",

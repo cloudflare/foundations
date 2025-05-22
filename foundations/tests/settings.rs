@@ -155,7 +155,7 @@ struct StructWithCrateReexport {
 macro_rules! assert_ser_eq {
     ($obj:expr, $expected:expr) => {
         let actual = to_yaml_string(&$obj).unwrap().trim().to_string();
-        let expected = include_str!($expected);
+        let expected = include_str!($expected).trim();
 
         assert_eq!(
             actual, expected,

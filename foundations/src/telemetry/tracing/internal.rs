@@ -211,5 +211,5 @@ fn should_sample(sampling_ratio: f64) -> bool {
         return true;
     }
 
-    rand::thread_rng().gen_range(0.0..1.0) < sampling_ratio
+    rand::rng().random_range(0.0..1.0) < sampling_ratio
 }
