@@ -346,8 +346,8 @@ where
 /// #[metrics]
 /// pub mod my_app_metrics {
 ///     #[ctor = HistogramBuilder {
-///         // 0 us to 10 ms
-///         buckets: &[0.0, 1E-4, 2E-4, 3E-4, 4E-4, 5E-4, 6E-4, 7E-4, 8E-4, 9E-4, 1E-3, 1E-2, 2E-2, 4E-2, 8E-2, 1E-1, 1.0],
+///         // 100 us to 1 second
+///         buckets: &[1E-4, 2E-4, 3E-4, 4E-4, 5E-4, 6E-4, 7E-4, 8E-4, 9E-4, 1E-3, 1E-2, 2E-2, 4E-2, 8E-2, 1E-1, 1.0],
 ///     }]
 ///     pub fn tokio_runtime_task_schedule_delay_histogram(
 ///         task: String,
