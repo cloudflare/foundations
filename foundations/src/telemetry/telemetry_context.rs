@@ -18,6 +18,10 @@ feature_use!(cfg(feature = "tracing"), {
         use super::tracing::internal::Tracer;
         use super::tracing::testing::{current_test_tracer, TestTracerScope};
     });
+
+    feature_use!(cfg(feature = "metrics"), {
+        use prometools::histogram::TimeHistogram;
+    });
 });
 
 #[cfg(feature = "testing")]
@@ -224,6 +228,54 @@ impl TelemetryContext {
     #[cfg(feature = "testing")]
     pub fn test() -> TestTelemetryContext {
         TestTelemetryContext::new()
+    }
+
+    /// Track the duration of the current `span` in this `TelemetryContext`. The span's duration
+    /// will be inserted into `histogram`, regardless of whether `span` was sampled or not.
+    ///
+    /// # Examples
+    /// ```
+    /// use foundations::telemetry::TelemetryContext;
+    /// use foundations::telemetry::metrics::{metrics, HistogramBuilder, TimeHistogram};
+    /// use foundations::telemetry::tracing::{self, test_trace};
+    ///
+    /// #[metrics]
+    /// mod test_metrics {
+    ///     #[ctor = HistogramBuilder { buckets: &[1E-4, 2E-4] }]
+    ///    pub fn histogram(label: bool) -> TimeHistogram;
+    /// }
+    ///
+    /// #[tokio::main]
+    /// async fn main() {
+    ///     // Test context is used for demonstration purposes to show the resulting traces.
+    ///     let ctx = TelemetryContext::test();
+    ///     let hist = test_metrics::histogram(true);
+    ///     let clone = hist.clone();
+    ///
+    ///     {
+    ///         let _scope = ctx.scope();
+    ///         let _root = tracing::span("root");
+    ///         let telemetry_ctx = TelemetryContext::current().with_time_histogram(clone);
+    ///
+    ///         let handle = std::thread::spawn(move || {
+    ///             let _scope = telemetry_ctx.scope();
+    ///             let _child = tracing::span("child");
+    ///         });
+    ///
+    ///         handle.join();
+    ///     }
+    ///
+    ///     let snapshot = hist.snapshot();
+    ///     assert_eq!(snapshot.count(), 1);
+    /// }
+    /// ```
+    #[cfg(all(feature = "metrics", feature = "tracing"))]
+    pub fn with_time_histogram(mut self, histogram: TimeHistogram) -> Self {
+        if let Some(inner) = self.span.as_mut() {
+            inner.track_with_time_histogram(histogram);
+        }
+
+        self
     }
 
     /// Wraps a future with the telemetry context.
