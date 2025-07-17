@@ -195,12 +195,8 @@ fn collect_heap_profile() -> Result<String> {
     let mut out_file_path_c_str = CString::new(out_file_path)?.into_bytes_with_nul();
     let out_file_path_ptr = out_file_path_c_str.as_mut_ptr() as *mut c_char;
 
-    control::write(control::PROF_DUMP, out_file_path_ptr).map_err(|e| {
-        format!(
-            "failed to dump jemalloc heap profile to {:?}: {}",
-            out_file_path, e
-        )
-    })?;
+    control::write(control::PROF_DUMP, out_file_path_ptr)
+        .map_err(|e| format!("failed to dump jemalloc heap profile to {out_file_path:?}: {e}",))?;
 
     let mut profile = Vec::new();
 
