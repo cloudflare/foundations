@@ -9,6 +9,7 @@ use syn::{
 };
 
 mod parsing;
+mod validation;
 
 #[derive(FromMeta)]
 struct MacroArgs {
@@ -279,6 +280,18 @@ fn metric_init(foundations: &Path, fn_: &ItemFn) -> proc_macro2::TokenStream {
         Span::call_site(),
     );
 
+    // Validate histogram buckets at compile time if this is a HistogramBuilder
+    if let Some(ctor) = ctor {
+        if let Some(path) = ctor.path.get_ident() {
+            if path == "HistogramBuilder" {
+                // Validate the histogram buckets
+                if let Err(err) = validation::validate_histogram_buckets(ctor) {
+                    return err.to_compile_error();
+                }
+            }
+        }
+    }
+
     let metric_init = match ctor {
         Some(ctor) if args.is_empty() => quote! {
             #reexports::prometheus_client::metrics::family::MetricConstructor::new_metric(&(#ctor))
@@ -378,7 +391,8 @@ fn metric_fn(foundations: &Path, metrics_struct: &Ident, fn_: &ItemFn) -> proc_m
 mod tests {
     use super::*;
     use crate::common::test_utils::{code_str, parse_attr};
-    use syn::parse_quote;
+    use crate::metrics::validation;
+    use syn::{parse_quote, ExprStruct};
 
     #[test]
     fn expand_empty() {
@@ -735,5 +749,65 @@ mod tests {
         };
 
         assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_valid_histogram_buckets() {
+        // Valid strictly increasing buckets
+        let expr: ExprStruct = parse_quote! {
+            HistogramBuilder { buckets: &[0.1, 0.2, 0.3, 0.4] }
+        };
+
+        assert!(validation::validate_histogram_buckets(&expr).is_ok());
+    }
+
+    #[test]
+    fn test_empty_histogram_buckets() {
+        // Empty buckets are valid
+        let expr: ExprStruct = parse_quote! {
+            HistogramBuilder { buckets: &[] }
+        };
+
+        assert!(validation::validate_histogram_buckets(&expr).is_ok());
+    }
+
+    #[test]
+    fn test_invalid_histogram_buckets_equal_values() {
+        // Invalid buckets with equal values
+        let expr: ExprStruct = parse_quote! {
+            HistogramBuilder { buckets: &[0.1, 0.2, 0.2, 0.3] }
+        };
+
+        assert!(validation::validate_histogram_buckets(&expr).is_err());
+    }
+
+    #[test]
+    fn test_invalid_histogram_buckets_decreasing_values() {
+        // Invalid buckets with decreasing values
+        let expr: ExprStruct = parse_quote! {
+            HistogramBuilder { buckets: &[0.3, 0.2, 0.1] }
+        };
+
+        assert!(validation::validate_histogram_buckets(&expr).is_err());
+    }
+
+    #[test]
+    fn test_skip_validation_for_variable_buckets() {
+        // Variable buckets should skip validation
+        let expr: ExprStruct = parse_quote! {
+            HistogramBuilder { buckets: MY_BUCKETS }
+        };
+
+        assert!(validation::validate_histogram_buckets(&expr).is_ok());
+    }
+
+    #[test]
+    fn test_skip_validation_for_function_buckets() {
+        // Function call buckets should skip validation
+        let expr: ExprStruct = parse_quote! {
+            HistogramBuilder { buckets: get_buckets() }
+        };
+
+        assert!(validation::validate_histogram_buckets(&expr).is_ok());
     }
 }
