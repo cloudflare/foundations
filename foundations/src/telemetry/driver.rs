@@ -1,3 +1,5 @@
+#[cfg(feature = "telemetry-server")]
+use crate::addr::ListenAddr;
 use crate::utils::feature_use;
 use crate::BootstrapResult;
 use futures_util::future::BoxFuture;
@@ -9,7 +11,6 @@ use std::task::{Context, Poll};
 
 feature_use!(cfg(feature = "telemetry-server"), {
     use super::server::TelemetryServerFuture;
-    use std::net::SocketAddr;
 });
 
 /// A future that drives async telemetry functionality and that is returned
@@ -21,7 +22,7 @@ feature_use!(cfg(feature = "telemetry-server"), {
 /// [security syscall-related]: `crate::security`
 pub struct TelemetryDriver {
     #[cfg(feature = "telemetry-server")]
-    server_addr: Option<SocketAddr>,
+    server_addr: Option<ListenAddr>,
 
     #[cfg(feature = "telemetry-server")]
     server_fut: Option<TelemetryServerFuture>,
@@ -36,7 +37,7 @@ impl TelemetryDriver {
     ) -> Self {
         Self {
             #[cfg(feature = "telemetry-server")]
-            server_addr: server_fut.as_ref().map(|fut| fut.local_addr()),
+            server_addr: server_fut.as_ref().and_then(|fut| fut.local_addr().ok()),
 
             #[cfg(feature = "telemetry-server")]
             server_fut,
@@ -49,8 +50,8 @@ impl TelemetryDriver {
     ///
     /// Returns `None` if the server wasn't spawned.
     #[cfg(feature = "telemetry-server")]
-    pub fn server_addr(&self) -> Option<SocketAddr> {
-        self.server_addr
+    pub fn server_addr(&self) -> Option<&ListenAddr> {
+        self.server_addr.as_ref()
     }
 
     /// Instructs the telemetry driver and server to perform an orderly shutdown when the given

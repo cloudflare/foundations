@@ -66,6 +66,8 @@
 
 mod utils;
 
+pub mod addr;
+
 #[cfg(feature = "cli")]
 pub mod cli;
 

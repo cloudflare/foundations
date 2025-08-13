@@ -82,6 +82,7 @@ telemetry-server = [
     "dep:hyper-util",
     "dep:socket2",
     "dep:percent-encoding",
+    "dep:serde",
 ]
 
 # Enables telemetry reporting over gRPC
