@@ -57,7 +57,11 @@ telemetry:
     # Enables telemetry server
     enabled: true
     # Telemetry server address.
+    # Can be either a TCP socket address (e.g., "127.0.0.1:8080") 
+    # or a Unix domain socket path (e.g., "/tmp/telemetry.sock") on Unix systems.
     addr: "127.0.0.1:0"
+    # Example Unix socket configuration (uncomment to use):
+    # addr: "/tmp/telemetry.sock"
 # HTTP endpoints configuration.
 endpoints:
   Example endpoint:
