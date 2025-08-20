@@ -111,7 +111,7 @@ impl TestTelemetryContext {
 
     /// Returns all the log records produced in the test context.
     #[cfg(feature = "logging")]
-    pub fn log_records(&self) -> RwLockReadGuard<Vec<TestLogRecord>> {
+    pub fn log_records(&self) -> RwLockReadGuard<'_, Vec<TestLogRecord>> {
         self.log_records.read().unwrap()
     }
 

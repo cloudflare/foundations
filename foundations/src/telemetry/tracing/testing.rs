@@ -63,7 +63,7 @@ impl TestTrace {
     /// ```
     ///
     /// [depth-first]: https://en.wikipedia.org/wiki/Depth-first_search
-    pub fn iter(&self) -> TestTraceIterator {
+    pub fn iter(&self) -> TestTraceIterator<'_> {
         TestTraceIterator {
             stack: vec![&self.0],
         }
