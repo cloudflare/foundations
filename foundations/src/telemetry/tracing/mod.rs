@@ -246,7 +246,7 @@ pub fn trace_id() -> Option<String> {
 /// The serialized trace then can be passed to [`start_trace`] by other service to continue
 /// the trace.
 ///
-/// Returns `None` if the current span is not sampled and don't have associated trace.
+/// Returns `None` if the current span is not sampled and doesn't have an associated trace.
 ///
 /// # Examples
 /// ```
@@ -294,6 +294,23 @@ pub fn state_for_trace_stitching() -> Option<SerializableTraceState> {
         .map(|c| c.state().clone())
 }
 
+/// Returns the value to be used as a W3C traceparent header.
+///
+/// See: <https://www.w3.org/TR/trace-context/#traceparent-header>
+///
+/// Returns `None` if the current span is not sampled and doesn't have an associated trace.
+pub fn w3c_traceparent() -> Option<String> {
+    state_for_trace_stitching().map(|state| {
+        format!(
+            "00-{:0>16x}{:0>16x}-{:0>16x}-{:0>2x}",
+            state.trace_id().high,
+            state.trace_id().low,
+            state.span_id(),
+            state.flags()
+        )
+    })
+}
+
 /// Creates a tracing span.
 ///
 /// If span covers whole function body it's preferable to use [`span_fn`] macro.
@@ -312,7 +329,7 @@ pub fn state_for_trace_stitching() -> Option<SerializableTraceState> {
 /// {
 ///     let _scope = ctx.scope();
 ///     let _root = tracing::span("root");
-///     
+///
 ///     {
 ///         let _span1 = tracing::span("span1");
 ///     }
