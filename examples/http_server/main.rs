@@ -13,6 +13,7 @@ mod settings;
 
 use self::settings::{EndpointSettings, HttpServerSettings, ResponseSettings};
 use anyhow::anyhow;
+use foundations::addr::ListenAddr;
 use foundations::cli::{Arg, ArgAction, Cli};
 use foundations::settings::collections::Map;
 use foundations::telemetry::{self, log, tracing, TelemetryConfig, TelemetryContext};
@@ -56,8 +57,11 @@ async fn main() -> BootstrapResult<()> {
         custom_server_routes: vec![],
     })?;
 
-    if let Some(tele_serv_addr) = tele_driver.server_addr() {
-        log::info!("Telemetry server is listening on http://{}", tele_serv_addr);
+    if let Some(addr) = tele_driver.server_addr() {
+        match addr {
+            ListenAddr::Tcp(addr) => log::info!("Telemetry server is listening on http://{addr}"),
+            ListenAddr::Unix(path) => log::info!("Telemetry server is listening on {path:?}"),
+        }
     }
 
     // Spawn TCP listeners for each endpoint. Note that `Map<EndpointsSettings>` is ordered, so

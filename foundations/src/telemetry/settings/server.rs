@@ -1,10 +1,6 @@
-#[cfg(feature = "settings")]
-use crate::settings::net::SocketAddr;
+use crate::addr::ListenAddr;
 #[cfg(feature = "settings")]
 use crate::settings::settings;
-use std::net::Ipv4Addr;
-#[cfg(not(feature = "settings"))]
-use std::net::SocketAddr;
 
 /// Telemetry server settings.
 #[cfg_attr(feature = "settings", settings(crate_path = "crate"))]
@@ -16,7 +12,7 @@ pub struct TelemetryServerSettings {
 
     /// Telemetry server address.
     #[serde(default = "TelemetryServerSettings::default_addr")]
-    pub addr: SocketAddr,
+    pub addr: ListenAddr,
 }
 
 #[cfg(not(feature = "settings"))]
@@ -24,7 +20,7 @@ impl Default for TelemetryServerSettings {
     fn default() -> Self {
         Self {
             enabled: TelemetryServerSettings::default_enabled(),
-            addr: TelemetryServerSettings::default_addr(),
+            addr: ListenAddr::default(),
         }
     }
 }
@@ -34,12 +30,7 @@ impl TelemetryServerSettings {
         true
     }
 
-    fn default_addr() -> SocketAddr {
-        let addr: std::net::SocketAddr = (Ipv4Addr::LOCALHOST, 0).into();
-
-        #[cfg(feature = "settings")]
-        let addr = addr.into();
-
-        addr
+    fn default_addr() -> ListenAddr {
+        ListenAddr::default()
     }
 }

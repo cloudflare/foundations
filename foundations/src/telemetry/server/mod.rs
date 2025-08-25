@@ -1,6 +1,7 @@
 #[cfg(feature = "metrics")]
 use super::metrics;
 use super::settings::TelemetrySettings;
+use crate::addr::ListenAddr;
 use crate::telemetry::log;
 use crate::BootstrapResult;
 use anyhow::Context as _;
@@ -14,18 +15,127 @@ use std::net::SocketAddr;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
+use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::TcpListener;
+#[cfg(unix)]
+use tokio::net::{TcpStream, UnixListener, UnixStream};
 use tokio::sync::watch;
 
 mod router;
 
 use router::Router;
+
+enum TelemetryStream {
+    Tcp(TcpStream),
+    #[cfg(unix)]
+    Unix(UnixStream),
+}
+
+impl AsyncRead for TelemetryStream {
+    fn poll_read(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> Poll<std::io::Result<()>> {
+        match self.get_mut() {
+            TelemetryStream::Tcp(stream) => Pin::new(stream).poll_read(cx, buf),
+            #[cfg(unix)]
+            TelemetryStream::Unix(stream) => Pin::new(stream).poll_read(cx, buf),
+        }
+    }
+}
+
+impl AsyncWrite for TelemetryStream {
+    fn poll_write(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<Result<usize, std::io::Error>> {
+        match self.get_mut() {
+            TelemetryStream::Tcp(stream) => Pin::new(stream).poll_write(cx, buf),
+            #[cfg(unix)]
+            TelemetryStream::Unix(stream) => Pin::new(stream).poll_write(cx, buf),
+        }
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), std::io::Error>> {
+        match self.get_mut() {
+            TelemetryStream::Tcp(stream) => Pin::new(stream).poll_flush(cx),
+            #[cfg(unix)]
+            TelemetryStream::Unix(stream) => Pin::new(stream).poll_flush(cx),
+        }
+    }
+
+    fn poll_shutdown(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<Result<(), std::io::Error>> {
+        match self.get_mut() {
+            TelemetryStream::Tcp(stream) => Pin::new(stream).poll_shutdown(cx),
+            #[cfg(unix)]
+            TelemetryStream::Unix(stream) => Pin::new(stream).poll_shutdown(cx),
+        }
+    }
+}
+
+enum TelemetryListener {
+    Tcp(TcpListener),
+    #[cfg(unix)]
+    Unix(UnixListener),
+}
+
+impl TelemetryListener {
+    pub(crate) fn local_addr(&self) -> BootstrapResult<ListenAddr> {
+        match self {
+            TelemetryListener::Tcp(listener) => Ok(listener.local_addr()?.into()),
+            #[cfg(unix)]
+            TelemetryListener::Unix(listener) => match listener.local_addr()?.as_pathname() {
+                Some(path) => Ok(path.to_path_buf().into()),
+                None => Err(anyhow::anyhow!("unix socket listener has no pathname")),
+            },
+        }
+    }
+
+    pub(crate) async fn accept(&self) -> std::io::Result<TelemetryStream> {
+        match self {
+            TelemetryListener::Tcp(listener) => listener
+                .accept()
+                .await
+                .map(|(conn, _)| TelemetryStream::Tcp(conn)),
+            #[cfg(unix)]
+            TelemetryListener::Unix(listener) => listener
+                .accept()
+                .await
+                .map(|(conn, _)| TelemetryStream::Unix(conn)),
+        }
+    }
+
+    pub(crate) fn poll_accept(
+        &mut self,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<TelemetryStream>> {
+        match self {
+            TelemetryListener::Tcp(listener) => match std::task::ready!(listener.poll_accept(cx)) {
+                Ok((conn, _)) => std::task::Poll::Ready(Ok(TelemetryStream::Tcp(conn))),
+                Err(e) => std::task::Poll::Ready(Err(e)),
+            },
+            #[cfg(unix)]
+            TelemetryListener::Unix(listener) => {
+                match std::task::ready!(listener.poll_accept(cx)) {
+                    Ok((conn, _)) => std::task::Poll::Ready(Ok(TelemetryStream::Unix(conn))),
+                    Err(e) => std::task::Poll::Ready(Err(e)),
+                }
+            }
+        }
+    }
+}
+
 pub use router::{
     BoxError, TelemetryRouteHandler, TelemetryRouteHandlerFuture, TelemetryServerRoute,
 };
 
 pub(super) struct TelemetryServerFuture {
-    listener: TcpListener,
+    listener: TelemetryListener,
     router: Router,
 }
 
@@ -47,27 +157,38 @@ impl TelemetryServerFuture {
                 .map_err(|err| anyhow::anyhow!(err))?;
         }
 
-        let addr = settings.server.addr;
+        let router = Router::new(custom_routes, Arc::clone(&settings));
 
-        #[cfg(feature = "settings")]
-        let addr = SocketAddr::from(addr);
+        let listener = match &settings.server.addr {
+            ListenAddr::Tcp(addr) => {
+                let std_listener = std::net::TcpListener::from(
+                    bind_socket(*addr)
+                        .with_context(|| format!("binding to TCP socket {addr:?}"))?,
+                );
+                std_listener.set_nonblocking(true)?;
+                let tokio_listener = tokio::net::TcpListener::from_std(std_listener)?;
+                TelemetryListener::Tcp(tokio_listener)
+            }
+            #[cfg(unix)]
+            ListenAddr::Unix(path) => {
+                // Remove existing socket file if it exists to avoid bind errors
+                if path.exists() {
+                    if let Err(e) = std::fs::remove_file(path) {
+                        log::warn!("failed to remove existing Unix socket file"; "path" => %path.display(), "error" => e);
+                    }
+                }
 
-        let router = Router::new(custom_routes, settings);
-
-        let listener = {
-            let std_listener = std::net::TcpListener::from(
-                bind_socket(addr).with_context(|| format!("binding to socket {addr:?}"))?,
-            );
-
-            std_listener.set_nonblocking(true)?;
-
-            tokio::net::TcpListener::from_std(std_listener)?
+                let unix_listener = UnixListener::bind(path)
+                    .with_context(|| format!("binding to Unix socket {path:?}"))?;
+                TelemetryListener::Unix(unix_listener)
+            }
         };
 
         Ok(Some(TelemetryServerFuture { listener, router }))
     }
-    pub(super) fn local_addr(&self) -> SocketAddr {
-        self.listener.local_addr().unwrap()
+
+    pub(super) fn local_addr(&self) -> BootstrapResult<ListenAddr> {
+        self.listener.local_addr()
     }
 
     // Adapted from Hyper 0.14 Server stuff and axum::serve::serve.
@@ -87,15 +208,12 @@ impl TelemetryServerFuture {
         let (close_tx, close_rx) = watch::channel(());
         let listener = self.listener;
 
-        pin_mut!(listener);
-
         loop {
             let socket = tokio::select! {
                 conn = listener.accept() => match conn {
-                    Ok((conn, _)) => TokioIo::new(conn),
+                    Ok(conn) => TokioIo::new(conn),
                     Err(e) => {
                         log::warn!("failed to accept connection"; "error" => e);
-
                         continue;
                     }
                 },
@@ -140,11 +258,10 @@ impl Future for TelemetryServerFuture {
         let this = &mut *self;
 
         loop {
-            let socket = match ready!(Pin::new(&mut this.listener).poll_accept(cx)) {
-                Ok((conn, _)) => TokioIo::new(conn),
+            let socket = match ready!(this.listener.poll_accept(cx)) {
+                Ok(conn) => TokioIo::new(conn),
                 Err(e) => {
                     log::warn!("failed to accept connection"; "error" => e);
-
                     continue;
                 }
             };
