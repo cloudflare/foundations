@@ -6,6 +6,7 @@ use cf_rustracing::sampler::BoxSampler;
 use cf_rustracing::tag::Tag;
 use cf_rustracing_jaeger::span::{Span, SpanContext, SpanContextState};
 use parking_lot::RwLock;
+use prometools::histogram::{HistogramTimer, TimeHistogram};
 use rand::{self, Rng};
 use std::borrow::Cow;
 use std::error::Error;
@@ -54,7 +55,7 @@ impl From<SharedSpanHandle> for Arc<RwLock<Span>> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub(crate) struct SharedSpan {
     // NOTE: we intentionally use a lock without poisoning here to not
     // panic the threads if they just share telemetry with failed thread.
@@ -62,6 +63,23 @@ pub(crate) struct SharedSpan {
     // NOTE: store sampling flag separately, so we don't need to acquire lock
     // every time we need to check the flag.
     is_sampled: bool,
+    timer: Option<Arc<HistogramTimer>>,
+}
+
+impl SharedSpan {
+    #[cfg(all(feature = "metrics", feature = "tracing"))]
+    pub(crate) fn track_with_time_histogram(&mut self, timer: TimeHistogram) {
+        let _ = self.timer.insert(Arc::new(timer.start_timer()));
+    }
+}
+
+impl std::fmt::Debug for SharedSpan {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SharedSpan")
+            .field("inner", &self.inner)
+            .field("is_sampled", &self.is_sampled)
+            .finish()
+    }
 }
 
 impl From<Span> for SharedSpan {
@@ -71,6 +89,7 @@ impl From<Span> for SharedSpan {
         Self {
             inner: SharedSpanHandle::new(inner),
             is_sampled,
+            timer: None,
         }
     }
 }
@@ -83,12 +102,22 @@ pub fn write_current_span(write_fn: impl FnOnce(&mut Span)) {
     }
 }
 
-pub(crate) fn create_span(name: impl Into<Cow<'static, str>>) -> SharedSpan {
-    match current_span() {
+pub(crate) fn create_span(
+    name: impl Into<Cow<'static, str>>,
+    histogram: Option<TimeHistogram>,
+) -> SharedSpan {
+    let span = match current_span() {
         Some(parent) => parent.inner.read().child(name, |o| o.start()),
         None => start_trace(name, Default::default()),
+    };
+
+    let timer = histogram.map(|t| Arc::new(t.start_timer()));
+
+    SharedSpan {
+        is_sampled: span.is_sampled(),
+        inner: SharedSpanHandle::new(span),
+        timer,
     }
-    .into()
 }
 
 pub(crate) fn current_span() -> Option<SharedSpan> {
