@@ -73,6 +73,7 @@ jobs:
           cargo hack --remove-dev-deps --workspace
           # Update Cargo.lock to minimal version dependencies.
           cargo update -Z minimal-versions
+          cargo update -p itertools # 0.10 is broken
           cargo hack check --all-features --ignore-private
       - name: Check minimal versions with unstable features
         env:
@@ -83,6 +84,7 @@ jobs:
           cargo hack --remove-dev-deps --workspace
           # Update Cargo.lock to minimal version dependencies.
           cargo update -Z minimal-versions
+          cargo update -p itertools # 0.10 is broken
           cargo hack check --all-features --ignore-private
 
   deny:
