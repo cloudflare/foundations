@@ -24,7 +24,7 @@ fn ensure_seccomp_sources_fetched() {
 #[cfg(feature = "security")]
 mod security {
     use super::*;
-    use bindgen::{Builder, CargoCallbacks};
+    use bindgen::Builder;
     use std::fs;
     use std::path::Path;
 
@@ -175,7 +175,7 @@ mod security {
             .allowlist_var("PR_GET_SECCOMP")
             .allowlist_var("PR_SET_NAME")
             .derive_default(true)
-            .parse_callbacks(Box::new(CargoCallbacks))
+            .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
             .generate()
             .unwrap()
             .write_to_file(out_dir.join("security_sys.rs"))
