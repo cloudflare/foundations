@@ -27,6 +27,7 @@ pub(super) fn convert_service_info_to_resource(
     otlp::resource::v1::Resource {
         attributes: vec![service_name_attr],
         dropped_attributes_count: 0,
+        entity_refs: vec![],
     }
 }
 
