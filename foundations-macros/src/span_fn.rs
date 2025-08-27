@@ -44,6 +44,9 @@ struct Options {
 
     #[darling(default = "Options::default_async_local")]
     async_local: bool,
+
+    #[darling(default = "Options::default_time_histogram")]
+    with_time_histogram: Option<Expr>,
 }
 
 impl Options {
@@ -53,6 +56,10 @@ impl Options {
 
     fn default_async_local() -> bool {
         false
+    }
+
+    fn default_time_histogram() -> Option<Expr> {
+        None
     }
 }
 
@@ -113,10 +120,19 @@ fn expand_from_parsed(args: Args, item_fn: ItemFn) -> TokenStream2 {
             let span_name = args.span_name.as_tokens();
             let crate_path = &args.options.crate_path;
 
-            quote!(
-                let __span = #crate_path::telemetry::tracing::span(#span_name);
-                #block
-            )
+            if let Some(timer) = args.options.with_time_histogram {
+                quote!(
+                    let __span = #crate_path::telemetry::tracing::span(#span_name)
+                        .into_context()
+                        .with_time_histogram(#timer);
+                    #block
+                )
+            } else {
+                quote!(
+                    let __span = #crate_path::telemetry::tracing::span(#span_name);
+                    #block
+                )
+            }
         }),
     };
 
@@ -182,13 +198,22 @@ fn wrap_with_span(args: &Args, block: TokenStream2) -> TokenStream2 {
 
     let span_name = args.span_name.as_tokens();
     let crate_path = &args.options.crate_path;
-
-    quote!(
-        #crate_path::telemetry::tracing::span(#span_name)
-            .into_context()
-            .#apply_fn(#block)
-            .await
-    )
+    if let Some(timer) = &args.options.with_time_histogram {
+        quote!(
+            #crate_path::telemetry::tracing::span(#span_name)
+                .into_context()
+                .with_time_histogram(#timer)
+                .#apply_fn(#block)
+                .await
+        )
+    } else {
+        quote!(
+            #crate_path::telemetry::tracing::span(#span_name)
+                .into_context()
+                .#apply_fn(#block)
+                .await
+        )
+    }
 }
 
 #[cfg(test)]
@@ -477,6 +502,71 @@ mod tests {
 
                     Ok("foo".into())
                 }
+            }
+        };
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn span_sync_fn_with_metric_tracker() {
+        let args = parse_attr! {
+            #[span_fn("sync_span", with_time_histogram = ::foo::bar::metrics::time_histogram(label = false))]
+        };
+
+        let item_fn = parse_quote! {
+            fn do_sync() -> io::Result<String> {
+                do_something_else();
+
+                Ok("foo".into())
+            }
+        };
+
+        let actual = expand_from_parsed(args, item_fn).to_string();
+
+        let expected = code_str! {
+            fn do_sync<>() -> io::Result<String> {
+                let __span = ::foundations::telemetry::tracing::span("sync_span")
+                    .into_context()
+                    .with_time_histogram(::foo::bar::metrics::time_histogram(label = false));
+                {
+                    do_something_else();
+
+                    Ok("foo".into())
+                }
+            }
+        };
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn span_async_fn_with_metric_tracker() {
+        let args = parse_attr! {
+            #[span_fn("async_span", with_time_histogram = ::foo::bar::metrics::time_histogram(label = false))]
+        };
+
+        let item_fn = parse_quote! {
+            async fn do_async() -> io::Result<String> {
+                do_something_else().await;
+
+                Ok("foo".into())
+            }
+        };
+
+        let actual = expand_from_parsed(args, item_fn).to_string();
+
+        let expected = code_str! {
+            async fn do_async<>() -> io::Result<String> {
+                ::foundations::telemetry::tracing::span("async_span")
+                    .into_context()
+                    .with_time_histogram(::foo::bar::metrics::time_histogram(label = false))
+                    .apply(async move {{
+                        do_something_else().await;
+
+                        Ok("foo".into())
+                    }})
+                .await
             }
         };
 

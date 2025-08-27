@@ -93,8 +93,7 @@ impl TraceLogBuilder {
 
     fn finalize(mut self, end_timestamp: u64) -> String {
         self.out.push_str(&format!(
-            "{{\"pid\":1,\"name\":\"Trace dump requested\",\"ph\":\"i\",\"ts\":{},\"s\":\"g\"}}",
-            end_timestamp,
+            "{{\"pid\":1,\"name\":\"Trace dump requested\",\"ph\":\"i\",\"ts\":{end_timestamp},\"s\":\"g\"}}",
         ));
 
         self.out.push(']');

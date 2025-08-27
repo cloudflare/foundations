@@ -19,6 +19,7 @@ use self::internal::{create_span, current_span, span_trace_id, SharedSpan};
 use super::scope::Scope;
 use super::TelemetryContext;
 use cf_rustracing_jaeger::Span;
+use prometools::histogram::TimeHistogram;
 use std::borrow::Cow;
 use std::sync::Arc;
 
@@ -69,6 +70,83 @@ pub fn get_active_traces() -> String {
 ///         },
 ///     ]
 /// );
+/// ```
+///
+/// # Tracking span duration
+/// The `with_time_histogram` attribute can be used to time the span. The span duration will be
+/// recorded into the passed histogram.
+///
+/// ## Note
+///
+/// The duration will be recorded regardless of if the span was sampled.
+///
+/// ```
+/// use foundations::telemetry::TelemetryContext;
+/// use foundations::telemetry::metrics::{metrics, HistogramBuilder, TimeHistogram};
+/// use foundations::telemetry::tracing::{self, test_trace};
+///
+/// #[metrics]
+/// mod test_metrics {
+///     #[ctor = HistogramBuilder { buckets: &[1E-4, 2E-4] }]
+///    pub fn root_histogram() -> TimeHistogram;
+///
+///     #[ctor = HistogramBuilder { buckets: &[1E-4, 2E-4] }]
+///    pub fn sync_fn_histogram() -> TimeHistogram;
+///
+///     #[ctor = HistogramBuilder { buckets: &[1E-4, 2E-4] }]
+///    pub fn async_fn_histogram(label: bool) -> TimeHistogram;
+/// }
+///
+/// // The `track_duration_with` attribute will automatically track the duration of the
+/// // `sync_fn` span and drop it into `sync_fn_histogram()`.
+/// #[tracing::span_fn("sync_fn", with_time_histogram = test_metrics::sync_fn_histogram())]
+/// fn some_sync_production_fn_that_we_test() -> u64 {
+///     57
+/// }
+///
+/// // This one's duration will be dropped into `async_fn_histogram()`.
+/// #[tracing::span_fn("async_fn", with_time_histogram = test_metrics::async_fn_histogram(true))]
+/// async fn some_async_production_fn_that_we_test() -> u64 {
+///     42
+/// }
+///
+/// #[tokio::main]
+/// async fn main() {
+///     let ctx = TelemetryContext::test();
+///
+///     {
+///         let _scope = ctx.scope();
+///         let _root = tracing::span("root");
+///
+///         let handle = tokio::spawn(TelemetryContext::current().apply(async {
+///             some_async_production_fn_that_we_test().await;
+///         }));
+///
+///         handle.await;
+///
+///         some_sync_production_fn_that_we_test();
+///     }
+///
+///     assert_eq!(
+///         ctx.traces(Default::default()),
+///         vec![
+///             test_trace! {
+///                 "root" => {
+///                     "async_fn",
+///                     "sync_fn"
+///                 }
+///             }
+///         ]
+///     );
+///
+///     let sync_snapshot = test_metrics::sync_fn_histogram().snapshot();
+///     let async_true_snapshot = test_metrics::async_fn_histogram(true).snapshot();
+///     let async_false_snapshot = test_metrics::async_fn_histogram(false).snapshot();
+///
+///     assert_eq!(sync_snapshot.count(), 1);
+///     assert_eq!(async_true_snapshot.count(), 1);
+///     assert_eq!(async_false_snapshot.count(), 0);
+/// }
 /// ```
 ///
 /// # Using constants for span names
@@ -351,7 +429,67 @@ pub fn w3c_traceparent() -> Option<String> {
 /// );
 /// ```
 pub fn span(name: impl Into<Cow<'static, str>>) -> SpanScope {
-    SpanScope::new(create_span(name))
+    SpanScope::new(create_span(name, None))
+}
+
+/// Create a new traced span. The span's duration will be automatically recorded into the provided
+/// `histogram`. The span ends when the returned [`SpanScope`] is dropped.
+///
+/// See [`span()`] for more on how spans behave. Note that the duration will be recorded regardless
+/// of if the span is sampled or not, so this can be used to accurately track function/block-level
+/// execution time.
+///
+/// # Examples
+/// ```
+/// use foundations::telemetry::TelemetryContext;
+/// use foundations::telemetry::tracing::{self, test_trace};
+/// use foundations::telemetry::metrics::TimeHistogram;
+///
+/// // Test context is used for demonstration purposes to show the resulting traces.
+/// let ctx = TelemetryContext::test();
+///
+/// let root_hist = TimeHistogram::new(vec![0.0].into_iter());
+/// let root_clone = root_hist.clone();
+/// let hist1 = TimeHistogram::new(vec![0.0].into_iter());
+/// let hist1_clone = hist1.clone();
+/// let hist2 = TimeHistogram::new(vec![0.0].into_iter());
+/// let hist2_clone = hist2.clone();
+///
+/// {
+///     let _scope = ctx.scope();
+///     let _root = tracing::timed_span("root", root_clone);
+///     
+///     {
+///         let _span1 = tracing::timed_span("span1", hist1_clone);
+///     }
+///
+///     let _span2 = tracing::timed_span("span2", hist2_clone);
+///     let _span2_1 = tracing::span("span2_1");
+/// }
+///
+/// assert_eq!(
+///     ctx.traces(Default::default()),
+///     vec![test_trace! {
+///         "root" => {
+///             "span1",
+///             "span2" => {
+///                 "span2_1"
+///             }
+///         }
+///     }]
+/// );
+///
+/// let root_snapshot = root_hist.snapshot();
+/// let hist1_snapshot = hist1.snapshot();
+/// let hist2_snapshot = hist2.snapshot();
+///
+/// assert_eq!(root_snapshot.count(), 1);
+/// assert_eq!(hist1_snapshot.count(), 1);
+/// assert_eq!(hist2_snapshot.count(), 1);
+/// ```
+#[cfg(feature = "metrics")]
+pub fn timed_span(name: impl Into<Cow<'static, str>>, histogram: TimeHistogram) -> SpanScope {
+    SpanScope::new(create_span(name, Some(histogram)))
 }
 
 /// Starts a new trace. Ends the current one if it is available and links the new one with it.
