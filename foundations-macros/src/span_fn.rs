@@ -44,6 +44,9 @@ struct Options {
 
     #[darling(default = "Options::default_async_local")]
     async_local: bool,
+
+    #[darling(default = "Options::default_generic")]
+    generic: bool,
 }
 
 impl Options {
@@ -52,6 +55,10 @@ impl Options {
     }
 
     fn default_async_local() -> bool {
+        false
+    }
+
+    fn default_generic() -> bool {
         false
     }
 }
@@ -176,6 +183,8 @@ fn try_async_trait_fn_rewrite(args: &Args, body: &Block) -> Option<TokenStream2>
 fn wrap_with_span(args: &Args, block: TokenStream2) -> TokenStream2 {
     let apply_fn = if args.options.async_local {
         quote!(apply_local)
+    } else if args.options.generic {
+        quote!(apply_generic)
     } else {
         quote!(apply)
     };
@@ -322,6 +331,38 @@ mod tests {
     }
 
     #[test]
+    fn expand_async_fn_generic() {
+        let args = parse_attr! {
+            #[span_fn("async_span", generic = true)]
+        };
+
+        let item_fn = parse_quote! {
+            async fn do_async() -> io::Result<String> {
+                do_something_else().await;
+
+                Ok("foo".into())
+            }
+        };
+
+        let actual = expand_from_parsed(args, item_fn).to_string();
+
+        let expected = code_str! {
+            async fn do_async<>() -> io::Result<String> {
+                ::foundations::telemetry::tracing::span("async_span")
+                    .into_context()
+                    .apply_generic(async move {{
+                        do_something_else().await;
+
+                        Ok("foo".into())
+                    }})
+                    .await
+            }
+        };
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
     fn expand_async_trait_fn() {
         let args = parse_attr! {
             #[span_fn("async_trait_span")]
@@ -434,6 +475,72 @@ mod tests {
                     ::foundations::telemetry::tracing::span("async_trait_span")
                         .into_context()
                         .apply_local(async move {
+                            if let ::core::option::Option::Some(__ret) = ::core::option::Option::None::<String> {
+                                return __ret;
+                            }
+                            let __self = self;
+                            let __ret: String = {
+                                __self.do_something_else().await;
+                                "foo".into()
+                            };
+                            #[allow(unreachable_code)]
+                            __ret
+                        })
+                        .await
+                })
+            }
+        };
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn expand_async_trait_fn_generic() {
+        let args = parse_attr! {
+            #[span_fn("async_trait_span", generic = true)]
+        };
+
+        let item_fn = parse_quote! {
+            fn test<'life0, 'async_trait>(
+                &'life0 self,
+            ) -> ::core::pin::Pin<
+                Box<dyn ::core::future::Future<Output = String> + ::core::marker::Send + 'async_trait>
+            >
+            where
+                'life0: 'async_trait,
+                Self: 'async_trait,
+            {
+                Box::pin(async move {
+                    if let ::core::option::Option::Some(__ret) = ::core::option::Option::None::<String> {
+                        return __ret;
+                    }
+                    let __self = self;
+                    let __ret: String = {
+                        __self.do_something_else().await;
+                        "foo".into()
+                    };
+                    #[allow(unreachable_code)]
+                    __ret
+                })
+            }
+        };
+
+        let actual = expand_from_parsed(args, item_fn).to_string();
+
+        let expected = code_str! {
+            fn test<'life0, 'async_trait>(
+                &'life0 self,
+            ) -> ::core::pin::Pin<
+                Box<dyn ::core::future::Future<Output = String> + ::core::marker::Send + 'async_trait>
+            >
+            where
+                'life0: 'async_trait,
+                Self: 'async_trait,
+            {
+                Box::pin(async move {
+                    ::foundations::telemetry::tracing::span("async_trait_span")
+                        .into_context()
+                        .apply_generic(async move {
                             if let ::core::option::Option::Some(__ret) = ::core::option::Option::None::<String> {
                                 return __ret;
                             }
