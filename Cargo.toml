@@ -47,6 +47,7 @@ once_cell = "1.5"
 tonic = { version = "0.13", default-features = false }
 opentelemetry-proto = "0.30"
 parking_lot = "0.12"
+pin-project-lite = "0.2.16"
 proc-macro2 = { version = "1", default-features = false }
 prometheus = { version = "0.14", default-features = false }
 prometheus-client = "0.18"
