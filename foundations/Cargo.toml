@@ -175,10 +175,10 @@ tracing-rs-compat = ["dep:tracing-slog"]
 
 [package.metadata.docs.rs]
 all-features = true
-rustdoc-args = ["--cfg", "docsrs", "--cfg", "tokio_unstable", "--cfg", "foundations_unstable"]
+rustdoc-args = ["--cfg", "docsrs", "--cfg", "tokio_unstable", "--cfg", "foundations_unstable", "--cfg", "foundations_generic_telemetry_wrapper"]
 # it's necessary to _also_ pass `--cfg tokio_unstable` and `--cfg foundations_unstable`
 # to rustc, or else dependencies will not be enabled, and the docs build will fail.
-rustc-args = ["--cfg", "tokio_unstable", "--cfg", "foundations_unstable"]
+rustc-args = ["--cfg", "tokio_unstable", "--cfg", "foundations_unstable", "--cfg", "foundations_generic_telemetry_wrapper"]
 
 [dependencies]
 anyhow = { workspace = true, features = ["backtrace", "std"] }
@@ -235,6 +235,7 @@ parking_lot_core = { workspace = true, optional = true }
 regex = { workspace = true, optional = true }
 thiserror = { workspace = true, optional = true }
 tower = { workspace = true, optional = true }
+pin-project-lite = { workspace = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 tikv-jemalloc-ctl = { workspace = true, optional = true, features = [

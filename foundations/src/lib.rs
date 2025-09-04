@@ -43,6 +43,13 @@
 //! - **cli**: Enables command line interface (CLI) functionality. Implicitly enabled **settings**
 //!   feature.
 //!
+//! # Generic telemetry
+//! Foundations currently box the future with TelemetryContext by default. A default generic
+//! wrapper is gated behind `--cfg foundations_generic_telemetry_wrapper`.
+//!
+//! To enable this, you must add `--cfg foundations_generic_telemetry_wrapper` to your RUSTFLAGS
+//! environment variable.
+//!
 //! # Unstable Features
 //! Foundations has unstable features which are gated behind `--cfg foundations_unstable`:
 //!
