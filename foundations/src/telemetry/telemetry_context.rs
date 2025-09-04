@@ -3,6 +3,7 @@ use crate::utils::feature_use;
 use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context, Poll};
+use pin_project::pin_project;
 
 feature_use!(cfg(feature = "logging"), {
     use super::log::internal::{current_log, fork_log, LogScope, SharedLog};
@@ -22,6 +23,24 @@ feature_use!(cfg(feature = "tracing"), {
 
 #[cfg(feature = "testing")]
 use super::testing::TestTelemetryContext;
+
+#[pin_project]
+pub struct WithTelemetryContextGeneric<T> {
+    #[pin]
+    inner: T,
+    ctx: TelemetryContext,
+}
+
+impl<T: Future> Future for WithTelemetryContextGeneric<T> {
+    type Output = T::Output;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let this = self.project();
+        let _telemetry_scope = this.ctx.scope();
+
+        this.inner.poll(cx)
+    }
+}
 
 /// Wrapper for a future that provides it with [`TelemetryContext`].
 pub struct WithTelemetryContext<'f, T> {
@@ -181,7 +200,7 @@ impl TelemetryContext {
     /// #[tokio::main]
     /// async fn main() {
     ///     let ctx = TelemetryContext::test();
-    ///     
+    ///
     ///     {
     ///         let _scope = ctx.scope();
     ///         let _root = tracing::span("root");
@@ -206,7 +225,7 @@ impl TelemetryContext {
     ///             message: "Sync hello!".into(),
     ///             fields: vec![]
     ///         }
-    ///     ]);  
+    ///     ]);
     ///
     ///     assert_eq!(
     ///         ctx.traces(Default::default()),
@@ -288,6 +307,17 @@ impl TelemetryContext {
     {
         WithTelemetryContextLocal {
             inner: Box::pin(fut),
+            ctx: self.clone(),
+        }
+    }
+
+    /// The same as [`TelemetryContext::apply`], but for futures that are not boxed.
+    pub fn apply_generic<F>(&self, fut: F) -> WithTelemetryContextGeneric<F>
+    where
+        F: Future,
+    {
+        WithTelemetryContextGeneric {
+            inner: fut,
             ctx: self.clone(),
         }
     }
