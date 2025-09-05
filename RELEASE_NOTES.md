@@ -1,5 +1,18 @@
 
+5.0.0
+- 2025-08-27 Update deps with minimal changes
+- 2025-03-03 Re-export Hyper types used in public API
+- 2025-07-17 Add compile-time validation for histogram buckets in foundations-macros
+- 2024-11-19 Bump tonic dependency to v0.12
+- 2025-06-26 Fix units in HistogramBuilder docs example
+- 2025-08-13 Add unix domain socket for telemetry server
+- 2025-08-26 Ignore itertools in minimal-versions (#131)
+- 2025-08-20 Add tracing::w3c_traceparent() helper
+- 2025-08-20 Fix clippy complaints from Rust 1.89.0
+- 2024-11-21 Switch to Hyper 1
+
 4.5.0
+- 2025-05-22 Release 4.5.0
 - 2025-03-10 feat: Add tracing-rs-compat feature with tracing compat logging drain
 - 2025-05-08 ZTC-2169: Allow use of memory-profiling feature with no other features
 - 2025-05-16 Resolve Clippy lints from Rust 1.86 and 1.87
