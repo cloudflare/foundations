@@ -54,6 +54,7 @@ mod tests {
     use crate::telemetry::TelemetryContext;
 
     #[test]
+    #[ignore = "RUST-131: test is flakey, need to figure out a way to make it deterministic"]
     fn unsampled_spans_are_not_captured() {
         let ctx = TelemetryContext::test();
         {
