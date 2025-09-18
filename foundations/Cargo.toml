@@ -69,14 +69,14 @@ telemetry = [
     "telemetry-server",
     "client-telemetry",
     "telemetry-otlp-grpc",
-    "dep:futures-util",
 ]
 
 # Enables a subset of telemetry features suitable for usage in clients.
-client-telemetry = ["logging", "metrics", "tracing", "dep:futures-util"]
+client-telemetry = ["logging", "metrics", "tracing"]
 
 # Enables the telemetry server.
 telemetry-server = [
+    "logging",
     "dep:http-body-util",
     "dep:hyper",
     "dep:hyper-util",
@@ -84,10 +84,12 @@ telemetry-server = [
     "dep:percent-encoding",
     "dep:serde",
     "dep:tokio",
+    "tokio/net",
+    "dep:futures-util",
 ]
 
 # Enables telemetry reporting over gRPC
-telemetry-otlp-grpc = ["dep:tonic", "tonic/prost", "dep:tokio", "dep:hyper"]
+telemetry-otlp-grpc = ["dep:tonic", "tonic/prost", "dep:tokio", "tokio/net", "dep:hyper"]
 
 # Enables experimental tokio runtime metrics
 tokio-runtime-metrics = [

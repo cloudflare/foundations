@@ -84,9 +84,9 @@ pub mod settings;
 #[cfg(any(
     feature = "logging",
     feature = "metrics",
-    feature = "telemetry",
     feature = "tracing",
     feature = "memory-profiling",
+    feature = "telemetry-server",
 ))]
 pub mod telemetry;
 
