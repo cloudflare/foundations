@@ -147,6 +147,7 @@ mod foundations_reexport {
 }
 
 // NOTE: this is basically a smoke test structure - it won't compile if `crate_path` is broken
+#[allow(dead_code)]
 #[settings(crate_path = "foundations_reexport::nested")]
 struct StructWithCrateReexport {
     b: bool,
