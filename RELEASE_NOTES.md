@@ -1,5 +1,13 @@
 
+5.0.1
+- 2025-09-18 Fix extended dead_code lint from Rust 1.90
+- 2025-09-18 Fix telemetry meta-features and telemetry-server build
+- 2025-09-04 telemetry: add apply_generic to telemetry context
+- 2025-09-16 RUST-131: ignore flakey unsampled_spans_are_not_captured test
+- 2025-09-11 Add dep:tokio to feature telemetry-server
+
 5.0.0
+- 2025-09-05 Release 5.0.0
 - 2025-08-27 Update deps with minimal changes
 - 2025-03-03 Re-export Hyper types used in public API
 - 2025-07-17 Add compile-time validation for histogram buckets in foundations-macros
