@@ -18,7 +18,6 @@ use self::init::TracingHarness;
 use self::internal::{create_span, current_span, span_trace_id, SharedSpan};
 use super::scope::Scope;
 use super::TelemetryContext;
-use cf_rustracing_jaeger::Span;
 use std::borrow::Cow;
 use std::sync::Arc;
 
@@ -26,7 +25,7 @@ use std::sync::Arc;
 pub use self::testing::{TestSpan, TestTrace, TestTraceIterator, TestTraceOptions};
 
 pub use cf_rustracing::tag::TagValue;
-pub use cf_rustracing_jaeger::span::{SpanContextState as SerializableTraceState, TraceId};
+pub use cf_rustracing_jaeger::span::{Span, SpanContextState as SerializableTraceState, TraceId};
 
 /// Returns active traces as a JSON dump.
 ///
@@ -650,6 +649,75 @@ macro_rules! __set_span_finish_time {
     };
 }
 
+/// Sets a new finish callback for the current span. It executes when the span is dropped.
+///
+/// Each span can only have one callback at a time. Children of a span inherit the
+/// callback that is set at the time each child is created. To remove a callback, use
+/// `set_span_finish_callback!(None)`.
+///
+/// The callback has signature `Fn(&mut Span)` and can access all functions available on
+/// [`Span`].
+///
+/// # Examples
+/// ```
+/// use foundations::telemetry::TelemetryContext;
+/// use foundations::telemetry::tracing::{self, Span, test_trace, TestTraceOptions};
+///
+/// // Test context is used for demonstration purposes to show the resulting traces.
+/// let ctx = TelemetryContext::test();
+///
+/// {
+///     let _scope = ctx.scope();
+///     let _root = tracing::span("root");
+///
+///     tracing::set_span_finish_callback!(|span: &mut Span| {
+///         use cf_rustracing::tag::Tag;
+///         span.set_tag(|| Tag::new("user-id", 92395));
+///     });
+///
+///     let child_with_cb = tracing::span("child_with_cb");
+///     drop(child_with_cb);
+///
+///     // Remove the callback from a newly-created child
+///     let _child_without_cb = tracing::span("child_without_cb");
+///     tracing::set_span_finish_callback!(None);
+/// }
+///
+/// let traces = ctx.traces(TestTraceOptions {
+///     include_tags: true,
+///     ..Default::default()
+/// });
+///
+/// assert_eq!(
+///     traces,
+///     vec![test_trace! {
+///         "root"; {
+///             tags: [ ("user-id", 92395) ]
+///         } => {
+///             "child_with_cb"; {
+///                 tags: [ ("user-id", 92395) ]
+///             },
+///             "child_without_cb"
+///         }
+///     }]
+/// );
+/// ```
+#[macro_export]
+#[doc(hidden)]
+macro_rules! __set_span_finish_callback {
+    ( None ) => {
+        $crate::telemetry::tracing::internal::write_current_span(|span| {
+            span.take_finish_callback();
+        })
+    };
+    ( $cb:expr ) => {{
+        let cb = $cb;
+        $crate::telemetry::tracing::internal::write_current_span(move |span| {
+            span.set_finish_callback(cb);
+        })
+    }};
+}
+
 /// A convenience macro to construct [`TestTrace`] for test assertions.
 ///
 /// Note that for span timings the macro always generates default
@@ -835,6 +903,7 @@ macro_rules! __test_trace {
 #[doc(inline)]
 pub use {
     __add_span_log_fields as add_span_log_fields, __add_span_tags as add_span_tags,
+    __set_span_finish_callback as set_span_finish_callback,
     __set_span_finish_time as set_span_finish_time, __set_span_start_time as set_span_start_time,
 };
 
