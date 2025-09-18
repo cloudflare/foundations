@@ -83,7 +83,7 @@ telemetry-server = [
     "dep:socket2",
     "dep:percent-encoding",
     "dep:serde",
-    "dep:tokio",
+    "tokio/net",
 ]
 
 # Enables telemetry reporting over gRPC
