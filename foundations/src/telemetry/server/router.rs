@@ -1,7 +1,7 @@
 #[cfg(all(target_os = "linux", feature = "memory-profiling"))]
 use super::memory_profiling;
 #[cfg(feature = "metrics")]
-use super::metrics;
+use crate::telemetry::metrics;
 use crate::telemetry::settings::TelemetrySettings;
 #[cfg(feature = "tracing")]
 use crate::telemetry::tracing;

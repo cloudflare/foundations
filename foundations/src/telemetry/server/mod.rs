@@ -1,5 +1,3 @@
-#[cfg(feature = "metrics")]
-use super::metrics;
 use super::settings::TelemetrySettings;
 use crate::addr::ListenAddr;
 use crate::telemetry::log;
