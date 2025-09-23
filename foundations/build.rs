@@ -175,7 +175,9 @@ mod security {
             .allowlist_var("PR_GET_SECCOMP")
             .allowlist_var("PR_SET_NAME")
             .derive_default(true)
-            .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
+            .parse_callbacks(Box::new(
+                bindgen::CargoCallbacks::new().rerun_on_header_files(false),
+            ))
             .generate()
             .unwrap()
             .write_to_file(out_dir.join("security_sys.rs"))
