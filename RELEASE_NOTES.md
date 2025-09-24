@@ -1,5 +1,9 @@
 
+5.0.2
+- 2025-09-23 Fix regression that causes unconditional rebuilds
+
 5.0.1
+- 2025-09-18 Release 5.0.1
 - 2025-09-18 Fix extended dead_code lint from Rust 1.90
 - 2025-09-18 Fix telemetry meta-features and telemetry-server build
 - 2025-09-04 telemetry: add apply_generic to telemetry context
