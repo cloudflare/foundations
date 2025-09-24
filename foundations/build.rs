@@ -122,7 +122,8 @@ mod security {
     }
 
     fn render_header(out_dir: &Path, include_dir: &Path) -> PathBuf {
-        let rendered = fs::read_to_string(include_dir.join("seccomp.h.in"))
+        let template = include_dir.join("seccomp.h.in");
+        let rendered = fs::read_to_string(&template)
             .unwrap()
             .replace(
                 "@VERSION_MAJOR@",
@@ -140,6 +141,10 @@ mod security {
         let header_file = out_dir.join("seccomp.h");
 
         fs::write(&header_file, rendered).unwrap();
+
+        // We don't emit cargo:rerun-if-changed for the generated header to avoid unconditionally
+        // recompiling foundations, but we should emit it for the template its generated from.
+        println!("cargo:rerun-if-changed={}", template.display());
 
         header_file
     }
@@ -175,9 +180,9 @@ mod security {
             .allowlist_var("PR_GET_SECCOMP")
             .allowlist_var("PR_SET_NAME")
             .derive_default(true)
-            .parse_callbacks(Box::new(
-                bindgen::CargoCallbacks::new().rerun_on_header_files(false),
-            ))
+            .parse_callbacks(Box::new(CargoCallbacksIgnoreGenHeaders::new(
+                out_dir.to_owned(),
+            )))
             .generate()
             .unwrap()
             .write_to_file(out_dir.join("security_sys.rs"))
@@ -195,5 +200,40 @@ mod security {
             .file(&src)
             .try_compile("check_have_linux_seccomp_h")
             .is_ok()
+    }
+
+    /// Customized version of bindgen::CargoCallbacks that ignores files under out_dir.
+    ///
+    /// We cannot emit cargo:rerun-if-changed for generated files because it leads to
+    /// unconditional recompilation. This assumes all files under out_dir are generated.
+    #[derive(Debug)]
+    struct CargoCallbacksIgnoreGenHeaders {
+        out_dir: PathBuf,
+    }
+
+    impl CargoCallbacksIgnoreGenHeaders {
+        fn new(out_dir: PathBuf) -> Self {
+            Self { out_dir }
+        }
+
+        fn is_generated_file(&self, filename: &str) -> bool {
+            Path::new(filename).starts_with(&self.out_dir)
+        }
+    }
+
+    impl bindgen::callbacks::ParseCallbacks for CargoCallbacksIgnoreGenHeaders {
+        fn header_file(&self, filename: &str) {
+            self.include_file(filename);
+        }
+
+        fn include_file(&self, filename: &str) {
+            if !self.is_generated_file(filename) {
+                println!("cargo:rerun-if-changed={filename}");
+            }
+        }
+
+        fn read_env_var(&self, key: &str) {
+            println!("cargo:rerun-if-env-changed={key}");
+        }
     }
 }
