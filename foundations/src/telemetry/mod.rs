@@ -81,7 +81,7 @@ pub mod settings;
     foundations_unstable
 ))]
 #[cfg_attr(
-    docsrs,
+    foundations_docsrs,
     doc(cfg(all(
         feature = "tokio-runtime-metrics",
         tokio_unstable,

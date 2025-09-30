@@ -68,7 +68,7 @@
 // NOTE: required to allow cfgs like `tokio_unstable` on nightly which is used in tests.
 #![allow(unexpected_cfgs)]
 #![warn(missing_docs)]
-#![cfg_attr(docsrs, feature(doc_cfg))]
+#![cfg_attr(foundations_docsrs, feature(doc_cfg))]
 
 mod utils;
 
