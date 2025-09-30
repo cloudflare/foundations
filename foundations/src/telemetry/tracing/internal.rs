@@ -9,9 +9,11 @@ use parking_lot::RwLock;
 use rand::{self, Rng};
 use std::borrow::Cow;
 use std::error::Error;
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 
 pub(crate) type Tracer = cf_rustracing::Tracer<BoxSampler<SpanContextState>, SpanContextState>;
+
+static INACTIVE_SPAN: LazyLock<RwLock<Span>> = LazyLock::new(|| RwLock::new(Span::inactive()));
 
 /// Shared span with mutability and additional reference tracking for
 /// ad-hoc inspection.
@@ -19,21 +21,19 @@ pub(crate) type Tracer = cf_rustracing::Tracer<BoxSampler<SpanContextState>, Spa
 pub(crate) enum SharedSpanHandle {
     Tracked(Arc<LiveReferenceHandle<Arc<RwLock<Span>>>>),
     Untracked(Arc<RwLock<Span>>),
+    Inactive,
 }
 
 impl SharedSpanHandle {
     pub(crate) fn new(span: Span) -> Self {
-        let is_sampled = span.is_sampled();
-
-        TracingHarness::get()
-            .active_roots
-            .track(Arc::new(RwLock::new(span)), is_sampled)
+        TracingHarness::get().active_roots.track(span)
     }
 
     pub(crate) fn read(&self) -> parking_lot::RwLockReadGuard<'_, Span> {
         match self {
             SharedSpanHandle::Tracked(handle) => handle.read(),
             SharedSpanHandle::Untracked(rw_lock) => rw_lock.read(),
+            SharedSpanHandle::Inactive => (*INACTIVE_SPAN).read(),
         }
     }
 
@@ -41,6 +41,7 @@ impl SharedSpanHandle {
         match self {
             SharedSpanHandle::Tracked(handle) => handle.write(),
             SharedSpanHandle::Untracked(rw_lock) => rw_lock.write(),
+            SharedSpanHandle::Inactive => (*INACTIVE_SPAN).write(),
         }
     }
 }
@@ -50,6 +51,7 @@ impl From<SharedSpanHandle> for Arc<RwLock<Span>> {
         match value {
             SharedSpanHandle::Tracked(handle) => Arc::clone(&handle),
             SharedSpanHandle::Untracked(rw_lock) => Arc::clone(&rw_lock),
+            SharedSpanHandle::Inactive => Arc::new(RwLock::new(Span::inactive())),
         }
     }
 }
