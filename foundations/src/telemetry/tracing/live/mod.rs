@@ -39,11 +39,15 @@ impl ActiveRoots {
         event_output::spans_to_trace_events(self.start, &self.roots.get_live_references())
     }
 
-    pub(crate) fn track(&self, value: Arc<RwLock<Span>>, is_sampled: bool) -> SharedSpanHandle {
+    pub(crate) fn track(&self, span: Span) -> SharedSpanHandle {
+        let is_sampled = span.is_sampled();
+
         if self.settings.enabled && (self.settings.track_all_spans || is_sampled) {
-            SharedSpanHandle::Tracked(self.roots.track(value))
+            SharedSpanHandle::Tracked(self.roots.track(Arc::new(RwLock::new(span))))
+        } else if is_sampled {
+            SharedSpanHandle::Untracked(Arc::new(RwLock::new(span)))
         } else {
-            SharedSpanHandle::Untracked(value)
+            SharedSpanHandle::Inactive
         }
     }
 }
