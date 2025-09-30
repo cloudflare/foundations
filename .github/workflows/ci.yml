@@ -45,8 +45,8 @@ jobs:
         run: |
           cargo doc --lib --no-deps --all-features --document-private-items
         env:
-          RUSTDOCFLAGS: --cfg docsrs -Dwarnings --cfg tokio_unstable --cfg foundations_unstable
-          RUSTFLAGS: --cfg docsrs -Dwarnings --cfg tokio_unstable --cfg foundations_unstable
+          RUSTDOCFLAGS: --cfg foundations_docsrs -Dwarnings --cfg tokio_unstable --cfg foundations_unstable
+          RUSTFLAGS: --cfg foundations_docsrs -Dwarnings --cfg tokio_unstable --cfg foundations_unstable
 
   # based on tokio minver cbecm
   minimal-versions:
