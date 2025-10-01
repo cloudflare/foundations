@@ -1,5 +1,13 @@
 
+5.1.0
+- 2025-09-30 Add a new SharedSpanHandle::Inactive variant
+- 2025-09-18 Add set_span_finish_callback macro to telemetry::tracing
+- 2025-09-30 Work around broken --cfg docsrs in other crates
+- 2025-09-30 Remove doc_auto_cfg to clear errors on nightly
+- 2025-09-24 Fix rerun directive issuance for build inputs
+
 5.0.2
+- 2025-09-24 Release 5.0.2
 - 2025-09-23 Fix regression that causes unconditional rebuilds
 
 5.0.1
