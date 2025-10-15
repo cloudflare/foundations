@@ -29,7 +29,7 @@ foundations = { version = "5.1.0", path = "./foundations" }
 foundations-macros = { version = "5.1.0", path = "./foundations-macros", default-features = false }
 bindgen = { version = "0.72", default-features = false }
 cc = "1.0"
-cf-rustracing = "1.2"
+cf-rustracing = "1.2.1"
 cf-rustracing-jaeger = "1.2.2"
 clap = "4.4"
 darling = "0.21"
