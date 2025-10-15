@@ -9,11 +9,11 @@ use parking_lot::RwLock;
 use rand::{self, Rng};
 use std::borrow::Cow;
 use std::error::Error;
-use std::sync::{Arc, LazyLock};
+use std::sync::Arc;
 
 pub(crate) type Tracer = cf_rustracing::Tracer<BoxSampler<SpanContextState>, SpanContextState>;
 
-static INACTIVE_SPAN: LazyLock<RwLock<Span>> = LazyLock::new(|| RwLock::new(Span::inactive()));
+static INACTIVE_SPAN: RwLock<Span> = RwLock::new(Span::inactive());
 
 /// Shared span with mutability and additional reference tracking for
 /// ad-hoc inspection.
@@ -33,7 +33,7 @@ impl SharedSpanHandle {
         match self {
             SharedSpanHandle::Tracked(handle) => handle.read(),
             SharedSpanHandle::Untracked(rw_lock) => rw_lock.read(),
-            SharedSpanHandle::Inactive => (*INACTIVE_SPAN).read(),
+            SharedSpanHandle::Inactive => INACTIVE_SPAN.read(),
         }
     }
 
@@ -41,7 +41,7 @@ impl SharedSpanHandle {
         match self {
             SharedSpanHandle::Tracked(handle) => handle.write(),
             SharedSpanHandle::Untracked(rw_lock) => rw_lock.write(),
-            SharedSpanHandle::Inactive => (*INACTIVE_SPAN).write(),
+            SharedSpanHandle::Inactive => INACTIVE_SPAN.write(),
         }
     }
 }
@@ -50,7 +50,7 @@ impl From<SharedSpanHandle> for Arc<RwLock<Span>> {
     fn from(value: SharedSpanHandle) -> Self {
         match value {
             SharedSpanHandle::Tracked(handle) => Arc::clone(&handle),
-            SharedSpanHandle::Untracked(rw_lock) => Arc::clone(&rw_lock),
+            SharedSpanHandle::Untracked(rw_lock) => rw_lock,
             SharedSpanHandle::Inactive => Arc::new(RwLock::new(Span::inactive())),
         }
     }
