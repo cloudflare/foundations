@@ -12,9 +12,9 @@ use opentelemetry_proto::tonic::collector::trace::v1::{
 use opentelemetry_proto::tonic::trace::v1::ResourceSpans;
 use std::time::Duration;
 use tonic::client::Grpc;
-use tonic::codec::ProstCodec;
 use tonic::transport::Channel;
 use tonic::{GrpcMethod, Request};
+use tonic_prost::ProstCodec;
 
 static COLLECTOR_PATH: &str = "/opentelemetry.proto.collector.trace.v1.TraceService/Export";
 static TRACE_SERVICE: &str = "opentelemetry.proto.collector.trace.v1.TraceService";
