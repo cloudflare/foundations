@@ -1,5 +1,10 @@
 
+5.1.1
+- 2025-10-15 Use const initialization for INACTIVE_SPAN
+- 2025-10-15 Bump tonic to v0.14 and opentelemetry to v0.31
+
 5.1.0
+- 2025-10-01 Release 5.1.0
 - 2025-09-30 Add a new SharedSpanHandle::Inactive variant
 - 2025-09-18 Add set_span_finish_callback macro to telemetry::tracing
 - 2025-09-30 Work around broken --cfg docsrs in other crates
