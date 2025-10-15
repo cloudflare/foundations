@@ -36,7 +36,7 @@ darling = "0.21"
 erased-serde = "0.4"
 futures-util = "0.3"
 governor = "0.6"
-http = "1"
+http = "1.1.0"
 http-body-util = "0.1"
 hyper = { version = "1", default-features = false }
 hyper-util = { version = "0.1", default-features = false }
@@ -44,8 +44,9 @@ indexmap = "2.0"
 ipnetwork = { version = "0.21", features = ["serde"] }
 libc = "0.2"
 once_cell = "1.5"
-tonic = { version = "0.13", default-features = false }
-opentelemetry-proto = "0.30"
+tonic = { version = "0.14", default-features = false }
+tonic-prost = { version = "0.14" }
+opentelemetry-proto = "0.31"
 parking_lot = "0.12"
 pin-project-lite = "0.2.16"
 proc-macro2 = { version = "1", default-features = false }

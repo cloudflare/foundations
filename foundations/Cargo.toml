@@ -89,7 +89,7 @@ telemetry-server = [
 ]
 
 # Enables telemetry reporting over gRPC
-telemetry-otlp-grpc = ["dep:tonic", "tonic/prost", "dep:tokio", "tokio/net", "dep:hyper"]
+telemetry-otlp-grpc = ["dep:tonic", "dep:tonic-prost", "dep:tokio", "tokio/net", "dep:hyper"]
 
 # Enables experimental tokio runtime metrics
 tokio-runtime-metrics = [
@@ -219,6 +219,7 @@ tracing-slog = { workspace = true, optional = true }
 thread_local = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true, features = ["sync", "rt", "macros"] }
 tonic = { workspace = true, optional = true, features = ["channel"] }
+tonic-prost = { workspace = true, optional = true }
 tikv-jemallocator = { workspace = true, optional = true, features = [
     "profiling",
     "stats",
