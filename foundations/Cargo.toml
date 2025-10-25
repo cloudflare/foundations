@@ -251,6 +251,7 @@ neli = { workspace = true, optional = true }
 neli-proc-macros = { workspace = true, optional = true }
 
 [dev-dependencies]
+criterion = { workspace = true, features = ["cargo_bench_support"] }
 reqwest = { workspace = true }
 serde = { workspace = true, features = ["rc"] }
 tempfile = { workspace = true }
@@ -262,3 +263,8 @@ tracing-subscriber = { workspace = true }
 [build-dependencies]
 bindgen = { workspace = true, features = ["runtime"], optional = true }
 cc = { workspace = true, optional = true }
+
+
+[[bench]]
+name = "counters"
+harness = false

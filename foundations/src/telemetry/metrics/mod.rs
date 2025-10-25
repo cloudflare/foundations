@@ -16,6 +16,7 @@ use serde::Serialize;
 use std::any::TypeId;
 
 mod gauge;
+mod tls_counter;
 
 pub(super) mod init;
 
@@ -32,6 +33,7 @@ pub use prometheus_client::metrics::histogram::Histogram;
 pub use prometools::histogram::{HistogramTimer, TimeHistogram};
 pub use prometools::nonstandard::NonstandardUnsuffixedCounter as Counter;
 pub use prometools::serde::Family;
+pub use tls_counter::ThreadLocalCounter;
 
 /// Collects all metrics in [Prometheus text format].
 ///
