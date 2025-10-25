@@ -38,7 +38,7 @@ pub use metrics::{
     Counter, CounterAtomic, Family, FamilyMetricGuard, Gauge, GaugeAtomic, GaugeGuard, Histogram,
     HistogramBuilder, HistogramSnapshot, HistogramTimer, LowCardinalityFamily, LowCardinalityLabel,
     MetricConstructor, NativeHistogram, NativeHistogramBuilder, NativeTimeHistogram, RangeGauge,
-    TimeHistogram, WithExemplar,
+    ThreadLocalCounter, TimeHistogram, WithExemplar,
 };
 pub use registered::NamedMetric;
 pub use validation::{NAME_REQUIREMENT, is_valid_name};
