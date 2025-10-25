@@ -64,7 +64,8 @@ mod backend {
     pub use foundations_metrics::{
         Counter, Family, Gauge, GaugeGuard, Histogram, HistogramBuilder, HistogramTimer,
         InfoMetric, LowCardinalityFamily, LowCardinalityLabel, MetricConstructor, NativeHistogram,
-        NativeHistogramBuilder, NativeTimeHistogram, RangeGauge, TimeHistogram, WithExemplar,
+        NativeHistogramBuilder, NativeTimeHistogram, RangeGauge, ThreadLocalCounter, TimeHistogram,
+        WithExemplar,
     };
 
     // Everything needed to define, register, and label a custom metric. The

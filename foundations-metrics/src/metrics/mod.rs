@@ -41,6 +41,7 @@ mod gauge;
 mod histogram;
 mod low_cardinality;
 mod native_histogram;
+mod tls_counter;
 
 pub use counter::{Counter, CounterAtomic};
 pub use exemplar::WithExemplar;
@@ -51,6 +52,7 @@ pub use histogram::{
 };
 pub use low_cardinality::{LowCardinalityFamily, LowCardinalityLabel};
 pub use native_histogram::{NativeHistogram, NativeHistogramBuilder, NativeTimeHistogram};
+pub use tls_counter::ThreadLocalCounter;
 
 fn update_f64(atomic: &AtomicU64, f: impl Fn(f64) -> f64) -> f64 {
     let mut old_bits = atomic.load(Ordering::Relaxed);
@@ -75,6 +77,7 @@ macro_rules! impl_into_f64 {
     ($($ty:ty),+ $(,)?) => {
         $(
             impl IntoF64 for $ty {
+                #[inline(always)]
                 fn into_f64(self) -> f64 {
                     self as f64
                 }

@@ -32,6 +32,7 @@ prometheus-client = { version = "0.25.0", features = [
     "protobuf-protox",
 ] }
 serde = { workspace = true, features = ["derive"] }
+thread_local = { workspace = true }
 ryu = { workspace = true }
 parking_lot = { workspace = true }
 prost = { workspace = true }
