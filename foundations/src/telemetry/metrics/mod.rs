@@ -16,6 +16,8 @@ use serde::Serialize;
 use std::any::TypeId;
 
 mod gauge;
+#[cfg(has_percpu_sys)]
+mod percpu;
 mod tls_counter;
 
 pub(super) mod init;
@@ -26,6 +28,8 @@ pub mod internal;
 use internal::{ErasedInfoMetric, Registries};
 
 pub use gauge::{GaugeGuard, RangeGauge};
+#[cfg(has_percpu_sys)]
+pub use percpu::PerCpuCounter;
 pub use prometheus_client::metrics::exemplar::{CounterWithExemplar, HistogramWithExemplars};
 pub use prometheus_client::metrics::family::MetricConstructor;
 pub use prometheus_client::metrics::gauge::Gauge;

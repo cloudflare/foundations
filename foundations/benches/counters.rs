@@ -1,5 +1,9 @@
+#![allow(unexpected_cfgs)]
+
 use criterion::measurement::WallTime;
 use criterion::{criterion_group, criterion_main, Criterion};
+#[cfg(has_percpu_sys)]
+use foundations::telemetry::metrics::PerCpuCounter;
 use foundations::telemetry::metrics::ThreadLocalCounter;
 use prometheus_client::metrics::counter::Counter as PromCounter;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -25,6 +29,15 @@ impl Counter for Arc<ThreadLocalCounter> {
     #[inline(always)]
     fn inc(&self) {
         ThreadLocalCounter::inc(&*self);
+    }
+}
+#[cfg(has_percpu_sys)]
+impl Counter for Arc<PerCpuCounter> {
+    const NAME: &str = "PerCpuCounter";
+
+    #[inline(always)]
+    fn inc(&self) {
+        PerCpuCounter::inc(&*self);
     }
 }
 
@@ -57,6 +70,8 @@ fn bench_counters(c: &mut Criterion) {
         let mut group = c.benchmark_group(format!("{threads} threads"));
         bench_counter_with_threads::<PromCounter>(&mut group, threads);
         bench_counter_with_threads::<Arc<ThreadLocalCounter>>(&mut group, threads);
+        #[cfg(has_percpu_sys)]
+        bench_counter_with_threads::<Arc<PerCpuCounter>>(&mut group, threads);
     }
 }
 

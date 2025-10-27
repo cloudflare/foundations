@@ -5,12 +5,20 @@ fn main() {
     ensure_seccomp_sources_fetched();
 
     #[cfg(feature = "security")]
-    security::build()
+    security::build();
+
+    percpu::build();
+}
+
+fn env_path(key: &'static str) -> PathBuf {
+    let Some(v) = env::var_os(key) else {
+        panic!("env variable `{key}` should exist in build script");
+    };
+    v.into()
 }
 
 fn ensure_seccomp_sources_fetched() {
-    let src_dir =
-        PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap()).join("src/security/libseccomp/src");
+    let src_dir = env_path("CARGO_MANIFEST_DIR").join("src/security/libseccomp/src");
 
     if !src_dir.exists() {
         panic!(
@@ -18,6 +26,47 @@ fn ensure_seccomp_sources_fetched() {
             This is required even if `security` feature is disabled or the OS is not Linux, \
             to ensure that sources are always included on publishing."
         );
+    }
+}
+
+mod percpu {
+    use super::*;
+    use bindgen::RustEdition;
+
+    pub(super) fn build() {
+        const PERCPU_TARGETS: &[&str] = &["aarch64-unknown-linux-gnu", "x86_64-unknown-linux-gnu"];
+
+        let target = env::var("TARGET").unwrap();
+        if PERCPU_TARGETS.contains(&&*target) {
+            linux_build();
+        }
+    }
+
+    fn linux_build() {
+        let out_path = env_path("OUT_DIR").join("percpu_sys.rs");
+        let header = env_path("CARGO_MANIFEST_DIR").join("src/telemetry/metrics/percpu/sys.h");
+
+        let bindings = match bindgen::builder()
+            .header(header.to_string_lossy())
+            .allowlist_function("get_nprocs_conf")
+            .allowlist_item("(__)?rseq_.+")
+            .allowlist_item("RSEQ_.+")
+            .prepend_enum_name(false)
+            .rust_edition(RustEdition::Edition2021)
+            .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
+            .generate()
+        {
+            Ok(b) => b,
+            Err(e) => {
+                println!("cargo:warning=failed to generate percpu bindings: {e}");
+                return;
+            }
+        };
+
+        bindings
+            .write_to_file(&out_path)
+            .expect("failed to write percpu bindings");
+        println!("cargo:rustc-cfg=has_percpu_sys");
     }
 }
 
@@ -90,8 +139,8 @@ mod security {
     fn linux_build() {
         println!("cargo:rustc-link-lib=static=seccomp");
 
-        let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
-        let crate_root = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
+        let out_dir = env_path("OUT_DIR");
+        let crate_root = env_path("CARGO_MANIFEST_DIR");
         let libseccomp_repo = crate_root.join("src/security/libseccomp");
         let include_dir = libseccomp_repo.join("include");
         let src_dir = libseccomp_repo.join("src");
