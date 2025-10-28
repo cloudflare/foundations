@@ -7,7 +7,7 @@ use syn::parse::{Parse, ParseStream};
 use syn::spanned::Spanned;
 use syn::{
     parse_macro_input, parse_quote, Attribute, Expr, ExprLit, Field, Fields, Ident, Item, ItemEnum,
-    ItemStruct, Lit, LitStr, Meta, MetaNameValue, Path,
+    ItemStruct, Lit, LitStr, Meta, MetaNameValue, Path, Type,
 };
 
 const ERR_NOT_STRUCT_OR_ENUM: &str = "Settings should be either structure or enum.";
@@ -238,11 +238,18 @@ fn impl_settings_trait_for_field(
 
     impl_for_field.append_all(quote_spanned! { span=>
         let mut key = parent_key.to_vec();
-
         key.push(#name_str.into());
-
-        #crate_path::settings::Settings::add_docs(&self.#name, &key, docs);
     });
+
+    // foundations#150: `[T; 0]` used to impl Settings for `T: !Default`, but this
+    // is not possible anymore. We thus can't call `Settings::add_docs` for such
+    // fields, but it was a noop anyway.
+    // TODO(lblocher): Remove this compatibility hack with the next major release
+    if !is_array_zst(&field.ty) {
+        impl_for_field.append_all(quote_spanned! { span =>
+            #crate_path::settings::Settings::add_docs(&self.#name, &key, docs);
+        });
+    }
 
     if !docs.is_empty() {
         impl_for_field.append_all(quote! {
@@ -284,6 +291,30 @@ fn extract_doc_comments(attrs: &[Attribute]) -> Vec<LitStr> {
     }
 
     comments
+}
+
+/// Returns whether `ty` is exactly `[T; 0]` (for some T)
+fn is_array_zst(ty: &Type) -> bool {
+    let Type::Array(array) = ty else {
+        return false;
+    };
+
+    let mut expr = &array.len;
+    while let Expr::Cast(cast) = expr {
+        expr = &cast.expr;
+    }
+
+    let Expr::Lit(ExprLit {
+        lit: Lit::Int(len_lit),
+        ..
+    }) = expr
+    else {
+        return false;
+    };
+    len_lit
+        .base10_parse::<usize>()
+        .map(|len| len == 0)
+        .unwrap_or(false)
 }
 
 fn impl_serde_aware_default(item: &ItemStruct) -> proc_macro2::TokenStream {
