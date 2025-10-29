@@ -1,5 +1,10 @@
 
+5.2.0
+- 2025-10-28 Cleanup tags when OTLP sink is used
+- 2025-10-28 Don't use `[!Default; 0]: Default` impl (#150)
+
 5.1.1
+- 2025-10-15 Release 5.1.1
 - 2025-10-15 Use const initialization for INACTIVE_SPAN
 - 2025-10-15 Bump tonic to v0.14 and opentelemetry to v0.31
 
