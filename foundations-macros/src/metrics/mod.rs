@@ -1,7 +1,8 @@
+use darling::util::Flag;
 use darling::FromMeta;
 use proc_macro::TokenStream;
 use proc_macro2::Span;
-use quote::{quote, ToTokens};
+use quote::{format_ident, quote, ToTokens};
 use syn::punctuated::Punctuated;
 use syn::{
     parse_macro_input, parse_quote, Attribute, ExprStruct, Ident, LitStr, Path, Token, Type,
@@ -13,6 +14,7 @@ mod validation;
 
 #[derive(FromMeta)]
 struct MacroArgs {
+    unprefixed: Flag,
     #[darling(default = "Self::default_crate_path")]
     crate_path: Path,
 }
@@ -20,6 +22,7 @@ struct MacroArgs {
 impl Default for MacroArgs {
     fn default() -> Self {
         Self {
+            unprefixed: Flag::default(),
             crate_path: Self::default_crate_path(),
         }
     }
@@ -86,8 +89,11 @@ pub(crate) fn expand(args: TokenStream, item: TokenStream) -> TokenStream {
 
 fn expand_from_parsed(args: MacroArgs, extern_: Mod) -> proc_macro2::TokenStream {
     let MacroArgs {
+        unprefixed,
         crate_path: foundations,
     } = &args;
+    let with_service_prefix =
+        format_ident!("{}", !unprefixed.is_present(), span = unprefixed.span());
 
     let Mod {
         attrs: mod_attrs,
@@ -107,24 +113,26 @@ fn expand_from_parsed(args: MacroArgs, extern_: Mod) -> proc_macro2::TokenStream
         .iter()
         .filter_map(|fn_| label_set_struct(foundations, fn_));
 
-    let registry_init = |var: &str, kind: &str| {
+    let registry_init = |var: &str, opt: bool| {
         let var = Ident::new(var, Span::call_site());
-        let method = Ident::new(&format!("get_{kind}_subsystem"), Span::call_site());
+        let optional = format_ident!("{opt}");
 
         quote! {
-            let #var = &mut *#foundations::telemetry::metrics::internal::Registries::#method(stringify!(#mod_name));
+            let #var = &mut *#foundations::telemetry::metrics::internal::Registries::get_subsystem(
+                stringify!(#mod_name), #optional, #with_service_prefix
+            );
         }
     };
 
     let init_registry = fns
         .iter()
         .any(|fn_| !fn_.attrs.optional)
-        .then(|| registry_init("registry", "main"));
+        .then(|| registry_init("registry", false));
 
     let init_opt_registry = fns
         .iter()
         .any(|fn_| fn_.attrs.optional)
-        .then(|| registry_init("opt_registry", "opt"));
+        .then(|| registry_init("opt_registry", true));
 
     let metric_inits = fns.iter().map(|fn_| metric_init(foundations, fn_));
 
@@ -453,7 +461,7 @@ mod tests {
                 #[allow(non_upper_case_globals)]
                 static __oxy_Metrics: tarmac::reexports_for_macros::once_cell::sync::Lazy<__oxy_Metrics> =
                     tarmac::reexports_for_macros::once_cell::sync::Lazy::new(|| {
-                        let registry = &mut *tarmac::telemetry::metrics::internal::Registries::get_main_subsystem(stringify!(oxy));
+                        let registry = &mut *tarmac::telemetry::metrics::internal::Registries::get_subsystem(stringify!(oxy), false, true);
 
                         __oxy_Metrics {
                             connections_total: {
@@ -510,7 +518,7 @@ mod tests {
                 #[allow(non_upper_case_globals)]
                 static __oxy_Metrics: ::foundations::reexports_for_macros::once_cell::sync::Lazy<__oxy_Metrics> =
                     ::foundations::reexports_for_macros::once_cell::sync::Lazy::new(|| {
-                        let opt_registry = &mut *::foundations::telemetry::metrics::internal::Registries::get_opt_subsystem(stringify!(oxy));
+                        let opt_registry = &mut *::foundations::telemetry::metrics::internal::Registries::get_subsystem(stringify!(oxy), true, true);
 
                         __oxy_Metrics {
                             connections_total: {
@@ -527,6 +535,86 @@ mod tests {
                             },
                         }
                     });
+
+                #[doc = " Total number of connections"]
+                #[must_use]
+                pub(crate) fn connections_total() -> Counter {
+                    ::std::clone::Clone::clone(&__oxy_Metrics.connections_total)
+                }
+            }
+        };
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn expand_unprefixed_mixed() {
+        let attr = parse_attr! {
+            #[metrics(unprefixed)]
+        };
+
+        let src = parse_quote! {
+            pub(crate) mod oxy {
+                /// Total number of requests
+                pub(crate) fn requests_total() -> Counter;
+
+                /// Total number of connections
+                #[optional]
+                pub(crate) fn connections_total() -> Counter;
+            }
+        };
+
+        let actual = expand_from_parsed(attr, src).to_string();
+
+        let expected = code_str! {
+            pub(crate) mod oxy {
+                use super::*;
+
+                #[allow(non_camel_case_types)]
+                struct __oxy_Metrics {
+                    requests_total: Counter,
+                    connections_total: Counter,
+                }
+
+                #[allow(non_upper_case_globals)]
+                static __oxy_Metrics: ::foundations::reexports_for_macros::once_cell::sync::Lazy<__oxy_Metrics> =
+                    ::foundations::reexports_for_macros::once_cell::sync::Lazy::new(|| {
+                        let registry = &mut *::foundations::telemetry::metrics::internal::Registries::get_subsystem(stringify!(oxy), false, false);
+                        let opt_registry = &mut *::foundations::telemetry::metrics::internal::Registries::get_subsystem(stringify!(oxy), true, false);
+
+                        __oxy_Metrics {
+                            requests_total: {
+                                let metric = ::std::default::Default::default();
+
+                                ::foundations::reexports_for_macros::prometheus_client::registry::Registry::register(
+                                    registry,
+                                    ::std::stringify!(requests_total),
+                                    str::trim(" Total number of requests"),
+                                    ::std::boxed::Box::new(::std::clone::Clone::clone(&metric))
+                                );
+
+                                metric
+                            },
+                            connections_total: {
+                                let metric = ::std::default::Default::default();
+
+                                ::foundations::reexports_for_macros::prometheus_client::registry::Registry::register(
+                                    opt_registry,
+                                    ::std::stringify!(connections_total),
+                                    str::trim(" Total number of connections"),
+                                    ::std::boxed::Box::new(::std::clone::Clone::clone(&metric))
+                                );
+
+                                metric
+                            },
+                        }
+                    });
+
+                #[doc = " Total number of requests"]
+                #[must_use]
+                pub(crate) fn requests_total() -> Counter {
+                    ::std::clone::Clone::clone(&__oxy_Metrics.requests_total)
+                }
 
                 #[doc = " Total number of connections"]
                 #[must_use]
@@ -596,7 +684,7 @@ mod tests {
                 #[allow(non_upper_case_globals)]
                 static __oxy_Metrics: ::foundations::reexports_for_macros::once_cell::sync::Lazy<__oxy_Metrics> =
                     ::foundations::reexports_for_macros::once_cell::sync::Lazy::new(|| {
-                        let registry = &mut *::foundations::telemetry::metrics::internal::Registries::get_main_subsystem(stringify!(oxy));
+                        let registry = &mut *::foundations::telemetry::metrics::internal::Registries::get_subsystem(stringify!(oxy), false, true);
 
                         __oxy_Metrics {
                             connections_errors_total: {
@@ -691,7 +779,7 @@ mod tests {
                 #[allow(non_upper_case_globals)]
                 static __oxy_Metrics: ::foundations::reexports_for_macros::once_cell::sync::Lazy<__oxy_Metrics> =
                     ::foundations::reexports_for_macros::once_cell::sync::Lazy::new(|| {
-                        let registry = &mut *::foundations::telemetry::metrics::internal::Registries::get_main_subsystem(stringify!(oxy));
+                        let registry = &mut *::foundations::telemetry::metrics::internal::Registries::get_subsystem(stringify!(oxy), false, true);
 
                         __oxy_Metrics {
                             connections_latency: {

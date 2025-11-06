@@ -54,6 +54,9 @@ pub fn collect(settings: &MetricsSettings) -> Result<String> {
 /// name becomes `<global prefix>_<module name>_<bodyless function name>`and function's
 /// Rust doc comment is reported as metric description to Prometheus.
 ///
+/// The `<global_prefix>` can be disabled by passing the `unprefixed` flag to the macro
+/// invocation, like `#[metrics(unprefixed)]`. The module name is a mandatory prefix.
+///
 /// # Labels
 /// Arguments of the bodyless functions become labels for that metric.
 ///
@@ -84,7 +87,6 @@ pub fn collect(settings: &MetricsSettings) -> Result<String> {
 /// Metrics marked with `#[optional]` are collected in a separate registry and reported only if
 /// `collect_optional` argument of [`collect`] is set to `true`, or, in case the [telemetry server]
 /// is used, if [`MetricsSettings::report_optional`] is set to `true`.
-///
 ///
 /// Can be used for heavy-weight metrics (e.g. with high cardinality) that don't need to be reported
 /// on a regular basis.

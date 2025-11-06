@@ -6,10 +6,26 @@ use prometheus_client::encoding::text::{encode, EncodeMetric};
 use prometheus_client::registry::Registry;
 use prometools::serde::InfoGauge;
 use std::any::TypeId;
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::ops::DerefMut;
 
 static REGISTRIES: OnceCell<Registries> = OnceCell::new();
+
+enum MetricsServiceName {
+    Prefix(String),
+    Label(String, String),
+}
+
+impl MetricsServiceName {
+    fn new(name: &str, format: ServiceNameFormat) -> Self {
+        let name = name.to_owned();
+        match format {
+            ServiceNameFormat::MetricPrefix => Self::Prefix(name),
+            ServiceNameFormat::LabelWithName(label) => Self::Label(label, name),
+        }
+    }
+}
 
 #[doc(hidden)]
 pub struct Registries {
@@ -18,24 +34,25 @@ pub struct Registries {
     main: parking_lot::RwLock<Registry>,
     opt: parking_lot::RwLock<Registry>,
     pub(super) info: parking_lot::RwLock<HashMap<TypeId, Box<dyn ErasedInfoMetric>>>,
-    extra_label: Option<(String, String)>,
+    service_name: MetricsServiceName,
     extra_producers: parking_lot::RwLock<Vec<Box<dyn ExtraProducer>>>,
 }
 
 impl Registries {
     pub(super) fn init(service_info: &ServiceInfo, settings: &MetricsSettings) {
-        let extra_label = match &settings.service_name_format {
-            ServiceNameFormat::MetricPrefix => None,
-            ServiceNameFormat::LabelWithName(name) => {
-                Some((name.clone(), service_info.name_in_metrics.clone()))
-            }
-        };
+        let service_name = MetricsServiceName::new(
+            &service_info.name_in_metrics,
+            settings.service_name_format.clone(),
+        );
 
+        // FIXME(nox): Due to prometheus-client 0.18 not supporting the creation of
+        // registries with specific label values, we use `MetricsServiceName::Label`
+        // directly in `Registries::get_subsystem`.
         REGISTRIES.get_or_init(|| Registries {
-            main: new_registry(&service_info.name_in_metrics, &settings.service_name_format),
-            opt: new_registry(&service_info.name_in_metrics, &settings.service_name_format),
+            main: Default::default(),
+            opt: Default::default(),
             info: Default::default(),
-            extra_label,
+            service_name,
             extra_producers: Default::default(),
         });
     }
@@ -72,24 +89,31 @@ impl Registries {
         encode_registry(buffer, &registry)
     }
 
-    pub fn get_main_subsystem(subsystem: &str) -> impl DerefMut<Target = Registry> + '_ {
+    pub fn get_subsystem(
+        subsystem: &str,
+        optional: bool,
+        with_service_prefix: bool,
+    ) -> impl DerefMut<Target = Registry> + 'static {
         let registries = Self::get();
+        let registry = if optional {
+            &registries.opt
+        } else {
+            &registries.main
+        };
 
-        get_subsystem(
-            Self::get().main.write(),
-            subsystem,
-            registries.extra_label.clone(),
-        )
-    }
+        let mut prefix = Cow::Borrowed(subsystem);
+        if with_service_prefix {
+            if let MetricsServiceName::Prefix(service) = &registries.service_name {
+                prefix = format!("{service}_{subsystem}").into();
+            }
+        }
 
-    pub fn get_opt_subsystem(subsystem: &str) -> impl DerefMut<Target = Registry> + '_ {
-        let registries = Self::get();
-
-        get_subsystem(
-            Self::get().opt.write(),
-            subsystem,
-            registries.extra_label.clone(),
-        )
+        parking_lot::RwLockWriteGuard::map(registry.write(), move |mut reg| {
+            if let MetricsServiceName::Label(name, val) = &registries.service_name {
+                reg = reg.sub_registry_with_label((name.into(), val.into()));
+            }
+            reg.sub_registry_with_prefix(prefix)
+        })
     }
 
     pub fn add_extra_producer(&self, producer: Box<dyn ExtraProducer>) {
@@ -98,43 +122,13 @@ impl Registries {
 
     pub(super) fn get() -> &'static Registries {
         REGISTRIES.get_or_init(|| Registries {
-            main: new_registry("undefined", &ServiceNameFormat::MetricPrefix),
-            opt: new_registry("undefined", &ServiceNameFormat::MetricPrefix),
+            main: Default::default(),
+            opt: Default::default(),
             info: Default::default(),
-            extra_label: None,
+            service_name: MetricsServiceName::Prefix("undefined".to_owned()),
             extra_producers: Default::default(),
         })
     }
-}
-
-fn new_registry(
-    service_name_in_metrics: &str,
-    service_name_format: &ServiceNameFormat,
-) -> parking_lot::RwLock<Registry> {
-    parking_lot::RwLock::new(match service_name_format {
-        ServiceNameFormat::MetricPrefix => match service_name_in_metrics {
-            "" => Registry::default(),
-            _ => Registry::with_prefix(service_name_in_metrics),
-        },
-        // FIXME(nox): Due to prometheus-client 0.18 not supporting the creation of
-        // registries with specific label values, we use this service identifier
-        // format directly in `Registries::get_main` and `Registries::get_optional`.
-        ServiceNameFormat::LabelWithName(_) => Registry::default(),
-    })
-}
-
-fn get_subsystem<'a>(
-    registry: parking_lot::RwLockWriteGuard<'a, Registry>,
-    subsystem: &str,
-    extra_label: Option<(String, String)>,
-) -> impl DerefMut<Target = Registry> + 'a {
-    parking_lot::RwLockWriteGuard::map(registry, move |mut registry| {
-        if let Some((name, value)) = extra_label {
-            registry = registry.sub_registry_with_label((name.into(), value.into()));
-        }
-
-        registry.sub_registry_with_prefix(subsystem)
-    })
 }
 
 /// Build and version information
