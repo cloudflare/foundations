@@ -128,6 +128,7 @@ enum NoDefaultEnum {
     Variant2,
 }
 
+#[expect(clippy::derivable_impls, reason = "explicit impl for testing")]
 impl Default for NoDefaultEnum {
     fn default() -> Self {
         Self::Variant2
