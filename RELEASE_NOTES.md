@@ -1,5 +1,10 @@
 
+5.3.0
+- 2025-11-06 Add `unprefixed` flag to `#[metrics]` macro
+- 2025-11-07 Fix new instance of `clippy::derivable_impls`
+
 5.2.0
+- 2025-10-29 Release 5.2.0
 - 2025-10-28 Cleanup tags when OTLP sink is used
 - 2025-10-28 Don't use `[!Default; 0]: Default` impl (#150)
 
