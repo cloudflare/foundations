@@ -23,6 +23,18 @@ publish = false
 [profile.release]
 debug = 1
 
+[workspace.lints.rust.unexpected_cfgs]
+level = "warn"
+check-cfg = [
+    'cfg(foundations_generic_telemetry_wrapper)',
+    'cfg(foundations_unstable)',
+    'cfg(tokio_unstable)',
+    # for docs.rs builds only
+    'cfg(foundations_docsrs)',
+    # slog feature
+    'cfg(integer128)',
+]
+
 [workspace.dependencies]
 anyhow = "1.0.75"
 foundations = { version = "5.3.0", path = "./foundations" }

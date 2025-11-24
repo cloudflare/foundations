@@ -1,6 +1,3 @@
-// NOTE: required to allow `foundations_generic_telemetry_wrapper` cfg
-#![allow(unexpected_cfgs)]
-
 use crate::common::parse_optional_trailing_meta_list;
 use darling::FromMeta;
 use proc_macro::TokenStream;
