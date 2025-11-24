@@ -15,6 +15,9 @@ settings_deny_unknown_fields_by_default = []
 [lib]
 proc-macro = true
 
+[lints]
+workspace = true
+
 [dependencies]
 darling = { workspace = true }
 proc-macro2 = { workspace = true }
