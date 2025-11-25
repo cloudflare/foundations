@@ -80,6 +80,52 @@ enum ArgMode {
     Into(Type),
 }
 
+impl FnArg {
+    fn to_struct_member(&self) -> proc_macro2::TokenStream {
+        let Self {
+            attrs: ArgAttrs { serde, serde_as },
+            ident,
+            colon_token,
+            ..
+        } = self;
+
+        let ty = match &self.mode {
+            ArgMode::ByValue(ty) => ty,
+            ArgMode::Clone(ty) => ty,
+            ArgMode::Into(ty) => ty,
+        };
+
+        quote! { #serde_as #serde #ident #colon_token #ty }
+    }
+
+    fn to_arg(&self) -> proc_macro2::TokenStream {
+        let Self {
+            ident,
+            colon_token,
+            ty,
+            ..
+        } = self;
+
+        quote! { #ident #colon_token #ty }
+    }
+
+    fn to_initializer(&self) -> proc_macro2::TokenStream {
+        let Self {
+            ident, colon_token, ..
+        } = self;
+
+        match &self.mode {
+            ArgMode::ByValue(_) => quote! { #ident },
+            ArgMode::Clone(_) => quote! {
+                #ident #colon_token ::std::clone::Clone::clone(#ident)
+            },
+            ArgMode::Into(_) => quote! {
+                #ident #colon_token ::std::convert::Into::into(#ident)
+            },
+        }
+    }
+}
+
 pub(crate) fn expand(args: TokenStream, item: TokenStream) -> TokenStream {
     let args = parse_macro_input!(args as MacroArgs);
     let mod_ = parse_macro_input!(item as Mod);
@@ -224,25 +270,7 @@ fn label_set_struct(foundations: &Path, fn_: &ItemFn) -> Option<proc_macro2::Tok
     let serde = quote! { #foundations::reexports_for_macros::serde };
     let serde_str = LitStr::new(&serde.to_string(), Span::call_site());
 
-    let labels = args.iter().map(|arg| {
-        let FnArg {
-            attrs: ArgAttrs {
-                serde, serde_as, ..
-            },
-            ident: label_name,
-            colon_token,
-            mode,
-            ..
-        } = arg;
-
-        let label_type = match mode {
-            ArgMode::ByValue(ty) => ty,
-            ArgMode::Clone(ty) => ty,
-            ArgMode::Into(ty) => ty,
-        };
-
-        quote! { #serde_as #serde #label_name #colon_token #label_type }
-    });
+    let labels = args.iter().map(|arg| arg.to_struct_member());
 
     Some(quote! {
         #(#cfg)*
@@ -336,40 +364,15 @@ fn metric_fn(foundations: &Path, metrics_struct: &Ident, fn_: &ItemFn) -> proc_m
         ty: metric_type,
     } = fn_;
 
-    let fn_args = args.iter().map(|arg| {
-        let FnArg {
-            ident: arg_name,
-            colon_token,
-            ty: arg_ty,
-            ..
-        } = arg;
-
-        quote! { #arg_name #colon_token #arg_ty }
-    });
+    let fn_args = args.iter().map(|arg| arg.to_arg());
 
     let fn_body = if args.is_empty() {
         quote! {
             ::std::clone::Clone::clone(&#metrics_struct.#metric_name)
         }
     } else {
-        let label_inits = args.iter().map(|arg| {
-            let FnArg {
-                ident: arg_name,
-                colon_token,
-                mode,
-                ..
-            } = arg;
+        let label_inits = args.iter().map(|arg| arg.to_initializer());
 
-            match mode {
-                ArgMode::ByValue(_) => quote! { #arg_name },
-                ArgMode::Clone(_) => {
-                    quote! { #arg_name #colon_token ::std::clone::Clone::clone(#arg_name) }
-                }
-                ArgMode::Into(_) => {
-                    quote! { #arg_name #colon_token ::std::convert::Into::into(#arg_name) }
-                }
-            }
-        });
 
         quote! {
             ::std::clone::Clone::clone(
