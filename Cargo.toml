@@ -65,7 +65,7 @@ pin-project-lite = "0.2.16"
 proc-macro2 = { version = "1", default-features = false }
 prometheus = { version = "0.14", default-features = false }
 prometheus-client = "0.18"
-prometools = "0.2.2"
+prometools = "0.2.3"
 rand = "0.9"
 percent-encoding = "2.3"
 quote = "1"
