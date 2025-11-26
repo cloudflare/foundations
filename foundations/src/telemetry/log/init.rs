@@ -11,7 +11,7 @@ use crate::telemetry::log::retry_writer::RetryPipeWriter;
 use crate::telemetry::scope::ScopeStack;
 use crate::telemetry::settings::{LogFormat, LogOutput, LoggingSettings};
 use crate::{BootstrapResult, ServiceInfo};
-use once_cell::sync::{Lazy, OnceCell};
+use crossbeam_utils::CachePadded;
 use slog::{
     Discard, Drain, FnValue, Fuse, LevelFilter, Logger, Never, OwnedKV, SendSyncRefUnwindSafeDrain,
     SendSyncRefUnwindSafeKV, SendSyncUnwindSafeDrain,
@@ -23,15 +23,17 @@ use std::fs::File;
 use std::io;
 use std::io::BufWriter;
 use std::panic::RefUnwindSafe;
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock, OnceLock};
 
 type FilteredDrain<D> = LevelFilter<
     FieldFilteringDrain<FieldRedactFilterFactory, FieldFilteringDrain<FieldDedupFilterFactory, D>>,
 >;
 
-static HARNESS: OnceCell<LogHarness> = OnceCell::new();
+// These singletons are accessed _very often_, and each access requires an atomic load to
+// ensure initialization. Make sure nobody else invalidates our cache lines.
+static HARNESS: CachePadded<OnceLock<LogHarness>> = CachePadded::new(OnceLock::new());
 
-static NOOP_HARNESS: Lazy<LogHarness> = Lazy::new(|| {
+static NOOP_HARNESS: CachePadded<LazyLock<LogHarness>> = CachePadded::new(LazyLock::new(|| {
     let root_drain = Arc::new(Discard);
     let noop_log =
         LoggerWithKvNestingTracking::new(Logger::root(Arc::clone(&root_drain), slog::o!()));
@@ -42,7 +44,7 @@ static NOOP_HARNESS: Lazy<LogHarness> = Lazy::new(|| {
         settings: Default::default(),
         log_scope_stack: Default::default(),
     }
-});
+}));
 
 pub(crate) struct LogHarness {
     pub(crate) root_log: SharedLog,
@@ -53,7 +55,7 @@ pub(crate) struct LogHarness {
 
 impl LogHarness {
     pub(crate) fn get() -> &'static Self {
-        HARNESS.get().unwrap_or(&NOOP_HARNESS)
+        HARNESS.get().unwrap_or_else(|| &**NOOP_HARNESS)
     }
 
     #[cfg(any(test, feature = "testing"))]

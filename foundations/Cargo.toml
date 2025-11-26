@@ -111,6 +111,7 @@ logging = [
     "dep:thread_local",
     "dep:futures-util",
     "dep:serde",
+    "dep:crossbeam-utils",
 ]
 
 # Enables distributed tracing functionality.
@@ -130,6 +131,7 @@ tracing = [
     "dep:slab",
     "dep:libc",
     "dep:http",
+    "dep:crossbeam-utils",
 ]
 
 # Enables metrics functionality.
@@ -188,6 +190,7 @@ foundations-macros = { workspace = true, optional = true, default-features = fal
 cf-rustracing = { workspace = true, optional = true }
 cf-rustracing-jaeger = { workspace = true, optional = true }
 clap = { workspace = true, optional = true }
+crossbeam-utils = { workspace = true, optional = true }
 erased-serde = { workspace = true, optional = true }
 futures-util = { workspace = true, optional = true }
 governor = { workspace = true, optional = true }
