@@ -7,13 +7,15 @@ use std::fs::File;
 use std::io::Read;
 use std::os::raw::c_char;
 use std::sync::mpsc::{self};
+use std::sync::OnceLock;
 use tempfile::NamedTempFile;
 use tokio::sync::{oneshot, Mutex as AsyncMutex};
 
+// TODO(once_cell_try): replace with `std::sync::OnceLock`
 static PROFILER: OnceCell<Option<MemoryProfiler>> = OnceCell::new();
-static HEAP_PROFILE_REQUEST_SENDER: OnceCell<
+static HEAP_PROFILE_REQUEST_SENDER: OnceLock<
     AsyncMutex<mpsc::Sender<oneshot::Sender<Result<String>>>>,
-> = OnceCell::new();
+> = OnceLock::new();
 
 mod control {
     use super::*;

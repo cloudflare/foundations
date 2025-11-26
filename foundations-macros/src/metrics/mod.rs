@@ -103,8 +103,6 @@ fn expand_from_parsed(args: MacroArgs, extern_: Mod) -> proc_macro2::TokenStream
         fns,
     } = extern_;
 
-    let reexports = quote! { #foundations::reexports_for_macros };
-
     // This should be using `Span::def_site` but it is currently unstable.
     let metrics_struct = Ident::new(&format!("__{mod_name}_Metrics"), Span::call_site());
 
@@ -152,8 +150,8 @@ fn expand_from_parsed(args: MacroArgs, extern_: Mod) -> proc_macro2::TokenStream
             #(#label_set_structs)*
 
             #[allow(non_upper_case_globals)]
-            static #metrics_struct: #reexports::once_cell::sync::Lazy<#metrics_struct> =
-                #reexports::once_cell::sync::Lazy::new(|| {
+            static #metrics_struct: ::std::sync::LazyLock<#metrics_struct> =
+                ::std::sync::LazyLock::new(|| {
                     #init_registry
                     #init_opt_registry
 
@@ -424,8 +422,8 @@ mod tests {
                 struct __empty_Metrics {}
 
                 #[allow(non_upper_case_globals)]
-                static __empty_Metrics: ::foundations::reexports_for_macros::once_cell::sync::Lazy<__empty_Metrics> =
-                    ::foundations::reexports_for_macros::once_cell::sync::Lazy::new(|| { __empty_Metrics {} });
+                static __empty_Metrics: ::std::sync::LazyLock<__empty_Metrics> =
+                    ::std::sync::LazyLock::new(|| { __empty_Metrics {} });
             }
         };
 
@@ -459,8 +457,8 @@ mod tests {
                 }
 
                 #[allow(non_upper_case_globals)]
-                static __oxy_Metrics: tarmac::reexports_for_macros::once_cell::sync::Lazy<__oxy_Metrics> =
-                    tarmac::reexports_for_macros::once_cell::sync::Lazy::new(|| {
+                static __oxy_Metrics: ::std::sync::LazyLock<__oxy_Metrics> =
+                    ::std::sync::LazyLock::new(|| {
                         let registry = &mut *tarmac::telemetry::metrics::internal::Registries::get_subsystem(stringify!(oxy), false, true);
 
                         __oxy_Metrics {
@@ -516,8 +514,8 @@ mod tests {
                 }
 
                 #[allow(non_upper_case_globals)]
-                static __oxy_Metrics: ::foundations::reexports_for_macros::once_cell::sync::Lazy<__oxy_Metrics> =
-                    ::foundations::reexports_for_macros::once_cell::sync::Lazy::new(|| {
+                static __oxy_Metrics: ::std::sync::LazyLock<__oxy_Metrics> =
+                    ::std::sync::LazyLock::new(|| {
                         let opt_registry = &mut *::foundations::telemetry::metrics::internal::Registries::get_subsystem(stringify!(oxy), true, true);
 
                         __oxy_Metrics {
@@ -577,8 +575,8 @@ mod tests {
                 }
 
                 #[allow(non_upper_case_globals)]
-                static __oxy_Metrics: ::foundations::reexports_for_macros::once_cell::sync::Lazy<__oxy_Metrics> =
-                    ::foundations::reexports_for_macros::once_cell::sync::Lazy::new(|| {
+                static __oxy_Metrics: ::std::sync::LazyLock<__oxy_Metrics> =
+                    ::std::sync::LazyLock::new(|| {
                         let registry = &mut *::foundations::telemetry::metrics::internal::Registries::get_subsystem(stringify!(oxy), false, false);
                         let opt_registry = &mut *::foundations::telemetry::metrics::internal::Registries::get_subsystem(stringify!(oxy), true, false);
 
@@ -682,8 +680,8 @@ mod tests {
                 }
 
                 #[allow(non_upper_case_globals)]
-                static __oxy_Metrics: ::foundations::reexports_for_macros::once_cell::sync::Lazy<__oxy_Metrics> =
-                    ::foundations::reexports_for_macros::once_cell::sync::Lazy::new(|| {
+                static __oxy_Metrics: ::std::sync::LazyLock<__oxy_Metrics> =
+                    ::std::sync::LazyLock::new(|| {
                         let registry = &mut *::foundations::telemetry::metrics::internal::Registries::get_subsystem(stringify!(oxy), false, true);
 
                         __oxy_Metrics {
@@ -777,8 +775,8 @@ mod tests {
                 }
 
                 #[allow(non_upper_case_globals)]
-                static __oxy_Metrics: ::foundations::reexports_for_macros::once_cell::sync::Lazy<__oxy_Metrics> =
-                    ::foundations::reexports_for_macros::once_cell::sync::Lazy::new(|| {
+                static __oxy_Metrics: ::std::sync::LazyLock<__oxy_Metrics> =
+                    ::std::sync::LazyLock::new(|| {
                         let registry = &mut *::foundations::telemetry::metrics::internal::Registries::get_subsystem(stringify!(oxy), false, true);
 
                         __oxy_Metrics {

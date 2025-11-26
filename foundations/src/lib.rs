@@ -100,7 +100,7 @@ pub mod security;
 pub mod reexports_for_macros {
     #[cfg(feature = "tracing")]
     pub use cf_rustracing;
-    #[cfg(any(feature = "metrics", feature = "security"))]
+    #[cfg(feature = "security")]
     pub use once_cell;
     #[cfg(feature = "metrics")]
     pub use parking_lot;
