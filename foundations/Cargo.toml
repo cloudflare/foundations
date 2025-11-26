@@ -102,7 +102,6 @@ tokio-runtime-metrics = [
 # Enables logging functionality.
 logging = [
     "dep:governor",
-    "dep:once_cell",
     "dep:parking_lot",
     "dep:slog-async",
     "dep:slog-json",
@@ -118,7 +117,6 @@ logging = [
 tracing = [
     "dep:foundations-macros",
     "dep:governor",
-    "dep:once_cell",
     "dep:parking_lot",
     "dep:rand",
     "dep:cf-rustracing-jaeger",
@@ -138,7 +136,6 @@ tracing = [
 metrics = [
     "dep:foundations-macros",
     "dep:erased-serde",
-    "dep:once_cell",
     "dep:parking_lot",
     "dep:prometheus-client",
     "dep:prometheus",

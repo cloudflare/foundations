@@ -1,7 +1,6 @@
 use super::{info_metric, ExtraProducer, InfoMetric};
 use crate::telemetry::settings::{MetricsSettings, ServiceNameFormat};
 use crate::{Result, ServiceInfo};
-use once_cell::sync::OnceCell;
 use prometheus_client::encoding::text::{encode, EncodeMetric};
 use prometheus_client::registry::Registry;
 use prometools::serde::InfoGauge;
@@ -9,8 +8,9 @@ use std::any::TypeId;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::ops::DerefMut;
+use std::sync::OnceLock;
 
-static REGISTRIES: OnceCell<Registries> = OnceCell::new();
+static REGISTRIES: OnceLock<Registries> = OnceLock::new();
 
 enum MetricsServiceName {
     Prefix(String),
