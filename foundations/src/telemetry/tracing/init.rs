@@ -3,35 +3,38 @@ use super::output_jaeger_thrift_udp;
 use crate::telemetry::scope::ScopeStack;
 use crate::telemetry::settings::{SamplingStrategy, TracesOutput, TracingSettings};
 use crate::telemetry::tracing::live::ActiveRoots;
+use crate::telemetry::tracing::rate_limit::RateLimitingProbabilisticSampler;
 use crate::{BootstrapResult, ServiceInfo};
+use cf_rustracing::sampler::{NullSampler, PassiveSampler, Sampler};
 use cf_rustracing_jaeger::span::SpanReceiver;
+use crossbeam_utils::CachePadded;
 use futures_util::future::BoxFuture;
-use once_cell::sync::{Lazy, OnceCell};
+use std::sync::{LazyLock, OnceLock};
 
 #[cfg(feature = "telemetry-otlp-grpc")]
 use super::output_otlp_grpc;
 
-use cf_rustracing::sampler::{PassiveSampler, Sampler};
 #[cfg(feature = "testing")]
 use std::borrow::Cow;
 
-use crate::telemetry::tracing::rate_limit::RateLimitingProbabilisticSampler;
+// These singletons are accessed _very often_, and each access requires an atomic load to
+// ensure initialization. Make sure nobody else invalidates our cache lines.
+static HARNESS: CachePadded<OnceLock<TracingHarness>> = CachePadded::new(OnceLock::new());
 
-static HARNESS: OnceCell<TracingHarness> = OnceCell::new();
+static NOOP_HARNESS: CachePadded<LazyLock<TracingHarness>> =
+    CachePadded::new(LazyLock::new(|| {
+        let (noop_tracer, _) = Tracer::new(NullSampler.boxed());
 
-static NOOP_HARNESS: Lazy<TracingHarness> = Lazy::new(|| {
-    let (noop_tracer, _) = Tracer::new(RateLimitingProbabilisticSampler::default().boxed());
+        TracingHarness {
+            tracer: noop_tracer,
+            span_scope_stack: Default::default(),
 
-    TracingHarness {
-        tracer: noop_tracer,
-        span_scope_stack: Default::default(),
+            #[cfg(feature = "testing")]
+            test_tracer_scope_stack: Default::default(),
 
-        #[cfg(feature = "testing")]
-        test_tracer_scope_stack: Default::default(),
-
-        active_roots: Default::default(),
-    }
-});
+            active_roots: Default::default(),
+        }
+    }));
 
 pub(crate) struct TracingHarness {
     tracer: Tracer,
@@ -46,7 +49,7 @@ pub(crate) struct TracingHarness {
 
 impl TracingHarness {
     pub(crate) fn get() -> &'static Self {
-        HARNESS.get().unwrap_or(&NOOP_HARNESS)
+        HARNESS.get().unwrap_or_else(|| &**NOOP_HARNESS)
     }
 
     #[cfg(feature = "testing")]

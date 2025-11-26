@@ -32,6 +32,7 @@ cc = "1.0"
 cf-rustracing = "1.2.1"
 cf-rustracing-jaeger = "1.2.2"
 clap = "4.4"
+crossbeam-utils = { version = "0.8", default-features = false }
 darling = "0.21"
 erased-serde = "0.4"
 futures-util = "0.3"
