@@ -13,8 +13,6 @@ use std::sync::Arc;
 
 pub(crate) type Tracer = cf_rustracing::Tracer<BoxSampler<SpanContextState>, SpanContextState>;
 
-static INACTIVE_SPAN: RwLock<Span> = RwLock::new(Span::inactive());
-
 /// Shared span with mutability and additional reference tracking for
 /// ad-hoc inspection.
 #[derive(Clone, Debug)]
@@ -29,19 +27,13 @@ impl SharedSpanHandle {
         TracingHarness::get().active_roots.track(span)
     }
 
-    pub(crate) fn read(&self) -> parking_lot::RwLockReadGuard<'_, Span> {
-        match self {
-            SharedSpanHandle::Tracked(handle) => handle.read(),
-            SharedSpanHandle::Untracked(rw_lock) => rw_lock.read(),
-            SharedSpanHandle::Inactive => INACTIVE_SPAN.read(),
-        }
-    }
+    pub(crate) fn with_read<R>(&self, f: impl FnOnce(&Span) -> R) -> R {
+        static INACTIVE: Span = Span::inactive();
 
-    pub(crate) fn write(&self) -> parking_lot::RwLockWriteGuard<'_, Span> {
         match self {
-            SharedSpanHandle::Tracked(handle) => handle.write(),
-            SharedSpanHandle::Untracked(rw_lock) => rw_lock.write(),
-            SharedSpanHandle::Inactive => INACTIVE_SPAN.write(),
+            SharedSpanHandle::Tracked(handle) => f(&handle.read()),
+            SharedSpanHandle::Untracked(rw_lock) => f(&rw_lock.read()),
+            SharedSpanHandle::Inactive => f(&INACTIVE),
         }
     }
 }
@@ -51,6 +43,8 @@ impl From<SharedSpanHandle> for Arc<RwLock<Span>> {
         match value {
             SharedSpanHandle::Tracked(handle) => Arc::clone(&handle),
             SharedSpanHandle::Untracked(rw_lock) => rw_lock,
+            // This is only used in `rustracing_span()`, which should rarely
+            // need to be called. Allocating a fresh Arc every time is thus fine.
             SharedSpanHandle::Inactive => Arc::new(RwLock::new(Span::inactive())),
         }
     }
@@ -78,16 +72,23 @@ impl From<Span> for SharedSpan {
 }
 
 pub fn write_current_span(write_fn: impl FnOnce(&mut Span)) {
-    if let Some(span) = current_span() {
-        if span.is_sampled {
-            write_fn(&mut span.inner.write());
-        }
-    }
+    let span = match current_span() {
+        Some(span) if span.is_sampled => span,
+        _ => return,
+    };
+
+    let mut span_guard = match &span.inner {
+        SharedSpanHandle::Tracked(handle) => handle.write(),
+        SharedSpanHandle::Untracked(rw_lock) => rw_lock.write(),
+        SharedSpanHandle::Inactive => unreachable!("inactive spans can't be sampled"),
+    };
+
+    write_fn(&mut span_guard);
 }
 
 pub(crate) fn create_span(name: impl Into<Cow<'static, str>>) -> SharedSpan {
     match current_span() {
-        Some(parent) => parent.inner.read().child(name, |o| o.start()),
+        Some(parent) => parent.inner.with_read(|s| s.child(name, |o| o.start())),
         None => start_trace(name, Default::default()),
     }
     .into()
@@ -150,8 +151,11 @@ fn link_new_trace_with_current(
     root_span_name: &str,
     new_trace_root_span: &mut Span,
 ) {
-    let current_span_lock = current_span.inner.read();
-    let mut new_trace_ref_span = create_fork_ref_span(root_span_name, &current_span_lock);
+    let (mut new_trace_ref_span, current_trace_id) = current_span.inner.with_read(|s| {
+        let trace_id = span_trace_id(s);
+        let ref_span = create_fork_ref_span(root_span_name, s);
+        (ref_span, trace_id)
+    });
 
     if let Some(trace_id) = span_trace_id(&*new_trace_root_span) {
         new_trace_ref_span.set_tag(|| {
@@ -164,7 +168,7 @@ fn link_new_trace_with_current(
         new_trace_ref_span.set_tag(|| Tag::new("trace_id", trace_id));
     }
 
-    if let Some(trace_id) = span_trace_id(&current_span_lock) {
+    if let Some(trace_id) = current_trace_id {
         new_trace_root_span.set_tag(|| Tag::new("trace_id", trace_id));
     }
 
@@ -194,13 +198,9 @@ pub(crate) fn fork_trace(fork_name: impl Into<Cow<'static, str>>) -> SharedSpan 
     .into()
 }
 
-fn create_fork_ref_span(
-    fork_name: &str,
-    current_span_lock: &parking_lot::RwLockReadGuard<Span>,
-) -> Span {
+fn create_fork_ref_span(fork_name: &str, current_span: &Span) -> Span {
     let fork_ref_span_name = format!("[{fork_name} ref]");
-
-    current_span_lock.child(fork_ref_span_name, |o| o.start())
+    current_span.child(fork_ref_span_name, |o| o.start())
 }
 
 fn should_sample(sampling_ratio: f64) -> bool {

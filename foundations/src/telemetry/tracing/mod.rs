@@ -236,7 +236,7 @@ pub struct StartTraceOptions {
 ///
 /// Returns `None` if the span is not sampled and don't have associated trace.
 pub fn trace_id() -> Option<String> {
-    span_trace_id(&current_span()?.inner.read())
+    current_span()?.inner.with_read(span_trace_id)
 }
 
 /// Returns tracing state for the current span that can be serialized and passed to other services
@@ -288,9 +288,7 @@ pub fn trace_id() -> Option<String> {
 pub fn state_for_trace_stitching() -> Option<SerializableTraceState> {
     current_span()?
         .inner
-        .read()
-        .context()
-        .map(|c| c.state().clone())
+        .with_read(|s| Some(s.context()?.state().clone()))
 }
 
 /// Returns the value to be used as a W3C traceparent header.
