@@ -58,6 +58,7 @@ struct FnAttrs {
     doc: String,
     ctor: Option<ExprStruct>,
     optional: bool,
+    with_removal: bool,
 }
 
 struct FnArg {
@@ -78,6 +79,52 @@ enum ArgMode {
     ByValue(Type),
     Clone(Type),
     Into(Type),
+}
+
+impl FnArg {
+    fn to_struct_member(&self) -> proc_macro2::TokenStream {
+        let Self {
+            attrs: ArgAttrs { serde, serde_as },
+            ident,
+            colon_token,
+            ..
+        } = self;
+
+        let ty = match &self.mode {
+            ArgMode::ByValue(ty) => ty,
+            ArgMode::Clone(ty) => ty,
+            ArgMode::Into(ty) => ty,
+        };
+
+        quote! { #serde_as #serde #ident #colon_token #ty }
+    }
+
+    fn to_arg(&self) -> proc_macro2::TokenStream {
+        let Self {
+            ident,
+            colon_token,
+            ty,
+            ..
+        } = self;
+
+        quote! { #ident #colon_token #ty }
+    }
+
+    fn to_initializer(&self) -> proc_macro2::TokenStream {
+        let Self {
+            ident, colon_token, ..
+        } = self;
+
+        match &self.mode {
+            ArgMode::ByValue(_) => quote! { #ident },
+            ArgMode::Clone(_) => quote! {
+                #ident #colon_token ::std::clone::Clone::clone(#ident)
+            },
+            ArgMode::Into(_) => quote! {
+                #ident #colon_token ::std::convert::Into::into(#ident)
+            },
+        }
+    }
 }
 
 pub(crate) fn expand(args: TokenStream, item: TokenStream) -> TokenStream {
@@ -224,25 +271,7 @@ fn label_set_struct(foundations: &Path, fn_: &ItemFn) -> Option<proc_macro2::Tok
     let serde = quote! { #foundations::reexports_for_macros::serde };
     let serde_str = LitStr::new(&serde.to_string(), Span::call_site());
 
-    let labels = args.iter().map(|arg| {
-        let FnArg {
-            attrs: ArgAttrs {
-                serde, serde_as, ..
-            },
-            ident: label_name,
-            colon_token,
-            mode,
-            ..
-        } = arg;
-
-        let label_type = match mode {
-            ArgMode::ByValue(ty) => ty,
-            ArgMode::Clone(ty) => ty,
-            ArgMode::Into(ty) => ty,
-        };
-
-        quote! { #serde_as #serde #label_name #colon_token #label_type }
-    });
+    let labels = args.iter().map(|arg| arg.to_struct_member());
 
     Some(quote! {
         #(#cfg)*
@@ -270,6 +299,7 @@ fn metric_init(foundations: &Path, fn_: &ItemFn) -> proc_macro2::TokenStream {
                 doc,
                 optional,
                 ctor,
+                ..
             },
         ident: field_name,
         args,
@@ -327,7 +357,13 @@ fn metric_init(foundations: &Path, fn_: &ItemFn) -> proc_macro2::TokenStream {
 
 fn metric_fn(foundations: &Path, metrics_struct: &Ident, fn_: &ItemFn) -> proc_macro2::TokenStream {
     let ItemFn {
-        attrs: FnAttrs { cfg, doc, .. },
+        attrs:
+            FnAttrs {
+                cfg,
+                doc,
+                with_removal,
+                ..
+            },
         fn_token,
         vis: fn_vis,
         ident: metric_name,
@@ -336,51 +372,66 @@ fn metric_fn(foundations: &Path, metrics_struct: &Ident, fn_: &ItemFn) -> proc_m
         ty: metric_type,
     } = fn_;
 
-    let fn_args = args.iter().map(|arg| {
-        let FnArg {
-            ident: arg_name,
-            colon_token,
-            ty: arg_ty,
-            ..
-        } = arg;
+    let fn_args: Vec<_> = args.iter().map(|arg| arg.to_arg()).collect();
 
-        quote! { #arg_name #colon_token #arg_ty }
-    });
-
-    let fn_body = if args.is_empty() {
-        quote! {
+    let (convert_args, access_metric) = if args.is_empty() {
+        let accessor = quote! {
             ::std::clone::Clone::clone(&#metrics_struct.#metric_name)
-        }
+        };
+        (quote! {}, accessor)
     } else {
-        let label_inits = args.iter().map(|arg| {
-            let FnArg {
-                ident: arg_name,
-                colon_token,
-                mode,
-                ..
-            } = arg;
+        let label_inits = args.iter().map(|arg| arg.to_initializer());
+        let convert = quote! {
+            let __args = #metric_name {
+                #(#label_inits,)*
+            };
+        };
 
-            match mode {
-                ArgMode::ByValue(_) => quote! { #arg_name },
-                ArgMode::Clone(_) => {
-                    quote! { #arg_name #colon_token ::std::clone::Clone::clone(#arg_name) }
-                }
-                ArgMode::Into(_) => {
-                    quote! { #arg_name #colon_token ::std::convert::Into::into(#arg_name) }
-                }
-            }
-        });
-
-        quote! {
+        let accessor = quote! {
             ::std::clone::Clone::clone(
                 &#foundations::reexports_for_macros::prometools::serde::Family::get_or_create(
                     &#metrics_struct.#metric_name,
-                    &#metric_name {
-                        #(#label_inits,)*
-                    },
+                    &__args,
                 )
             )
+        };
+        (convert, accessor)
+    };
+
+    let removal_fns = if cfg!(foundations_unstable) && *with_removal {
+        let remove_ident = format_ident!("{metric_name}_remove");
+        let remove_doc = LitStr::new(
+            &format!("Removes one label set from the `{metric_name}` family."),
+            Span::call_site(),
+        );
+
+        let clear_ident = format_ident!("{metric_name}_clear");
+        let clear_doc = LitStr::new(
+            &format!("Removes all label sets from the `{metric_name}` family."),
+            Span::call_site(),
+        );
+
+        quote! {
+            #[doc = #remove_doc]
+            #(#cfg)*
+            #fn_vis #fn_token #remove_ident(#(#fn_args,)*) #arrow_token bool {
+                #convert_args
+                #foundations::reexports_for_macros::prometools::serde::Family::remove(
+                    &#metrics_struct.#metric_name,
+                    &__args,
+                )
+            }
+
+            #[doc = #clear_doc]
+            #(#cfg)*
+            #fn_vis #fn_token #clear_ident() {
+                #foundations::reexports_for_macros::prometools::serde::Family::clear(
+                    &#metrics_struct.#metric_name,
+                )
+            }
         }
+    } else {
+        quote! {}
     };
 
     quote! {
@@ -388,8 +439,10 @@ fn metric_fn(foundations: &Path, metrics_struct: &Ident, fn_: &ItemFn) -> proc_m
         #(#cfg)*
         #[must_use]
         #fn_vis #fn_token #metric_name(#(#fn_args,)*) #arrow_token #metric_type {
-            #fn_body
+            #convert_args
+            #access_metric
         }
+        #removal_fns
     }
 }
 
@@ -708,15 +761,16 @@ mod tests {
                     message: &'static str,
                     error: impl Into<String>,
                 ) -> Counter {
+                    let __args = connections_errors_total {
+                        endpoint: ::std::clone::Clone::clone(endpoint),
+                        kind,
+                        message,
+                        error: ::std::convert::Into::into(error),
+                    };
                     ::std::clone::Clone::clone(
                         &::foundations::reexports_for_macros::prometools::serde::Family::get_or_create(
                             &__oxy_Metrics.connections_errors_total,
-                            &connections_errors_total {
-                                endpoint: ::std::clone::Clone::clone(endpoint),
-                                kind,
-                                message,
-                                error: ::std::convert::Into::into(error),
-                            },
+                            &__args,
                         )
                     )
                 }
@@ -822,13 +876,109 @@ mod tests {
                 pub fn requests_per_connection(
                     endpoint: String,
                 ) -> Histogram {
+                    let __args = requests_per_connection { endpoint, };
                     ::std::clone::Clone::clone(
                         &::foundations::reexports_for_macros::prometools::serde::Family::get_or_create(
                             &__oxy_Metrics.requests_per_connection,
-                            &requests_per_connection {
-                                endpoint,
-                            },
+                            &__args,
                         )
+                    )
+                }
+            }
+        };
+
+        assert_eq!(actual, expected);
+    }
+
+    #[cfg(foundations_unstable)]
+    #[test]
+    fn expand_with_removal() {
+        let attr = parse_attr! {
+            #[metrics]
+        };
+
+        let src = parse_quote! {
+            pub(crate) mod oxy {
+                /// Total number of requests
+                #[with_removal]
+                pub(crate) fn requests_total(status: u16) -> Counter;
+            }
+        };
+
+        let actual = expand_from_parsed(attr, src).to_string();
+
+        let expected = code_str! {
+            pub(crate) mod oxy {
+                use super::*;
+
+                #[allow(non_camel_case_types)]
+                struct __oxy_Metrics {
+                    requests_total:
+                        ::foundations::reexports_for_macros::prometools::serde::Family<
+                            requests_total,
+                            Counter,
+                        >,
+                }
+
+                #[allow(non_camel_case_types)]
+                #[derive(
+                    ::std::clone::Clone,
+                    ::std::cmp::Eq,
+                    ::std::hash::Hash,
+                    ::std::cmp::PartialEq,
+                    ::foundations::reexports_for_macros::serde::Serialize,
+                )]
+                #[serde(crate = ":: foundations :: reexports_for_macros :: serde")]
+                struct requests_total {
+                    status: u16,
+                }
+
+                #[allow(non_upper_case_globals)]
+                static __oxy_Metrics: ::std::sync::LazyLock<__oxy_Metrics> =
+                    ::std::sync::LazyLock::new(|| {
+                        let registry = &mut *::foundations::telemetry::metrics::internal::Registries::get_subsystem(stringify!(oxy), false, true);
+
+                        __oxy_Metrics {
+                            requests_total: {
+                                let metric = ::std::default::Default::default();
+
+                                ::foundations::reexports_for_macros::prometheus_client::registry::Registry::register(
+                                    registry,
+                                    ::std::stringify!(requests_total),
+                                    str::trim(" Total number of requests"),
+                                    ::std::boxed::Box::new(::std::clone::Clone::clone(&metric))
+                                );
+
+                                metric
+                            },
+                        }
+                    });
+
+                #[doc = " Total number of requests"]
+                #[must_use]
+                pub(crate) fn requests_total(status: u16,) -> Counter {
+                    let __args = requests_total { status, };
+                    ::std::clone::Clone::clone(
+                        &::foundations::reexports_for_macros::prometools::serde::Family::get_or_create(
+                            &__oxy_Metrics.requests_total,
+                            &__args,
+                        )
+                    )
+                }
+
+                #[doc = "Removes one label set from the `requests_total` family."]
+                pub(crate) fn requests_total_remove(status: u16,) -> bool {
+                    let __args = requests_total { status, };
+                    ::foundations::reexports_for_macros::prometools::serde::Family::remove(
+                        &__oxy_Metrics.requests_total,
+                        &__args,
+                    )
+                }
+
+                #[doc = "Removes all label sets from the `requests_total` family."]
+                pub(crate) fn requests_total_clear() {
+                    ::foundations::reexports_for_macros::prometools::serde::Family::clear(
+                        &__oxy_Metrics.requests_total,
                     )
                 }
             }

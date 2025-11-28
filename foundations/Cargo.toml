@@ -181,6 +181,9 @@ rustdoc-args = ["--cfg", "foundations_docsrs", "--cfg", "tokio_unstable", "--cfg
 # to rustc, or else dependencies will not be enabled, and the docs build will fail.
 rustc-args = ["--cfg", "tokio_unstable", "--cfg", "foundations_unstable", "--cfg", "foundations_generic_telemetry_wrapper"]
 
+[lints]
+workspace = true
+
 [dependencies]
 anyhow = { workspace = true, features = ["backtrace", "std"] }
 foundations-macros = { workspace = true, optional = true, default-features = false }

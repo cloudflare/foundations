@@ -64,9 +64,6 @@
 //! [OpenTelemetry]: https://opentelemetry.io/
 //! [gRPC]: https://grpc.io/
 //! [`settings`]: crate::settings::Settings
-
-// NOTE: required to allow cfgs like `tokio_unstable` on nightly which is used in tests.
-#![allow(unexpected_cfgs)]
 #![warn(missing_docs)]
 #![cfg_attr(foundations_docsrs, feature(doc_cfg))]
 

@@ -1,26 +1,27 @@
 use super::{ArgAttrs, ArgMode, FnArg, FnAttrs, ItemFn, MacroArgs, Mod};
 use crate::common::{error, parse_attr_value, parse_meta_list, Result};
 use darling::FromMeta;
-use quote::ToTokens as _;
 use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
 use syn::{
-    braced, parenthesized, AngleBracketedGenericArguments, Attribute, GenericArgument, LitBool,
-    LitStr, PathArguments, Token, TraitBound, TraitBoundModifier, Type, TypeImplTrait,
-    TypeParamBound,
+    braced, parenthesized, AngleBracketedGenericArguments, Attribute, GenericArgument,
+    PathArguments, Token, TraitBound, TraitBoundModifier, Type, TypeImplTrait, TypeParamBound,
 };
 
 const IMPL_TRAIT_ERROR: &str = "Only `impl Into<T>` is allowed";
 
 const FN_ATTR_ERROR: &str =
-    "Only `#[cfg]`, `#[doc]`, `#[ctor]` and `#[optional]` are allowed on functions";
+    "Only `#[cfg]`, `#[doc]`, `#[ctor]`, `#[optional]`, and `#[with_removal]` are allowed on functions";
 
 const DUPLICATE_CTOR_ATTR_ERROR: &str = "Duplicate `#[ctor]` attribute";
 const DUPLICATE_OPTIONAL_ATTR_ERROR: &str = "Duplicate `#[optional]` attribute";
+const DUPLICATE_WITH_REMOVAL_ATTR_ERROR: &str = "Duplicate `#[with_removal]` attribute";
 const DUPLICATE_SERDE_ATTR_ERROR: &str = "Duplicate `#[serde]` attribute";
 const DUPLICATE_SERDE_AS_ATTR_ERROR: &str = "Duplicate `#[serde_as]` attribute";
 
 const ARG_ATTR_ERROR: &str = "Only `#[serde]` and `#[serde_as]` are allowed on function arguments";
+const WITH_REMOVAL_NO_ARGS_ERROR: &str =
+    "`#[with_removal]` can only be used on functions with arguments";
 
 impl Parse for MacroArgs {
     fn parse(input: ParseStream) -> Result<Self> {
@@ -58,60 +59,63 @@ impl Parse for Mod {
     }
 }
 
-impl Parse for ItemFn {
-    fn parse(input: ParseStream) -> Result<Self> {
-        fn parse_attrs(attrs: Vec<Attribute>) -> Result<FnAttrs> {
-            let mut cfg = vec![];
-            let mut doc = "".to_owned();
-            let mut ctor = None;
-            let mut optional = None;
+impl FnAttrs {
+    fn from_attrs(attrs: Vec<Attribute>) -> Result<Self> {
+        let mut cfg = vec![];
+        let mut doc = "".to_owned();
+        let mut ctor = None;
+        let mut optional = None;
+        let mut with_removal = None;
 
-            for attr in attrs {
-                let path = attr.path();
+        for attr in attrs {
+            let path = attr.path().get_ident().map(ToString::to_string);
 
-                if path.is_ident("cfg") {
-                    cfg.push(attr);
-                } else if path.is_ident("doc") {
-                    doc.push_str(&parse_attr_value::<LitStr>(attr)?.value());
-                } else if path.is_ident("ctor") {
+            match path.as_deref() {
+                Some("cfg") => cfg.push(attr),
+                Some("doc") => doc.push_str(&String::from_meta(&attr.meta)?),
+                Some("ctor") => {
                     if ctor.is_some() {
                         return error(&attr, DUPLICATE_CTOR_ATTR_ERROR);
                     }
 
                     ctor = Some(parse_attr_value(attr)?);
-                } else if path.is_ident("optional") {
+                }
+                Some("optional") => {
                     if optional.is_some() {
                         return error(&attr, DUPLICATE_OPTIONAL_ATTR_ERROR);
                     }
 
-                    if attr.to_token_stream().is_empty() {
-                        optional = Some(true);
-                    } else {
-                        optional = Some(
-                            parse_attr_value::<LitBool>(attr)
-                                .map(|l| l.value)
-                                .unwrap_or(true),
-                        );
-                    }
-                } else {
-                    return error(&attr, FN_ATTR_ERROR);
+                    optional = Some(bool::from_meta(&attr.meta).unwrap_or(true));
                 }
-            }
+                Some("with_removal") => {
+                    if with_removal.is_some() {
+                        return error(&attr, DUPLICATE_WITH_REMOVAL_ATTR_ERROR);
+                    }
 
-            Ok(FnAttrs {
-                cfg,
-                doc,
-                ctor,
-                optional: optional.unwrap_or(false),
-            })
+                    with_removal = Some(bool::from_meta(&attr.meta)?);
+                }
+                _ => return error(&attr, FN_ATTR_ERROR),
+            }
         }
 
-        let attrs = parse_attrs(input.call(Attribute::parse_outer)?)?;
+        Ok(Self {
+            cfg,
+            doc,
+            ctor,
+            optional: optional.unwrap_or(false),
+            with_removal: with_removal.unwrap_or(false),
+        })
+    }
+}
+
+impl Parse for ItemFn {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let attrs = FnAttrs::from_attrs(input.call(Attribute::parse_outer)?)?;
         let vis = input.parse()?;
         let fn_token = input.parse()?;
         let ident = input.parse()?;
         let args_content;
-        let _paren_token = parenthesized!(args_content in input);
+        let paren_token = parenthesized!(args_content in input);
         let mut args = Punctuated::new();
 
         while !args_content.is_empty() {
@@ -127,6 +131,10 @@ impl Parse for ItemFn {
         let arrow_token = input.parse()?;
         let ty = input.parse()?;
         let _semi_token = input.parse::<Token![;]>()?;
+
+        if attrs.with_removal && args.is_empty() {
+            return error(&paren_token.span, WITH_REMOVAL_NO_ARGS_ERROR);
+        }
 
         Ok(ItemFn {
             attrs,

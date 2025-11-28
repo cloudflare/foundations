@@ -91,6 +91,22 @@ pub fn collect(settings: &MetricsSettings) -> Result<String> {
 /// Can be used for heavy-weight metrics (e.g. with high cardinality) that don't need to be reported
 /// on a regular basis.
 ///
+/// ## `#[with_removal]` (unstable)
+///
+/// **This feature is unstable and becomes a noop without `cfg(foundations_unstable)`.**
+///
+/// Metrics with labels make up a shared [`Family`]. Occasionally, it can be useful to
+/// remove one or all existing metrics from a family. This functionality is provided by
+/// the `#[with_removal]` attribute. Single metrics (without labels) do not support this
+/// argument.
+///
+/// If the attribute is present on a metric function, two additional functions are
+/// generated in addition to the metric itself. These are called `<metric>_remove` and
+/// `<metric>_clear`. The `_remove` variant takes the same arguments as the original
+/// function and removes that instance from the family. It returns a boolean indicating
+/// whether the labels were present before. The `_clear` variant takes no arguments
+/// and removes all existing metrics from the family.
+///
 /// # Example
 ///
 /// ```
@@ -194,6 +210,10 @@ pub fn collect(settings: &MetricsSettings) -> Result<String> {
 ///     /// Number of Proxy-Status serialization errors
 ///     // Metrics with no labels are also obviously supported.
 ///     pub fn proxy_status_serialization_error_count() -> Counter;
+///
+///     /// Number of HTTP requests
+///     #[with_removal]
+///     pub fn requests_total(endpoint: &Arc<String>) -> Counter;
 /// }
 ///
 /// fn usage() {
@@ -217,8 +237,15 @@ pub fn collect(settings: &MetricsSettings) -> Result<String> {
 ///     client_connections_active.inc();
 ///
 ///     my_app_metrics::proxy_status_serialization_error_count().inc();
+///     my_app_metrics::requests_total(&endpoint).inc();
 ///
 ///     client_connections_active.dec();
+///
+/// #   #[cfg(foundations_unstable)] {
+///     my_app_metrics::requests_total_remove(&endpoint);
+///     // Or remove all existing instances:
+///     my_app_metrics::requests_total_clear();
+/// #   }
 /// }
 /// # }
 /// ```
