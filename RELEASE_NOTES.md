@@ -1,5 +1,15 @@
 
+5.4.0
+- 2025-12-01 Fix minimal-versions check
+- 2025-11-25 Add #[with_removal] attribute to #[metrics] macro
+- 2025-11-25 Reduce nesting in metrics proc-macro functions
+- 2025-11-24 Configure unexpected_cfgs rustc lint explicitly
+- 2025-11-27 Remove globally-shared INACTIVE_SPAN RwLock
+- 2025-11-26 Remove internal once_cell usages
+- 2025-11-26 Improve performance of log/tracing harness access
+
 5.3.0
+- 2025-11-07 Release 5.3.0
 - 2025-11-06 Add `unprefixed` flag to `#[metrics]` macro
 - 2025-11-07 Fix new instance of `clippy::derivable_impls`
 
