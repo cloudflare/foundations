@@ -67,7 +67,10 @@
 #![warn(missing_docs)]
 #![cfg_attr(foundations_docsrs, feature(doc_cfg))]
 
+mod ratelimit;
 mod utils;
+
+pub use ratelimit::RateLimiter;
 
 pub mod addr;
 

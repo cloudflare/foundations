@@ -261,6 +261,7 @@ neli = { workspace = true, optional = true }
 neli-proc-macros = { workspace = true, optional = true }
 
 [dev-dependencies]
+criterion = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true, features = ["rc"] }
 tempfile = { workspace = true }
@@ -269,6 +270,10 @@ ipnetwork = { workspace = true }
 nix = { workspace = true , features = ["fs"] }
 tracing-subscriber = { workspace = true }
 sentry = { workspace = true }
+
+[[bench]]
+name = "ratelimit"
+harness = false
 
 [build-dependencies]
 bindgen = { workspace = true, features = ["runtime"], optional = true }
