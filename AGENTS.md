@@ -2,8 +2,8 @@
 
 ## Build & Test Commands
 - Build: `cargo build`
-- Test all: `cargo test`
-- Test single: `cargo test <test_name>` or `cargo test --test <file> <test_name>`
+- Test all: `cargo nextest run`
+- Test single: `cargo nextest run <test_name>` or `cargo nextest run --test <file> <test_name>`
 - Clippy: `cargo clippy --all-targets -- -D warnings -D unreachable_pub -D clippy::await_holding_lock -D clippy::clone_on_ref_ptr`
 - Format: `cargo fmt --all`
 - Lint fix: `./scripts/lint-fix.sh`
