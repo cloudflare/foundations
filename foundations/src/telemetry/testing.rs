@@ -1,5 +1,5 @@
 use super::TelemetryContext;
-use crate::utils::feature_use;
+use crate::{telemetry::TELEMETRY_INITIALIZED, utils::feature_use};
 use std::ops::Deref;
 
 feature_use!(cfg(feature = "logging"), {
@@ -48,6 +48,8 @@ pub struct TestTelemetryContext {
 
 impl TestTelemetryContext {
     pub(crate) fn new() -> Self {
+        let _ = TELEMETRY_INITIALIZED.set(());
+
         #[cfg(feature = "logging")]
         let (log, log_records) = {
             create_test_log(&LoggingSettings {

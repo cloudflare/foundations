@@ -50,6 +50,24 @@
 //! [Prometheus]: https://prometheus.io/
 //! [jemalloc]: https://github.com/jemalloc/jemalloc
 
+use std::sync::OnceLock;
+
+/// Tracks whether telemetry::init() has been called.
+#[allow(
+    dead_code,
+    reason = "only dead if no foundations telemetry features are enabled"
+)]
+static TELEMETRY_INITIALIZED: OnceLock<()> = OnceLock::new();
+
+/// Returns `true` if [`init`] has been called successfully.
+#[allow(
+    dead_code,
+    reason = "only dead if no foundations telemetry features are enabled"
+)]
+pub(crate) fn is_initialized() -> bool {
+    TELEMETRY_INITIALIZED.get().is_some()
+}
+
 #[cfg(any(feature = "logging", feature = "tracing"))]
 mod scope;
 
@@ -298,6 +316,9 @@ pub struct TelemetryConfig<'c> {
     feature = "telemetry-server",
 ))]
 pub fn init(config: TelemetryConfig) -> BootstrapResult<TelemetryDriver> {
+    #[cfg(feature = "metrics")]
+    crate::alerts::panic_hook().init();
+
     let tele_futures: FuturesUnordered<_> = Default::default();
 
     #[cfg(feature = "logging")]
@@ -314,6 +335,8 @@ pub fn init(config: TelemetryConfig) -> BootstrapResult<TelemetryDriver> {
 
     #[cfg(feature = "metrics")]
     self::metrics::init::init(config.service_info, &config.settings.metrics);
+
+    let _ = TELEMETRY_INITIALIZED.set(());
 
     #[cfg(feature = "telemetry-server")]
     {
