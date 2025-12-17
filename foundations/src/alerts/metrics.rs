@@ -1,5 +1,6 @@
 //! Panic and sentry event related metrics.
 
+use super::Level;
 use crate::telemetry::metrics::Counter;
 
 /// Panic metrics.
@@ -13,5 +14,5 @@ pub mod panics {
 #[crate::telemetry::metrics::metrics(crate_path = "crate", unprefixed)]
 pub mod sentry_events {
     /// Total number of sentry events observed.
-    pub fn total() -> Counter;
+    pub fn total(level: Level) -> Counter;
 }

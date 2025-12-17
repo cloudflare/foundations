@@ -73,7 +73,7 @@ impl<R: FatalErrorRegistry + Send + Sync + 'static> SentryHookBuilder<HasRegistr
         let previous = options.before_send.take();
 
         options.before_send = Some(Arc::new(move |event| {
-            registry.inc_sentry_events_total(1);
+            registry.inc_sentry_events_total(event.level.into(), 1);
 
             // Call previous hook if any
             if let Some(ref prev) = previous {
