@@ -16,7 +16,7 @@ mod with_metrics {
     };
 
     use super::{simulate_sentry_event, TEST_DSN};
-    use foundations::alerts::metrics;
+    use foundations::alerts::{metrics, Level};
 
     #[test]
     fn sentry_hook_increments_metric_on_event() {
@@ -26,7 +26,7 @@ mod with_metrics {
         let _guard = sentry::init((TEST_DSN, options));
 
         simulate_sentry_event();
-        assert_eq!(metrics::sentry_events::total().get(), 1);
+        assert_eq!(metrics::sentry_events::total(Level::Error).get(), 1);
     }
 
     #[test]
@@ -40,7 +40,7 @@ mod with_metrics {
         simulate_sentry_event();
         simulate_sentry_event();
 
-        assert_eq!(metrics::sentry_events::total().get(), 3);
+        assert_eq!(metrics::sentry_events::total(Level::Error).get(), 3);
     }
 
     #[test]
@@ -67,7 +67,7 @@ mod with_metrics {
 
         // Both hooks should have been called
         assert_eq!(previous_hook_count.load(Ordering::Relaxed), 2);
-        assert_eq!(metrics::sentry_events::total().get(), 2);
+        assert_eq!(metrics::sentry_events::total(Level::Error).get(), 2);
     }
 
     #[test]
@@ -86,7 +86,7 @@ mod with_metrics {
         handle1.join().unwrap();
         handle2.join().unwrap();
 
-        assert_eq!(metrics::sentry_events::total().get(), 3);
+        assert_eq!(metrics::sentry_events::total(Level::Error).get(), 3);
     }
 
     #[test]
@@ -113,7 +113,7 @@ mod with_metrics {
             handle2.await.unwrap();
         });
 
-        assert_eq!(metrics::sentry_events::total().get(), 3);
+        assert_eq!(metrics::sentry_events::total(Level::Error).get(), 3);
     }
 
     #[test]
@@ -140,7 +140,7 @@ mod with_metrics {
         impl FatalErrorRegistry for TestRegistry {
             fn inc_panics_total(&self, _by: u64) {}
 
-            fn inc_sentry_events_total(&self, by: u64) {
+            fn inc_sentry_events_total(&self, _level: Level, by: u64) {
                 self.sentry_events.fetch_add(by, Ordering::Relaxed);
             }
         }
@@ -158,7 +158,7 @@ mod with_metrics {
 
         // Custom registry should be used, not the default metrics
         assert_eq!(registry.sentry_events(), 1);
-        assert_eq!(metrics::sentry_events::total().get(), 0);
+        assert_eq!(metrics::sentry_events::total(Level::Error).get(), 0);
     }
 
     #[test]
@@ -185,13 +185,13 @@ mod with_metrics {
         });
 
         // The hook should have been called via the cloned options
-        assert_eq!(metrics::sentry_events::total().get(), 1);
+        assert_eq!(metrics::sentry_events::total(Level::Error).get(), 1);
     }
 }
 
 #[cfg(not(feature = "metrics"))]
 mod no_metrics {
-    use foundations::alerts::FatalErrorRegistry;
+    use foundations::alerts::{FatalErrorRegistry, Level};
     use std::sync::{
         atomic::{AtomicU64, Ordering},
         Arc,
@@ -223,7 +223,7 @@ mod no_metrics {
             self.panics.fetch_add(by, Ordering::Relaxed);
         }
 
-        fn inc_sentry_events_total(&self, by: u64) {
+        fn inc_sentry_events_total(&self, _level: Level, by: u64) {
             self.sentry_events.fetch_add(by, Ordering::Relaxed);
         }
     }

@@ -62,6 +62,44 @@ pub use self::panic::{panic_hook, PanicHookBuilder};
 #[cfg(feature = "sentry")]
 pub use self::sentry::{sentry_hook, SentryHookBuilder};
 
+/// Sentry event severity level for metrics labeling.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
+#[allow(missing_docs)]
+pub enum Level {
+    Debug,
+    Info,
+    Warning,
+    Error,
+    Fatal,
+}
+
+#[cfg(feature = "sentry")]
+impl From<sentry_core::Level> for Level {
+    fn from(level: sentry_core::Level) -> Self {
+        match level {
+            sentry_core::Level::Debug => Level::Debug,
+            sentry_core::Level::Info => Level::Info,
+            sentry_core::Level::Warning => Level::Warning,
+            sentry_core::Level::Error => Level::Error,
+            sentry_core::Level::Fatal => Level::Fatal,
+        }
+    }
+}
+
+#[cfg(feature = "sentry")]
+impl From<Level> for sentry_core::Level {
+    fn from(level: Level) -> Self {
+        match level {
+            Level::Debug => sentry_core::Level::Debug,
+            Level::Info => sentry_core::Level::Info,
+            Level::Warning => sentry_core::Level::Warning,
+            Level::Error => sentry_core::Level::Error,
+            Level::Fatal => sentry_core::Level::Fatal,
+        }
+    }
+}
+
 /// Trait for recording sentry and panic hook metrics.
 ///
 /// Implement this trait to use a custom metrics registry instead of
@@ -71,7 +109,7 @@ pub trait FatalErrorRegistry: Send + Sync {
     fn inc_panics_total(&self, by: u64);
 
     /// Increment the sentry events counter.
-    fn inc_sentry_events_total(&self, by: u64);
+    fn inc_sentry_events_total(&self, level: Level, by: u64);
 }
 
 #[doc(hidden)]
@@ -88,8 +126,8 @@ pub mod _private {
             super::metrics::panics::total().inc_by(by);
         }
 
-        fn inc_sentry_events_total(&self, by: u64) {
-            super::metrics::sentry_events::total().inc_by(by);
+        fn inc_sentry_events_total(&self, level: super::Level, by: u64) {
+            super::metrics::sentry_events::total(level).inc_by(by);
         }
     }
 
