@@ -71,6 +71,8 @@ mod utils;
 
 pub mod addr;
 
+pub mod alerts;
+
 #[cfg(feature = "cli")]
 pub mod cli;
 

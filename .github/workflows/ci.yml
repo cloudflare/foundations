@@ -322,3 +322,9 @@ jobs:
       - name: Run foundations tests
         run: _RJEM_MALLOC_CONF=prof:true cargo nextest run --target ${{ matrix.target }}
         shell: bash
+      - name: Run panic_hook tests with no default features
+        run: _RJEM_MALLOC_CONF=prof:true cargo nextest run -p foundations --test panic_hook --no-default-features --target ${{ matrix.target }}
+        shell: bash
+      - name: Run sentry_hook tests with no default features
+        run: _RJEM_MALLOC_CONF=prof:true cargo nextest run -p foundations --test sentry_hook --no-default-features --features sentry --target ${{ matrix.target }}
+        shell: bash
