@@ -1,21 +1,19 @@
 //! Sentry hook implementation for tracking sentry events.
 
-use super::FatalErrorRegistry;
-use super::_private::{DefaultBuilderState, HasRegistry, NeedsRegistry};
-
 #[cfg(feature = "metrics")]
-use crate::alerts::_private::DefaultRegistry;
+use super::DefaultRegistry;
+use super::{DefaultBuilderState, HasRegistry, NeedsRegistry, SentryMetricsRegistry};
 
 /// Returns a builder for configuring and installing the sentry hook. The sentry
 /// hook is installed by modifying a provided [`sentry_core::ClientOptions`].
 ///
 /// When the `metrics` feature is enabled, the `foundations::metrics` registry
-/// is used [`SentryHookBuilder::install()`] can be called immediately. When
+/// is used and [`SentryHookBuilder::install()`] can be called immediately. When
 /// `metrics` is disabled, you must call [`SentryHookBuilder::with_registry()`]
-/// before `.install()`.
+/// before calling `.install()`.
 ///
-/// See the module-level docs for more information: [`crate::alerts`].
-pub fn sentry_hook() -> SentryHookBuilder<DefaultBuilderState> {
+/// See the module-level docs for more information: [`crate::sentry`].
+pub fn hook() -> SentryHookBuilder<DefaultBuilderState> {
     SentryHookBuilder {
         state: Default::default(),
     }
@@ -32,12 +30,12 @@ pub struct SentryHookBuilder<State> {
 }
 
 impl SentryHookBuilder<NeedsRegistry> {
-    /// Provide a custom metrics registry for recording fatal error metrics.
+    /// Provide a custom metrics registry for recording sentry event metrics.
     ///
     /// This is required when the `metrics` feature is disabled.
     pub fn with_registry<R>(self, registry: R) -> SentryHookBuilder<HasRegistry<R>>
     where
-        R: FatalErrorRegistry + Send + Sync + 'static,
+        R: SentryMetricsRegistry + 'static,
     {
         SentryHookBuilder {
             state: HasRegistry { registry },
@@ -47,12 +45,12 @@ impl SentryHookBuilder<NeedsRegistry> {
 
 #[cfg(feature = "metrics")]
 impl SentryHookBuilder<HasRegistry<DefaultRegistry>> {
-    /// Provide a custom metrics registry for recording fatal error metrics.
+    /// Provide a custom metrics registry for recording sentry event metrics.
     ///
     /// This overrides the default `foundations::metrics` registry.
     pub fn with_registry<R>(self, registry: R) -> SentryHookBuilder<HasRegistry<R>>
     where
-        R: FatalErrorRegistry + Send + Sync + 'static,
+        R: SentryMetricsRegistry + 'static,
     {
         SentryHookBuilder {
             state: HasRegistry { registry },
@@ -60,7 +58,7 @@ impl SentryHookBuilder<HasRegistry<DefaultRegistry>> {
     }
 }
 
-impl<R: FatalErrorRegistry + Send + Sync + 'static> SentryHookBuilder<HasRegistry<R>> {
+impl<R: SentryMetricsRegistry + 'static> SentryHookBuilder<HasRegistry<R>> {
     /// Install the sentry hook on the provided client options.
     ///
     /// This installs a `before_send` hook that increments `sentry_events_total`.
@@ -73,9 +71,8 @@ impl<R: FatalErrorRegistry + Send + Sync + 'static> SentryHookBuilder<HasRegistr
         let previous = options.before_send.take();
 
         options.before_send = Some(Arc::new(move |event| {
-            registry.inc_sentry_events_total(event.level.into(), 1);
+            registry.inc_sentry_events_total(event.level, 1);
 
-            // Call previous hook if any
             if let Some(ref prev) = previous {
                 prev(event)
             } else {

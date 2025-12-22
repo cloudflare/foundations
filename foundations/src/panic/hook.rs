@@ -1,13 +1,11 @@
 //! Panic hook implementation for tracking panics.
 
-#[cfg(feature = "metrics")]
-use crate::alerts::_private::DefaultRegistry;
-
 use std::panic::{self, PanicHookInfo};
 use std::sync::OnceLock;
 
-use super::FatalErrorRegistry;
-use super::_private::{DefaultBuilderState, HasRegistry, NeedsRegistry};
+#[cfg(feature = "metrics")]
+use super::DefaultRegistry;
+use super::{DefaultBuilderState, HasRegistry, NeedsRegistry, PanicsMetricsRegistry};
 
 pub(crate) static HOOK_INSTALLED: OnceLock<()> = OnceLock::new();
 
@@ -17,8 +15,8 @@ pub(crate) static HOOK_INSTALLED: OnceLock<()> = OnceLock::new();
 /// [`PanicHookBuilder::init()`] can be called immediately. When `metrics` is
 /// disabled, you must call [`PanicHookBuilder::with_registry()`] before `.init()`.
 ///
-/// See the module-level docs for more information: [`crate::alerts`]
-pub fn panic_hook() -> PanicHookBuilder<DefaultBuilderState> {
+/// See the module-level docs for more information: [`crate::panic`]
+pub fn hook() -> PanicHookBuilder<DefaultBuilderState> {
     PanicHookBuilder {
         state: Default::default(),
     }
@@ -35,12 +33,12 @@ pub struct PanicHookBuilder<State> {
 }
 
 impl PanicHookBuilder<NeedsRegistry> {
-    /// Provide a custom metrics registry for recording fatal error metrics.
+    /// Provide a custom metrics registry for recording panic metrics.
     ///
     /// This is required when the `metrics` feature is disabled.
     pub fn with_registry<R>(self, registry: R) -> PanicHookBuilder<HasRegistry<R>>
     where
-        R: FatalErrorRegistry + 'static,
+        R: PanicsMetricsRegistry + 'static,
     {
         PanicHookBuilder {
             state: HasRegistry { registry },
@@ -51,12 +49,12 @@ impl PanicHookBuilder<NeedsRegistry> {
 /// When `metrics` feature is enabled, allow overriding the default registry.
 #[cfg(feature = "metrics")]
 impl PanicHookBuilder<HasRegistry<DefaultRegistry>> {
-    /// Provide a custom metrics registry for recording fatal error metrics.
+    /// Provide a custom metrics registry for recording panic metrics.
     ///
     /// This overrides the default foundations metrics registry.
     pub fn with_registry<R>(self, registry: R) -> PanicHookBuilder<HasRegistry<R>>
     where
-        R: FatalErrorRegistry + 'static,
+        R: PanicsMetricsRegistry + 'static,
     {
         PanicHookBuilder {
             state: HasRegistry { registry },
@@ -64,7 +62,7 @@ impl PanicHookBuilder<HasRegistry<DefaultRegistry>> {
     }
 }
 
-impl<R: FatalErrorRegistry + 'static> PanicHookBuilder<HasRegistry<R>> {
+impl<R: PanicsMetricsRegistry + 'static> PanicHookBuilder<HasRegistry<R>> {
     /// Install the panic hook.
     ///
     /// Returns `true` if this is the first installation, `false` if the hook

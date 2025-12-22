@@ -16,7 +16,7 @@ mod with_metrics {
     };
 
     use foundations::{
-        alerts::metrics,
+        panic::metrics,
         service_info,
         telemetry::{TelemetryConfig, TestTelemetryContext},
     };
@@ -27,7 +27,7 @@ mod with_metrics {
 
     #[test]
     fn panic_hook_init_returns_true_on_first_call() {
-        let is_installed = foundations::alerts::panic_hook().init();
+        let is_installed = foundations::panic::hook().init();
         assert!(is_installed);
 
         simulate_panic();
@@ -35,9 +35,22 @@ mod with_metrics {
     }
 
     #[test]
+    fn panic_hook_metrics_are_well_formed() {
+        let is_installed = foundations::panic::hook().init();
+        assert!(is_installed);
+
+        simulate_panic();
+        assert_eq!(metrics::panics::total().get(), 1);
+
+        let metrics = foundations::telemetry::metrics::collect(&Default::default()).unwrap();
+        let has_metric = metrics.lines().any(|line| line == "panics_total 1");
+        assert!(has_metric);
+    }
+
+    #[test]
     fn panic_hook_init_is_idempotent() {
-        let first = foundations::alerts::panic_hook().init();
-        let second = foundations::alerts::panic_hook().init();
+        let first = foundations::panic::hook().init();
+        let second = foundations::panic::hook().init();
 
         assert!(first);
         assert!(!second);
@@ -48,7 +61,7 @@ mod with_metrics {
 
     #[test]
     fn panic_hook_works_across_threads() {
-        foundations::alerts::panic_hook().init();
+        foundations::panic::hook().init();
 
         // simulate two panics, one in another thread:
         simulate_panic();
@@ -60,7 +73,7 @@ mod with_metrics {
 
     #[test]
     fn panic_hook_works_in_tokio_tasks() {
-        foundations::alerts::panic_hook().init();
+        foundations::panic::hook().init();
 
         // panic before tokio is initialized:
         simulate_panic();
@@ -88,7 +101,7 @@ mod with_metrics {
         let rt = tokio::runtime::Builder::new_multi_thread().build().unwrap();
 
         // install the hook after the runtime has started
-        foundations::alerts::panic_hook().init();
+        foundations::panic::hook().init();
 
         // panic in two tasks:
         let handle_1 = rt.spawn(async {
@@ -123,7 +136,7 @@ mod with_metrics {
         std::panic::set_hook(create_hook(Arc::clone(&count)));
         simulate_panic();
 
-        foundations::alerts::panic_hook().init();
+        foundations::panic::hook().init();
         simulate_panic();
 
         // Make sure the previous hook saw two total panics:
@@ -135,7 +148,7 @@ mod with_metrics {
 
     #[with_test_telemetry(test)]
     fn error_log_is_emitted(ctx: TestTelemetryContext) {
-        foundations::alerts::panic_hook().init();
+        foundations::panic::hook().init();
 
         simulate_panic();
         assert_eq!(metrics::panics::total().get(), 1);
@@ -171,7 +184,7 @@ mod with_metrics {
 #[cfg(not(feature = "metrics"))]
 mod no_metrics {
     use super::simulate_panic;
-    use foundations::alerts::FatalErrorRegistry;
+    use foundations::panic::PanicsMetricsRegistry;
     use std::sync::{
         atomic::{AtomicU64, Ordering},
         Arc,
@@ -180,14 +193,12 @@ mod no_metrics {
     #[derive(Clone)]
     struct TestRegistry {
         panics: Arc<AtomicU64>,
-        sentry_events: Arc<AtomicU64>,
     }
 
     impl TestRegistry {
         fn new() -> Self {
             Self {
                 panics: Arc::new(AtomicU64::new(0)),
-                sentry_events: Arc::new(AtomicU64::new(0)),
             }
         }
 
@@ -196,20 +207,16 @@ mod no_metrics {
         }
     }
 
-    impl FatalErrorRegistry for TestRegistry {
+    impl PanicsMetricsRegistry for TestRegistry {
         fn inc_panics_total(&self, by: u64) {
             self.panics.fetch_add(by, Ordering::Relaxed);
-        }
-
-        fn inc_sentry_events_total(&self, by: u64) {
-            self.sentry_events.fetch_add(by, Ordering::Relaxed);
         }
     }
 
     #[test]
     fn custom_registry() {
         let registry = TestRegistry::new();
-        let first_install = foundations::alerts::panic_hook()
+        let first_install = foundations::panic::hook()
             .with_registry(registry.clone())
             .init();
 

@@ -69,9 +69,15 @@
 
 mod utils;
 
+#[doc(hidden)]
+pub mod registry_typestate;
+
 pub mod addr;
 
-pub mod alerts;
+pub mod panic;
+
+#[cfg(feature = "sentry")]
+pub mod sentry;
 
 #[cfg(feature = "cli")]
 pub mod cli;

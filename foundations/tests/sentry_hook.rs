@@ -16,12 +16,12 @@ mod with_metrics {
     };
 
     use super::{simulate_sentry_event, TEST_DSN};
-    use foundations::alerts::{metrics, Level};
+    use foundations::sentry::{metrics, Level};
 
     #[test]
     fn sentry_hook_increments_metric_on_event() {
         let mut options = sentry::ClientOptions::default();
-        foundations::alerts::sentry_hook().install(&mut options);
+        foundations::sentry::hook().install(&mut options);
 
         let _guard = sentry::init((TEST_DSN, options));
 
@@ -30,9 +30,26 @@ mod with_metrics {
     }
 
     #[test]
+    fn sentry_hook_metrics_are_well_formed() {
+        let mut options = sentry::ClientOptions::default();
+        foundations::sentry::hook().install(&mut options);
+
+        let _guard = sentry::init((TEST_DSN, options));
+
+        simulate_sentry_event();
+        assert_eq!(metrics::sentry_events::total(Level::Error).get(), 1);
+
+        let metrics = foundations::telemetry::metrics::collect(&Default::default()).unwrap();
+        let has_metric = metrics
+            .lines()
+            .any(|line| line == "sentry_events_total{level=\"error\"} 1");
+        assert!(has_metric);
+    }
+
+    #[test]
     fn sentry_hook_increments_metric_on_multiple_events() {
         let mut options = sentry::ClientOptions::default();
-        foundations::alerts::sentry_hook().install(&mut options);
+        foundations::sentry::hook().install(&mut options);
 
         let _guard = sentry::init((TEST_DSN, options));
 
@@ -58,7 +75,7 @@ mod with_metrics {
         };
 
         // Now install foundations hook
-        foundations::alerts::sentry_hook().install(&mut options);
+        foundations::sentry::hook().install(&mut options);
 
         let _guard = sentry::init((TEST_DSN, options));
 
@@ -73,7 +90,7 @@ mod with_metrics {
     #[test]
     fn sentry_hook_works_across_threads() {
         let mut options = sentry::ClientOptions::default();
-        foundations::alerts::sentry_hook().install(&mut options);
+        foundations::sentry::hook().install(&mut options);
 
         let _guard = sentry::init((TEST_DSN, options));
 
@@ -92,7 +109,7 @@ mod with_metrics {
     #[test]
     fn sentry_hook_works_in_tokio_tasks() {
         let mut options = sentry::ClientOptions::default();
-        foundations::alerts::sentry_hook().install(&mut options);
+        foundations::sentry::hook().install(&mut options);
 
         let _guard = sentry::init((TEST_DSN, options));
 
@@ -118,7 +135,7 @@ mod with_metrics {
 
     #[test]
     fn custom_registry_overrides_default() {
-        use foundations::alerts::FatalErrorRegistry;
+        use foundations::sentry::SentryMetricsRegistry;
 
         #[derive(Clone)]
         struct TestRegistry {
@@ -137,9 +154,7 @@ mod with_metrics {
             }
         }
 
-        impl FatalErrorRegistry for TestRegistry {
-            fn inc_panics_total(&self, _by: u64) {}
-
+        impl SentryMetricsRegistry for TestRegistry {
             fn inc_sentry_events_total(&self, _level: Level, by: u64) {
                 self.sentry_events.fetch_add(by, Ordering::Relaxed);
             }
@@ -148,7 +163,7 @@ mod with_metrics {
         let registry = TestRegistry::new();
 
         let mut options = sentry::ClientOptions::default();
-        foundations::alerts::sentry_hook()
+        foundations::sentry::hook()
             .with_registry(registry.clone())
             .install(&mut options);
 
@@ -166,7 +181,7 @@ mod with_metrics {
         use sentry::{Client, Hub, Scope};
 
         let mut options = sentry::ClientOptions::default();
-        foundations::alerts::sentry_hook().install(&mut options);
+        foundations::sentry::hook().install(&mut options);
 
         // Initialize the global client
         let _guard = sentry::init((TEST_DSN, options));
@@ -191,7 +206,7 @@ mod with_metrics {
 
 #[cfg(not(feature = "metrics"))]
 mod no_metrics {
-    use foundations::alerts::{FatalErrorRegistry, Level};
+    use foundations::sentry::{Level, SentryMetricsRegistry};
     use std::sync::{
         atomic::{AtomicU64, Ordering},
         Arc,
@@ -201,14 +216,12 @@ mod no_metrics {
 
     #[derive(Clone)]
     struct TestRegistry {
-        panics: Arc<AtomicU64>,
         sentry_events: Arc<AtomicU64>,
     }
 
     impl TestRegistry {
         fn new() -> Self {
             Self {
-                panics: Arc::new(AtomicU64::new(0)),
                 sentry_events: Arc::new(AtomicU64::new(0)),
             }
         }
@@ -218,11 +231,7 @@ mod no_metrics {
         }
     }
 
-    impl FatalErrorRegistry for TestRegistry {
-        fn inc_panics_total(&self, by: u64) {
-            self.panics.fetch_add(by, Ordering::Relaxed);
-        }
-
+    impl SentryMetricsRegistry for TestRegistry {
         fn inc_sentry_events_total(&self, _level: Level, by: u64) {
             self.sentry_events.fetch_add(by, Ordering::Relaxed);
         }
@@ -233,7 +242,7 @@ mod no_metrics {
         let registry = TestRegistry::new();
 
         let mut options = sentry::ClientOptions::default();
-        foundations::alerts::sentry_hook()
+        foundations::sentry::hook()
             .with_registry(registry.clone())
             .install(&mut options);
 
