@@ -317,7 +317,7 @@ pub struct TelemetryConfig<'c> {
 ))]
 pub fn init(config: TelemetryConfig) -> BootstrapResult<TelemetryDriver> {
     #[cfg(feature = "metrics")]
-    crate::panic::hook().init();
+    crate::panic::install_hook();
 
     let tele_futures: FuturesUnordered<_> = Default::default();
 
