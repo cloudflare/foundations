@@ -69,9 +69,6 @@
 
 mod utils;
 
-#[doc(hidden)]
-pub mod registry_typestate;
-
 pub mod addr;
 
 pub mod panic;
