@@ -3,11 +3,11 @@
 //! nextest run`.
 
 use std::sync::{
-    atomic::{AtomicU64, Ordering},
     Arc,
+    atomic::{AtomicU64, Ordering},
 };
 
-use foundations::sentry::{metrics, Level};
+use foundations::sentry::{Level, metrics};
 
 const TEST_DSN: &str = "https://example@sentry.io/123";
 
@@ -23,7 +23,7 @@ fn sentry_hook_increments_metric_on_event() {
     let _guard = sentry::init((TEST_DSN, options));
 
     simulate_sentry_event();
-    assert_eq!(metrics::sentry_events::total(Level::Error).get(), 1);
+    assert_eq!(metrics::sentry::events_total(Level::Error).get(), 1);
 }
 
 #[test]
@@ -34,7 +34,7 @@ fn sentry_hook_metrics_are_well_formed() {
     let _guard = sentry::init((TEST_DSN, options));
 
     simulate_sentry_event();
-    assert_eq!(metrics::sentry_events::total(Level::Error).get(), 1);
+    assert_eq!(metrics::sentry::events_total(Level::Error).get(), 1);
 
     let metrics = foundations::telemetry::metrics::collect(&Default::default()).unwrap();
     let has_metric = metrics
@@ -54,7 +54,7 @@ fn sentry_hook_increments_metric_on_multiple_events() {
     simulate_sentry_event();
     simulate_sentry_event();
 
-    assert_eq!(metrics::sentry_events::total(Level::Error).get(), 3);
+    assert_eq!(metrics::sentry::events_total(Level::Error).get(), 3);
 }
 
 #[test]
@@ -81,7 +81,7 @@ fn sentry_hook_preserves_previous_before_send_hook() {
 
     // Both hooks should have been called
     assert_eq!(previous_hook_count.load(Ordering::Relaxed), 2);
-    assert_eq!(metrics::sentry_events::total(Level::Error).get(), 2);
+    assert_eq!(metrics::sentry::events_total(Level::Error).get(), 2);
 }
 
 #[test]
@@ -100,7 +100,7 @@ fn sentry_hook_works_across_threads() {
     handle1.join().unwrap();
     handle2.join().unwrap();
 
-    assert_eq!(metrics::sentry_events::total(Level::Error).get(), 3);
+    assert_eq!(metrics::sentry::events_total(Level::Error).get(), 3);
 }
 
 #[test]
@@ -127,7 +127,7 @@ fn sentry_hook_works_in_tokio_tasks() {
         handle2.await.unwrap();
     });
 
-    assert_eq!(metrics::sentry_events::total(Level::Error).get(), 3);
+    assert_eq!(metrics::sentry::events_total(Level::Error).get(), 3);
 }
 
 #[test]
@@ -154,5 +154,5 @@ fn cloned_client_options_have_hook_installed() {
     });
 
     // The hook should have been called via the cloned options
-    assert_eq!(metrics::sentry_events::total(Level::Error).get(), 1);
+    assert_eq!(metrics::sentry::events_total(Level::Error).get(), 1);
 }

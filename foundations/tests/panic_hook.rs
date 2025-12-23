@@ -1,11 +1,12 @@
+#![cfg(feature = "metrics")]
 //! These tests assume a separate process is used. Make sure you run with `cargo
 //! nextest run`.
 
 use std::{
     panic::PanicHookInfo,
     sync::{
-        atomic::{AtomicU64, Ordering},
         Arc,
+        atomic::{AtomicU64, Ordering},
     },
 };
 

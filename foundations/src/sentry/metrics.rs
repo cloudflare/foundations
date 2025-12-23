@@ -5,7 +5,7 @@ use crate::telemetry::metrics::Counter;
 
 /// Sentry metrics.
 #[crate::telemetry::metrics::metrics(crate_path = "crate", unprefixed)]
-pub mod sentry_events {
+pub mod sentry {
     /// Total number of sentry events observed.
-    pub fn total(level: Level) -> Counter;
+    pub fn events_total(level: Level) -> Counter;
 }

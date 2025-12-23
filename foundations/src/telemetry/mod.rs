@@ -368,7 +368,7 @@ mod tests {
     use super::init;
     use crate::{
         service_info,
-        telemetry::{is_initialized, TelemetryConfig},
+        telemetry::{TelemetryConfig, is_initialized},
     };
 
     #[tokio::test]

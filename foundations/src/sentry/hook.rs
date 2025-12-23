@@ -21,7 +21,7 @@ pub fn install_hook(options: &mut sentry_core::ClientOptions) {
         };
 
         if let Some(event) = &event {
-            super::metrics::sentry_events::total(event.level).inc();
+            super::metrics::sentry::events_total(event.level).inc();
         }
 
         event
