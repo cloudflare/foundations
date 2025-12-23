@@ -7,7 +7,7 @@ use futures_util::stream::FuturesUnordered;
 use futures_util::{FutureExt, Stream};
 use std::future::Future;
 use std::pin::Pin;
-use std::task::{Context, Poll};
+use std::task::{Context, Poll, ready};
 
 feature_use!(cfg(feature = "telemetry-server"), {
     use super::server::TelemetryServerFuture;
@@ -89,25 +89,23 @@ impl Future for TelemetryDriver {
     type Output = BootstrapResult<()>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let mut ready_res = vec![];
+        #[cfg_attr(not(feature = "telemetry-server"), allow(unused_mut))]
+        let mut server_res = Poll::Ready(Ok(()));
 
         #[cfg(feature = "telemetry-server")]
         if let Some(server_fut) = &mut self.server_fut {
-            if let Poll::Ready(res) = Pin::new(server_fut).poll(cx) {
-                match res {}
+            // This future is always pending
+            let Poll::Pending = Pin::new(server_fut).poll(cx);
+            server_res = Poll::Pending;
+        }
+
+        loop {
+            // Keep polling tele_futures until it becomes pending, empty, or a future errors
+            let tele_res = ready!(Pin::new(&mut self.tele_futures).poll_next(cx)?);
+            if tele_res.is_none() {
+                // tele_futures is done, but we may still need to poll server_fut
+                return server_res;
             }
-        }
-
-        let tele_futures_poll = Pin::new(&mut self.tele_futures).poll_next(cx);
-
-        if let Poll::Ready(Some(res)) = tele_futures_poll {
-            ready_res.push(res);
-        }
-
-        if ready_res.is_empty() {
-            Poll::Pending
-        } else {
-            Poll::Ready(ready_res.into_iter().collect())
         }
     }
 }

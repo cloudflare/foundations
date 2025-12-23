@@ -102,10 +102,9 @@ impl Registries {
         };
 
         let mut prefix = Cow::Borrowed(subsystem);
-        if with_service_prefix {
-            if let MetricsServiceName::Prefix(service) = &registries.service_name {
-                prefix = format!("{service}_{subsystem}").into();
-            }
+        if with_service_prefix && let MetricsServiceName::Prefix(service) = &registries.service_name
+        {
+            prefix = format!("{service}_{subsystem}").into();
         }
 
         parking_lot::RwLockWriteGuard::map(registry.write(), move |mut reg| {

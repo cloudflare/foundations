@@ -170,10 +170,10 @@ impl TelemetryServerFuture {
             #[cfg(unix)]
             ListenAddr::Unix(path) => {
                 // Remove existing socket file if it exists to avoid bind errors
-                if path.exists() {
-                    if let Err(e) = std::fs::remove_file(path) {
-                        log::warn!("failed to remove existing Unix socket file"; "path" => %path.display(), "error" => e);
-                    }
+                if path.exists()
+                    && let Err(e) = std::fs::remove_file(path)
+                {
+                    log::warn!("failed to remove existing Unix socket file"; "path" => %path.display(), "error" => e);
                 }
 
                 let unix_listener = UnixListener::bind(path)
