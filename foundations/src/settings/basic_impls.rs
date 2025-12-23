@@ -8,7 +8,7 @@ use std::ffi::{CString, OsString};
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::marker::PhantomData;
-use std::num::Wrapping;
+use std::num::{NonZero, Saturating, Wrapping};
 use std::ops::Range;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -34,6 +34,20 @@ impl_noop!(<Idx> Settings for Range<Idx> where Idx: Debug + Serialize + Deserial
 impl_noop!(<T> Settings for Reverse<T> where T: Settings);
 impl_noop!(<T> Settings for Wrapping<T> where T: Settings);
 
+// serde does not have generic impls for Saturating<T> and NonZero<T>
+macro_rules! impl_for_num {
+    ( $( $Ty:ty )* ) => { $(
+        impl_noop!(Settings for $Ty);
+        impl_noop!(Settings for Saturating<$Ty>);
+        impl_noop!(Settings for Option<NonZero<$Ty>>);
+    )* };
+}
+
+impl_for_num! {
+    i8 i16 i32 i64 i128 isize
+    u8 u16 u32 u64 u128 usize
+}
+
 macro_rules! impl_for_non_generic {
     ( $( $Ty:ty ),* ) => {
         $( impl_noop!(Settings for $Ty); )*
@@ -45,18 +59,6 @@ impl_for_non_generic! {
     char,
     f32,
     f64,
-    i128,
-    i16,
-    i32,
-    i64,
-    i8,
-    isize,
-    u128,
-    u16,
-    u32,
-    u64,
-    u8,
-    usize,
     String,
     (),
     CString,
