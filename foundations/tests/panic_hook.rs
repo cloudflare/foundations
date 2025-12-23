@@ -1,3 +1,4 @@
+#![cfg(feature = "metrics")]
 //! These tests assume a separate process is used. Make sure you run with `cargo
 //! nextest run`.
 

@@ -1,9 +1,6 @@
 //! Panic hook implementation for tracking panics.
 
 use std::panic::{self, PanicHookInfo};
-use std::sync::OnceLock;
-
-pub(crate) static HOOK_INSTALLED: OnceLock<()> = OnceLock::new();
 
 /// Install the panic hook.
 ///
@@ -12,21 +9,25 @@ pub(crate) static HOOK_INSTALLED: OnceLock<()> = OnceLock::new();
 ///
 /// See the module-level docs for more information: [`crate::panic`]
 pub fn install_hook() -> bool {
-    let first_install = HOOK_INSTALLED.set(()).is_ok();
-    if !first_install {
-        return false;
-    }
+    use std::sync::Once;
+    static INSTALL_HOOK_ONCE: Once = Once::new();
 
-    let previous = panic::take_hook();
+    let mut first_install = false;
 
-    panic::set_hook(Box::new(move |panic_info| {
-        super::metrics::panics::total().inc();
+    INSTALL_HOOK_ONCE.call_once(|| {
+        let previous = panic::take_hook();
 
-        log_panic(panic_info);
-        previous(panic_info);
-    }));
+        panic::set_hook(Box::new(move |panic_info| {
+            super::metrics::panics::total().inc();
 
-    true
+            log_panic(panic_info);
+            previous(panic_info);
+        }));
+
+        first_install = true;
+    });
+
+    first_install
 }
 
 /// Log the panic using foundations telemetry if initialized, otherwise print JSON to stderr.

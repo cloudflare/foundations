@@ -45,7 +45,7 @@ platform-common-default = [
 ]
 
 # Sentry integration for fatal error tracking
-sentry = ["dep:sentry-core", "dep:serde"]
+sentry = ["dep:sentry-core", "dep:serde", "metrics"]
 
 # A subset of features that can be used both on server and client sides. Useful for libraries
 # that can be used either way.

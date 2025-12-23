@@ -71,9 +71,10 @@ mod utils;
 
 pub mod addr;
 
+#[cfg(feature = "metrics")]
 pub mod panic;
 
-#[cfg(feature = "sentry")]
+#[cfg(all(feature = "sentry", feature = "metrics"))]
 pub mod sentry;
 
 #[cfg(feature = "cli")]
