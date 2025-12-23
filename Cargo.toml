@@ -73,7 +73,7 @@ regex = "1.8"
 reqwest = { version = "0.12", default-features = false }
 socket2 = { version = "0.5", features = ["all"] }
 syn = "2"
-serde = "1"
+serde = "1.0.198"
 serde_path_to_error = "0.1.17"
 serde_yaml = "0.8.26"
 serde_with = "3.3"
