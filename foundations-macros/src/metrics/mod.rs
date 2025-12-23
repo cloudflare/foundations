@@ -317,15 +317,12 @@ fn metric_init(foundations: &Path, fn_: &ItemFn) -> proc_macro2::TokenStream {
     );
 
     // Validate histogram buckets at compile time if this is a HistogramBuilder
-    if let Some(ctor) = ctor {
-        if let Some(path) = ctor.path.get_ident() {
-            if path == "HistogramBuilder" {
-                // Validate the histogram buckets
-                if let Err(err) = validation::validate_histogram_buckets(ctor) {
-                    return err.to_compile_error();
-                }
-            }
-        }
+    if let Some(ctor) = ctor
+        && let Some(path) = ctor.path.get_ident()
+        && path == "HistogramBuilder"
+        && let Err(err) = validation::validate_histogram_buckets(ctor)
+    {
+        return err.to_compile_error();
     }
 
     let metric_init = match ctor {
