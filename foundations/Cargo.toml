@@ -146,6 +146,7 @@ metrics = [
     "dep:prometools",
     "dep:serde_with",
     "dep:serde",
+    "dep:serde_json",
     "dep:futures-util",
 ]
 
@@ -213,7 +214,7 @@ prometheus-client = { workspace = true, optional = true }
 prometools = { workspace = true, optional = true, features = ["serde"] }
 rand = { workspace = true, optional = true }
 serde = { workspace = true, optional = true, features = ["derive", "rc"] }
-serde_json = { workspace = true }
+serde_json = { workspace = true, optional = true }
 serde_path_to_error = { workspace = true, optional = true }
 serde_yaml = { workspace = true, optional = true }
 serde_with = { workspace = true, optional = true }
