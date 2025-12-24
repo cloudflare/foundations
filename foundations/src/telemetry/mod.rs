@@ -110,8 +110,8 @@ feature_use!(
 );
 
 use self::settings::TelemetrySettings;
-use crate::utils::feature_use;
 use crate::ServiceInfo;
+use crate::utils::feature_use;
 
 feature_use!(cfg(feature = "tracing"), {
     use self::tracing::SpanScope;

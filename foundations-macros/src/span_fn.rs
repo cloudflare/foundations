@@ -2,9 +2,9 @@ use crate::common::parse_optional_trailing_meta_list;
 use darling::FromMeta;
 use proc_macro::TokenStream;
 use proc_macro2::{Span, TokenStream as TokenStream2};
-use quote::{quote, ToTokens};
+use quote::{ToTokens, quote};
 use syn::parse::{Parse, ParseStream};
-use syn::{parse_quote, Block, Expr, ExprCall, ItemFn, LitStr, Path, Signature, Stmt};
+use syn::{Block, Expr, ExprCall, ItemFn, LitStr, Path, Signature, Stmt, parse_quote};
 
 const ERR_APPLIED_TO_NON_FN: &str = "`span_fn` macro can only be used on functions";
 

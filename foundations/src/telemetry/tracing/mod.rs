@@ -15,9 +15,9 @@ mod rate_limit;
 mod output_otlp_grpc;
 
 use self::init::TracingHarness;
-use self::internal::{create_span, current_span, span_trace_id, SharedSpan};
-use super::scope::Scope;
+use self::internal::{SharedSpan, create_span, current_span, span_trace_id};
 use super::TelemetryContext;
+use super::scope::Scope;
 use std::borrow::Cow;
 use std::sync::Arc;
 

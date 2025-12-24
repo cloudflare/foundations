@@ -1,8 +1,8 @@
-use crate::telemetry::log::init::{apply_filters_to_drain, LogHarness};
+use crate::telemetry::log::init::{LogHarness, apply_filters_to_drain};
 use crate::telemetry::log::internal::LoggerWithKvNestingTracking;
 use crate::telemetry::settings::LoggingSettings;
 use parking_lot::RwLock as ParkingRwLock;
-use slog::{Discard, Drain, Key, Level, Logger, Never, OwnedKVList, Record, Serializer, KV};
+use slog::{Discard, Drain, KV, Key, Level, Logger, Never, OwnedKVList, Record, Serializer};
 use std::fmt::Arguments;
 use std::sync::{Arc, RwLock};
 

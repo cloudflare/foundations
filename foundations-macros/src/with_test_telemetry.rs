@@ -4,7 +4,7 @@ use proc_macro::TokenStream;
 use proc_macro2::{Span, TokenStream as TokenStream2};
 use quote::quote;
 use syn::parse::{Parse, ParseStream};
-use syn::{parse_quote, Ident, ItemFn, Path, Signature};
+use syn::{Ident, ItemFn, Path, Signature, parse_quote};
 
 const ERR_APPLIED_TO_NON_FN: &str = "`with_test_telemetry` macro can only be used on functions";
 const ERR_NON_TEST_FN: &str = "`with_test_telemetry` can wrap only `test` or `tokio::test`";

@@ -10,7 +10,7 @@ use http_body_util::combinators::BoxBody;
 use http_body_util::{BodyExt, Empty, Full};
 use hyper::body::{Bytes, Incoming};
 use hyper::service::Service;
-use hyper::{header, Method, Request, Response, StatusCode};
+use hyper::{Method, Request, Response, StatusCode, header};
 use percent_encoding::percent_decode_str;
 use std::collections::HashMap;
 use std::convert::Infallible;

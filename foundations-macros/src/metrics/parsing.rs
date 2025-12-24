@@ -1,17 +1,16 @@
 use super::{ArgAttrs, ArgMode, FnArg, FnAttrs, ItemFn, MacroArgs, Mod};
-use crate::common::{error, parse_attr_value, parse_meta_list, Result};
+use crate::common::{Result, error, parse_attr_value, parse_meta_list};
 use darling::FromMeta;
 use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
 use syn::{
-    braced, parenthesized, AngleBracketedGenericArguments, Attribute, GenericArgument,
-    PathArguments, Token, TraitBound, TraitBoundModifier, Type, TypeImplTrait, TypeParamBound,
+    AngleBracketedGenericArguments, Attribute, GenericArgument, PathArguments, Token, TraitBound,
+    TraitBoundModifier, Type, TypeImplTrait, TypeParamBound, braced, parenthesized,
 };
 
 const IMPL_TRAIT_ERROR: &str = "Only `impl Into<T>` is allowed";
 
-const FN_ATTR_ERROR: &str =
-    "Only `#[cfg]`, `#[doc]`, `#[ctor]`, `#[optional]`, and `#[with_removal]` are allowed on functions";
+const FN_ATTR_ERROR: &str = "Only `#[cfg]`, `#[doc]`, `#[ctor]`, `#[optional]`, and `#[with_removal]` are allowed on functions";
 
 const DUPLICATE_CTOR_ATTR_ERROR: &str = "Duplicate `#[ctor]` attribute";
 const DUPLICATE_OPTIONAL_ATTR_ERROR: &str = "Duplicate `#[optional]` attribute";

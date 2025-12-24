@@ -1,6 +1,6 @@
 //! Predefined allow lists of syscalls for commonly used operations.
 
-use super::{allow_list, sys, ArgCmp};
+use super::{ArgCmp, allow_list, sys};
 
 allow_list! {
     /// An allow list for basic tokio and Rust std library operations.

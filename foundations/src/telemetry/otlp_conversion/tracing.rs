@@ -29,11 +29,7 @@ fn convert_parent_span_id(span: &FinishedSpan) -> Vec<u8> {
 
 // NOTE: https://www.w3.org/TR/trace-context/#sampled-flag
 fn convert_sampled_flag(span_state: &SpanContextState) -> u32 {
-    if span_state.is_sampled() {
-        0x01
-    } else {
-        0x00
-    }
+    if span_state.is_sampled() { 0x01 } else { 0x00 }
 }
 
 fn convert_tag(tag: &Tag) -> otlp::common::v1::KeyValue {

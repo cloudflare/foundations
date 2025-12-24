@@ -47,7 +47,9 @@ fn get_reporter_bind_addr(settings: &JaegerThriftUdpOutputSettings) -> Bootstrap
             if settings.server_addr.is_ipv6() == addr.is_ipv6() {
                 addr.into()
             } else {
-                bail!("`jaeger_tracing_server_addr` and `jaeger_reporter_bind_addr` must have the same address family");
+                bail!(
+                    "`jaeger_tracing_server_addr` and `jaeger_reporter_bind_addr` must have the same address family"
+                );
             }
         }
         // caused by https://github.com/sile/rustracing_jaeger/blob/bc7d03f2f6ac6bc0269542089c8907279706ecb7/src/reporter.rs#L34,

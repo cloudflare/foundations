@@ -1,4 +1,4 @@
-use foundations::telemetry::metrics::{self, metrics, Counter};
+use foundations::telemetry::metrics::{self, Counter, metrics};
 use foundations::telemetry::settings::{MetricsSettings, ServiceNameFormat};
 
 #[metrics]

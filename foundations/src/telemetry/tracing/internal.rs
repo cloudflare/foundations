@@ -1,5 +1,5 @@
-use super::init::TracingHarness;
 use super::StartTraceOptions;
+use super::init::TracingHarness;
 
 use crate::telemetry::tracing::live::LiveReferenceHandle;
 use cf_rustracing::sampler::BoxSampler;

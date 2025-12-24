@@ -1,7 +1,7 @@
+use crate::BootstrapResult;
 #[cfg(feature = "telemetry-server")]
 use crate::addr::ListenAddr;
 use crate::utils::feature_use;
-use crate::BootstrapResult;
 use futures_util::future::BoxFuture;
 use futures_util::stream::FuturesUnordered;
 use futures_util::{FutureExt, Stream};

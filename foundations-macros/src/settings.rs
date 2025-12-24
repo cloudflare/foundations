@@ -1,19 +1,18 @@
-use crate::common::{error, parse_meta_list, Result};
-use darling::ast::NestedMeta;
+use crate::common::{Result, error, parse_meta_list};
 use darling::FromMeta;
+use darling::ast::NestedMeta;
 use proc_macro::TokenStream;
-use quote::{quote, quote_spanned, TokenStreamExt};
+use quote::{TokenStreamExt, quote, quote_spanned};
 use syn::parse::{Parse, ParseStream};
 use syn::spanned::Spanned;
 use syn::{
-    parse_macro_input, parse_quote, Attribute, Expr, ExprLit, Field, Fields, Ident, Item, ItemEnum,
-    ItemStruct, Lit, LitStr, Meta, MetaNameValue, Path, Type,
+    Attribute, Expr, ExprLit, Field, Fields, Ident, Item, ItemEnum, ItemStruct, Lit, LitStr, Meta,
+    MetaNameValue, Path, Type, parse_macro_input, parse_quote,
 };
 
 const ERR_NOT_STRUCT_OR_ENUM: &str = "Settings should be either structure or enum.";
 
-const ERR_NON_UNIT_OR_NEW_TYPE_VARIANT: &str =
-    "Settings enum variant should either be a unit variant (e.g. `Enum::Foo`) \
+const ERR_NON_UNIT_OR_NEW_TYPE_VARIANT: &str = "Settings enum variant should either be a unit variant (e.g. `Enum::Foo`) \
     or a new type variant (e.g. `Enum::Foo(Bar)`).";
 
 const ERR_TUPLE_STRUCT: &str =

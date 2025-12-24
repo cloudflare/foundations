@@ -1,5 +1,5 @@
 use foundations::telemetry::tracing::{self, test_trace};
-use foundations::telemetry::{with_test_telemetry, TestTelemetryContext};
+use foundations::telemetry::{TestTelemetryContext, with_test_telemetry};
 
 #[with_test_telemetry(tokio::test)]
 async fn wrap_tokio_test(ctx: TestTelemetryContext) {

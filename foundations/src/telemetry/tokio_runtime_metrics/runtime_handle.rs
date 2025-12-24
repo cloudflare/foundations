@@ -1,6 +1,6 @@
 use crate::telemetry::tokio_runtime_metrics::metrics::{tokio_runtime_core, tokio_runtime_worker};
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 use tokio::runtime::{Handle, RuntimeMetrics};
 
 pub(super) struct RuntimeHandle {

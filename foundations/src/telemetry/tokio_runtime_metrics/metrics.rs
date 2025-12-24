@@ -1,4 +1,4 @@
-use crate::telemetry::metrics::{metrics, Counter, Gauge};
+use crate::telemetry::metrics::{Counter, Gauge, metrics};
 use std::sync::Arc;
 
 #[metrics(crate_path = "crate")]

@@ -6,10 +6,10 @@ use std::ffi::{CStr, CString};
 use std::fs::File;
 use std::io::Read;
 use std::os::raw::c_char;
-use std::sync::mpsc::{self};
 use std::sync::OnceLock;
+use std::sync::mpsc::{self};
 use tempfile::NamedTempFile;
-use tokio::sync::{oneshot, Mutex as AsyncMutex};
+use tokio::sync::{Mutex as AsyncMutex, oneshot};
 
 // TODO(once_cell_try): replace with `std::sync::OnceLock`
 static PROFILER: OnceCell<Option<MemoryProfiler>> = OnceCell::new();
@@ -215,16 +215,18 @@ fn collect_heap_profile() -> Result<String> {
 mod tests {
     use super::*;
     use crate::security::common_syscall_allow_lists::{ASYNC, SERVICE_BASICS};
-    use crate::security::{allow_list, enable_syscall_sandboxing, ViolationAction};
+    use crate::security::{ViolationAction, allow_list, enable_syscall_sandboxing};
     use crate::telemetry::settings::MemoryProfilerSettings;
 
     #[test]
     fn sample_interval_out_of_bounds() {
-        assert!(MemoryProfiler::get_or_init_with(&MemoryProfilerSettings {
-            enabled: true,
-            sample_interval: 128,
-        })
-        .is_err());
+        assert!(
+            MemoryProfiler::get_or_init_with(&MemoryProfilerSettings {
+                enabled: true,
+                sample_interval: 128,
+            })
+            .is_err()
+        );
     }
 
     #[tokio::test]

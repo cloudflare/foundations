@@ -1,7 +1,7 @@
-use super::{info_metric, ExtraProducer, InfoMetric};
+use super::{ExtraProducer, InfoMetric, info_metric};
 use crate::telemetry::settings::{MetricsSettings, ServiceNameFormat};
 use crate::{Result, ServiceInfo};
-use prometheus_client::encoding::text::{encode, EncodeMetric};
+use prometheus_client::encoding::text::{EncodeMetric, encode};
 use prometheus_client::registry::Registry;
 use prometools::serde::InfoGauge;
 use std::any::TypeId;

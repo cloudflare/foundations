@@ -1,7 +1,7 @@
 use super::internal::{BuildInfo, Registries, RuntimeInfo};
 use super::report_info;
-use crate::telemetry::settings::MetricsSettings;
 use crate::ServiceInfo;
+use crate::telemetry::settings::MetricsSettings;
 
 /// Initializes the metric system with a system-wide metric prefix.
 ///

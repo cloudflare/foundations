@@ -13,11 +13,11 @@ mod settings;
 
 use self::settings::{EndpointSettings, HttpServerSettings, ResponseSettings};
 use anyhow::anyhow;
+use foundations::BootstrapResult;
 use foundations::addr::ListenAddr;
 use foundations::cli::{Arg, ArgAction, Cli};
 use foundations::settings::collections::Map;
-use foundations::telemetry::{self, log, tracing, TelemetryConfig, TelemetryContext};
-use foundations::BootstrapResult;
+use foundations::telemetry::{self, TelemetryConfig, TelemetryContext, log, tracing};
 use futures_util::stream::{FuturesUnordered, StreamExt};
 use http_body_util::Full;
 use hyper::body::{Bytes, Incoming};
@@ -38,10 +38,12 @@ async fn main() -> BootstrapResult<()> {
     // the config without running the server.
     let cli = Cli::<HttpServerSettings>::new(
         &service_info,
-        vec![Arg::new("dry-run")
-            .long("dry-run")
-            .action(ArgAction::SetTrue)
-            .help("Validate or generate config without running the server")],
+        vec![
+            Arg::new("dry-run")
+                .long("dry-run")
+                .action(ArgAction::SetTrue)
+                .help("Validate or generate config without running the server"),
+        ],
     )?;
 
     // Exit if we just want to check the config.
@@ -253,7 +255,7 @@ fn sandbox_syscalls() -> BootstrapResult<()> {
     use foundations::security::common_syscall_allow_lists::{
         ASYNC, NET_SOCKET_API, SERVICE_BASICS,
     };
-    use foundations::security::{allow_list, enable_syscall_sandboxing, ViolationAction};
+    use foundations::security::{ViolationAction, allow_list, enable_syscall_sandboxing};
 
     allow_list! {
         static ALLOWED = [

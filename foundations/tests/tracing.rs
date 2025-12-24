@@ -1,8 +1,8 @@
+use foundations::telemetry::TestTelemetryContext;
 use foundations::telemetry::settings::{
     ActiveSamplingSettings, RateLimitingSettings, SamplingStrategy, TracingSettings,
 };
 use foundations::telemetry::tracing;
-use foundations::telemetry::TestTelemetryContext;
 use foundations_macros::with_test_telemetry;
 
 fn make_test_trace(idx: usize) {

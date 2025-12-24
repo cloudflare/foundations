@@ -2,10 +2,10 @@ use crate::common::Result;
 use darling::FromMeta;
 use proc_macro::TokenStream;
 use proc_macro2::Span;
-use quote::{quote, ToTokens};
+use quote::{ToTokens, quote};
 use syn::punctuated::Punctuated;
 use syn::{
-    parse_macro_input, parse_quote, Attribute, Ident, LitStr, Path, Token, Type, Visibility,
+    Attribute, Ident, LitStr, Path, Token, Type, Visibility, parse_macro_input, parse_quote,
 };
 
 mod parsing;

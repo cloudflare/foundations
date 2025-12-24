@@ -1,4 +1,4 @@
-use super::{sys, ArgCmp, Rule};
+use super::{ArgCmp, Rule, sys};
 use std::ffi::c_int;
 
 pub(crate) struct RawRule {

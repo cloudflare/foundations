@@ -3,8 +3,8 @@
 //! [`Settings`]: super::Settings
 
 use super::Settings;
-use indexmap::map::{IntoIter, Iter, IterMut};
 use indexmap::IndexMap;
+use indexmap::map::{IntoIter, Iter, IterMut};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

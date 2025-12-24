@@ -38,7 +38,7 @@ mod tests {
     use slog::Level;
     // NOTE: test log uses field dedup filter.
     use super::super::testing::TestLogRecord;
-    use crate::telemetry::{log, TestTelemetryContext};
+    use crate::telemetry::{TestTelemetryContext, log};
     use foundations_macros::with_test_telemetry;
 
     #[with_test_telemetry(test, crate_path = "crate")]

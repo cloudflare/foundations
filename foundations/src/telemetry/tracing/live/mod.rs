@@ -54,8 +54,8 @@ impl ActiveRoots {
 
 #[cfg(test)]
 mod tests {
-    use crate::telemetry::tracing::{self, StartTraceOptions, TracingHarness};
     use crate::telemetry::TelemetryContext;
+    use crate::telemetry::tracing::{self, StartTraceOptions, TracingHarness};
 
     #[test]
     #[ignore = "RUST-131: test is flakey, need to figure out a way to make it deterministic"]
