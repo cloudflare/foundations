@@ -19,9 +19,9 @@ mod retry_writer;
 
 use self::init::LogHarness;
 use self::internal::current_log;
+use crate::Result;
 use crate::telemetry::log::init::build_log_with_drain;
 use crate::telemetry::settings::LogVerbosity;
-use crate::Result;
 use slog::{Logger, OwnedKV};
 use std::ops::Deref;
 use std::sync::Arc;

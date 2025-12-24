@@ -3,7 +3,7 @@ use crate::utils::feature_use;
 use std::ops::Deref;
 
 feature_use!(cfg(feature = "logging"), {
-    use super::log::testing::{create_test_log, TestLogRecord, TestLogRecords};
+    use super::log::testing::{TestLogRecord, TestLogRecords, create_test_log};
     use super::settings::LogVerbosity;
     use super::settings::LoggingSettings;
     use std::sync::Arc;
@@ -13,7 +13,7 @@ feature_use!(cfg(feature = "logging"), {
 feature_use!(cfg(feature = "tracing"), {
     use super::settings::TracingSettings;
     use super::tracing::testing::{
-        create_test_tracer, TestTrace, TestTraceOptions, TestTracesSink,
+        TestTrace, TestTraceOptions, TestTracesSink, create_test_tracer,
     };
 });
 

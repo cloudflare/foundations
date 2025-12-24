@@ -1,10 +1,10 @@
 #[cfg(unix)]
 #[tokio::test]
 async fn test_unix_socket_telemetry_server() {
+    use foundations::ServiceInfo;
     use foundations::addr::ListenAddr;
     use foundations::telemetry::settings::TelemetrySettings;
-    use foundations::telemetry::{init, TelemetryConfig};
-    use foundations::ServiceInfo;
+    use foundations::telemetry::{TelemetryConfig, init};
     use tempfile::tempdir;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::UnixStream;

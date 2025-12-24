@@ -42,7 +42,7 @@ impl Filter for FieldRedactFilter {
 mod tests {
     // NOTE: test log uses field redact filter.
     use crate::telemetry::settings::LoggingSettings;
-    use crate::telemetry::{log, log::TestLogRecord, TestTelemetryContext};
+    use crate::telemetry::{TestTelemetryContext, log, log::TestLogRecord};
     use foundations_macros::with_test_telemetry;
     use slog::Level;
 

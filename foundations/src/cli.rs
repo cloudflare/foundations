@@ -3,8 +3,8 @@
 use super::settings::Settings;
 use super::{BootstrapResult, ServiceInfo};
 use anyhow::anyhow;
-use clap::error::ErrorKind;
 use clap::Command;
+use clap::error::ErrorKind;
 use std::ffi::OsString;
 
 pub use clap::{Arg, ArgAction, ArgMatches};

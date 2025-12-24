@@ -460,7 +460,9 @@ pub fn is_syscall_sandboxing_enabled_for_current_thread() -> BootstrapResult<boo
     match current_seccomp_mode {
         SECCOMP_MODE_NONE => Ok(false),
         SECCOMP_MODE_FILTER => Ok(true),
-        _ => bail!("Unable to determine the current seccomp mode. Perhaps the kernel was not configured with CONFIG_SECCOMP?")
+        _ => bail!(
+            "Unable to determine the current seccomp mode. Perhaps the kernel was not configured with CONFIG_SECCOMP?"
+        ),
     }
 }
 

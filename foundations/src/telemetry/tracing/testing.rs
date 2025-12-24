@@ -1,4 +1,4 @@
-use super::init::{create_tracer_and_span_rx, TracingHarness};
+use super::init::{TracingHarness, create_tracer_and_span_rx};
 use super::internal::Tracer;
 use crate::telemetry::scope::Scope;
 use crate::telemetry::settings::TracingSettings;

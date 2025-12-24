@@ -146,8 +146,8 @@ pub mod collections;
 pub mod net;
 
 use crate::BootstrapResult;
-use serde::de::DeserializeOwned;
 use serde::Serialize;
+use serde::de::DeserializeOwned;
 use std::collections::HashMap;
 use std::fmt::{Debug, Write};
 use std::fs::File;

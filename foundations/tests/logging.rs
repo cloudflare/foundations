@@ -1,7 +1,7 @@
+use foundations::telemetry::TestTelemetryContext;
 use foundations::telemetry::log::internal::LoggerWithKvNestingTracking;
 use foundations::telemetry::log::{add_fields, set_verbosity, warn};
 use foundations::telemetry::settings::{LogVerbosity, LoggingSettings, RateLimitingSettings};
-use foundations::telemetry::TestTelemetryContext;
 use foundations_macros::with_test_telemetry;
 
 #[with_test_telemetry(test)]
@@ -54,7 +54,9 @@ fn test_exceed_limit_kv_nesting(_ctx: TestTelemetryContext) {
                     LoggerWithKvNestingTracking::EXCEEDED_MAX_NESTING_ERROR
                 );
             } else {
-                panic!("test case exceeded the maximum log KV nesting, but the panic was not castable to the expected type");
+                panic!(
+                    "test case exceeded the maximum log KV nesting, but the panic was not castable to the expected type"
+                );
             }
         }
     }
@@ -78,9 +80,9 @@ mod tracing_rs_compat {
     use std::io;
     use std::sync::{Arc, Mutex};
 
-    use foundations::telemetry::log::{warn, TestLogRecord};
-    use foundations::telemetry::settings::LoggingSettings;
     use foundations::telemetry::TelemetryContext;
+    use foundations::telemetry::log::{TestLogRecord, warn};
+    use foundations::telemetry::settings::LoggingSettings;
     use tracing_subscriber::filter::LevelFilter;
     use tracing_subscriber::util::SubscriberInitExt as _;
 

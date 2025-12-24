@@ -2,8 +2,8 @@ use foundations::telemetry::settings::{
     LivenessTrackingSettings, TelemetryServerSettings, TelemetrySettings, TracingSettings,
 };
 use foundations::telemetry::{
-    reexports::hyper::{Method, Response},
     TelemetryConfig, TelemetryContext, TelemetryRouteBody, TelemetryServerRoute,
+    reexports::hyper::{Method, Response},
 };
 use futures_util::FutureExt;
 use http_body_util::{BodyExt, Full};
@@ -98,13 +98,15 @@ async fn telemetry_server() {
     assert!(metrics_res.ends_with("# EOF\n"));
 
     #[cfg(target_os = "linux")]
-    assert!(reqwest::get(format!("http://{server_addr}/pprof/heap"))
-        .await
-        .unwrap()
-        .text()
-        .await
-        .unwrap()
-        .contains("MAPPED_LIBRARIES"));
+    assert!(
+        reqwest::get(format!("http://{server_addr}/pprof/heap"))
+            .await
+            .unwrap()
+            .text()
+            .await
+            .unwrap()
+            .contains("MAPPED_LIBRARIES")
+    );
 
     #[cfg(target_os = "linux")]
     assert!(

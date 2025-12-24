@@ -1,9 +1,9 @@
 use super::{Field, FieldAttrs, MacroArgs, Struct, StructAttrs};
-use crate::common::{error, parse_attr_value, parse_meta_list, Result};
+use crate::common::{Result, error, parse_attr_value, parse_meta_list};
 use darling::FromMeta;
 use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
-use syn::{braced, Attribute, LitStr};
+use syn::{Attribute, LitStr, braced};
 
 const STRUCT_ATTR_ERROR: &str = "Only `#[cfg]` and `#[doc]` are allowed on structs";
 

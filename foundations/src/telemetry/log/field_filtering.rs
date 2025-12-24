@@ -1,5 +1,5 @@
 use slog::{
-    BorrowedKV, Drain, Key, Never, OwnedKV, OwnedKVList, Record, RecordStatic, Serializer, KV,
+    BorrowedKV, Drain, KV, Key, Never, OwnedKV, OwnedKVList, Record, RecordStatic, Serializer,
 };
 use std::fmt::Arguments;
 use std::panic::RefUnwindSafe;

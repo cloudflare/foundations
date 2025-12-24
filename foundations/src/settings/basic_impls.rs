@@ -1,7 +1,7 @@
 use super::Settings;
 use indexmap::IndexSet;
-use serde::de::DeserializeOwned;
 use serde::Serialize;
+use serde::de::DeserializeOwned;
 use std::cmp::Reverse;
 use std::collections::{BinaryHeap, LinkedList, VecDeque};
 use std::ffi::{CString, OsString};

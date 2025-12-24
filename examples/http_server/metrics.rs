@@ -1,4 +1,4 @@
-use foundations::telemetry::metrics::{metrics, Counter, Gauge};
+use foundations::telemetry::metrics::{Counter, Gauge, metrics};
 use std::sync::Arc;
 
 #[metrics]

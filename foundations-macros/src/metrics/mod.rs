@@ -1,12 +1,12 @@
-use darling::util::Flag;
 use darling::FromMeta;
+use darling::util::Flag;
 use proc_macro::TokenStream;
 use proc_macro2::Span;
-use quote::{format_ident, quote, ToTokens};
+use quote::{ToTokens, format_ident, quote};
 use syn::punctuated::Punctuated;
 use syn::{
-    parse_macro_input, parse_quote, Attribute, ExprStruct, Ident, LitStr, Path, Token, Type,
-    Visibility,
+    Attribute, ExprStruct, Ident, LitStr, Path, Token, Type, Visibility, parse_macro_input,
+    parse_quote,
 };
 
 mod parsing;
@@ -448,7 +448,7 @@ mod tests {
     use super::*;
     use crate::common::test_utils::{code_str, parse_attr};
     use crate::metrics::validation;
-    use syn::{parse_quote, ExprStruct};
+    use syn::{ExprStruct, parse_quote};
 
     #[test]
     fn expand_empty() {

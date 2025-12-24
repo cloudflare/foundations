@@ -1,7 +1,7 @@
 use crate::telemetry::settings::ActiveSamplingSettings;
 use cf_rustracing::sampler::Sampler;
 use cf_rustracing::span::CandidateSpan;
-use cf_rustracing::{sampler::ProbabilisticSampler, Result};
+use cf_rustracing::{Result, sampler::ProbabilisticSampler};
 use governor::clock::DefaultClock;
 use governor::middleware::NoOpMiddleware;
 use governor::state::{InMemoryState, NotKeyed};

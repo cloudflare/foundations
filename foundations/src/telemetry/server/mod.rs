@@ -1,7 +1,7 @@
 use super::settings::TelemetrySettings;
+use crate::BootstrapResult;
 use crate::addr::ListenAddr;
 use crate::telemetry::log;
-use crate::BootstrapResult;
 use anyhow::Context as _;
 use futures_util::future::FutureExt;
 use futures_util::{pin_mut, ready};
@@ -299,8 +299,8 @@ fn bind_socket(addr: SocketAddr) -> BootstrapResult<Socket> {
 #[cfg(all(target_os = "linux", feature = "memory-profiling"))]
 mod memory_profiling {
     use super::*;
-    use crate::telemetry::MemoryProfiler;
     use crate::Result;
+    use crate::telemetry::MemoryProfiler;
 
     pub(super) fn profiler(settings: Arc<TelemetrySettings>) -> Result<MemoryProfiler> {
         MemoryProfiler::get_or_init_with(&settings.memory_profiler)?.ok_or_else(|| {

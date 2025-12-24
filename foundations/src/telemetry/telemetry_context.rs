@@ -6,18 +6,18 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 
 feature_use!(cfg(feature = "logging"), {
-    use super::log::internal::{current_log, fork_log, LogScope, SharedLog};
+    use super::log::internal::{LogScope, SharedLog, current_log, fork_log};
     use std::sync::Arc;
 });
 
 feature_use!(cfg(feature = "tracing"), {
-    use super::tracing::internal::{current_span, fork_trace, SharedSpan};
     use super::tracing::SpanScope;
+    use super::tracing::internal::{SharedSpan, current_span, fork_trace};
     use std::borrow::Cow;
 
     feature_use!(cfg(feature = "testing"), {
         use super::tracing::internal::Tracer;
-        use super::tracing::testing::{current_test_tracer, TestTracerScope};
+        use super::tracing::testing::{TestTracerScope, current_test_tracer};
     });
 });
 
