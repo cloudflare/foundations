@@ -70,7 +70,7 @@
 mod ratelimit;
 mod utils;
 
-pub use ratelimit::RateLimiter;
+pub use ratelimit::{RateLimiter, RateLimiterConfig};
 
 pub mod addr;
 
