@@ -1,7 +1,12 @@
 use std::{
-    sync::atomic::{AtomicU64, Ordering},
+    sync::{
+        LazyLock,
+        atomic::{AtomicU64, Ordering},
+    },
     time::Instant,
 };
+
+static EPOCH: LazyLock<Instant> = LazyLock::new(Instant::now);
 
 /// A rate limiter using the Generic Cell Rate Algorithm (GCRA).
 ///
@@ -13,11 +18,15 @@ use std::{
 /// This approach is memory-efficient (only stores a single timestamp) and
 /// provides smooth rate limiting without the burstiness that can occur with
 /// fixed time windows.
-pub struct RateLimiter {
-    epoch: Instant,
+pub struct RateLimiter<'a> {
     /// When the next request should arrive if all requests arrive in order with
     /// perfect spacing (aka TAT).
     arrival_time: AtomicU64,
+    config: &'a RateLimiterConfig,
+}
+
+/// Config for a [`RateLimiter`].
+pub struct RateLimiterConfig {
     /// Nanoseconds between each request.
     request_spacing_ns: u64,
     /// How many nanoseconds from the current time we can push the arrival_time.
@@ -26,38 +35,43 @@ pub struct RateLimiter {
     tolerance_ns: u64,
 }
 
-impl RateLimiter {
-    /// Create a new [`RateLimiter`] with the target rate per second
-    /// along with an acceptable amount of "burst".
-    pub fn new(rate: f64, burst: u64) -> Self {
+impl RateLimiterConfig {
+    /// Create a new [`RateLimiterConfig`] with the given rate and burst. A rate
+    /// of `1.0` and burst of `3` will ratelimit to 1 rps and allow up to 3
+    /// requests before limiting.
+    pub const fn new(rate: f64, burst: u64) -> Self {
         const NANOS_PER_SECOND: f64 = 1_000_000_000.0;
-
         let request_spacing_ns = (NANOS_PER_SECOND / rate) as u64;
+
         Self {
-            epoch: Instant::now(),
-            arrival_time: AtomicU64::new(0),
             request_spacing_ns,
-            tolerance_ns: request_spacing_ns * (burst + 1), // +1 so tolerance_ns is non-zero
+            tolerance_ns: request_spacing_ns * (burst + 1),
         }
     }
+}
 
-    fn now_ns(&self) -> u64 {
-        self.epoch.elapsed().as_nanos() as u64
+impl<'a> RateLimiter<'a> {
+    /// Create a new [`RateLimiter`] with the given config.
+    pub const fn new(config: &'a RateLimiterConfig) -> Self {
+        Self {
+            arrival_time: AtomicU64::new(0),
+            config,
+        }
     }
 
     /// [`RateLimiter::is_ratelimited`] returns `true` if the caller is
     /// ratelimited and `false` if not.
     pub fn is_ratelimited(&self) -> bool {
-        self.ratelimited_at(self.now_ns())
+        self.ratelimited_at(now_ns())
     }
 
     fn ratelimited_at(&self, now: u64) -> bool {
         let result =
             self.arrival_time
                 .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |arrival_time| {
-                    let new_arrival_time = arrival_time.max(now) + self.request_spacing_ns;
+                    let new_arrival_time = arrival_time.max(now) + self.config.request_spacing_ns;
 
-                    if new_arrival_time > now + self.tolerance_ns {
+                    if new_arrival_time > now + self.config.tolerance_ns {
                         // If the new arrival time is too far ahead, we don't
                         // update (`None`) which will cause us to be
                         // ratelimited.
@@ -70,6 +84,10 @@ impl RateLimiter {
 
         result.is_err()
     }
+}
+
+fn now_ns() -> u64 {
+    EPOCH.elapsed().as_nanos() as u64
 }
 
 #[cfg(test)]
@@ -96,8 +114,9 @@ mod tests {
     #[should_panic(expected = "Test index 1 failed")]
     fn test_ratelimiter_catches_failures() {
         // Verify the test helper itself catches mismatches
+        let config = RateLimiterConfig::new(1.0, 0);
         test_ratelimiter(
-            RateLimiter::new(1.0, 0),
+            RateLimiter::new(&config),
             &[
                 (0, false),
                 // This should fail - second request at t=0 will be limited
@@ -109,8 +128,9 @@ mod tests {
     #[test]
     fn zero_burst_base_rate() {
         // With burst=0, only the base rate is allowed (no extra burst capacity)
+        let config = RateLimiterConfig::new(1.0, 0);
         test_ratelimiter(
-            RateLimiter::new(1.0, 0),
+            RateLimiter::new(&config),
             &[
                 // First request allowed
                 (0, false),
@@ -128,8 +148,9 @@ mod tests {
     fn burst_capacity_and_refill() {
         // 1 request per second, extra burst of 2
         // Should allow 3 requests at t=0 (1 base + 2 burst)
+        let config = RateLimiterConfig::new(1.0, 2);
         test_ratelimiter(
-            RateLimiter::new(1.0, 2),
+            RateLimiter::new(&config),
             &[
                 // Use up all burst at t=0
                 (0, false),
@@ -149,8 +170,9 @@ mod tests {
     #[test]
     fn tokens_refill_over_time() {
         // 1 request per second, extra burst of 1
+        let config = RateLimiterConfig::new(1.0, 1);
         test_ratelimiter(
-            RateLimiter::new(1.0, 1),
+            RateLimiter::new(&config),
             &[
                 // Use up burst at t=0 (1 base + 1 extra = 2 total)
                 (0, false),
@@ -170,8 +192,9 @@ mod tests {
         // 1000 requests per second, no extra burst
         let spacing_ns = NANOS_PER_SECOND / 1000; // 1ms between requests
 
+        let config = RateLimiterConfig::new(1000.0, 0);
         test_ratelimiter(
-            RateLimiter::new(1000.0, 0),
+            RateLimiter::new(&config),
             &[
                 // First request allowed
                 (0, false),
@@ -189,8 +212,9 @@ mod tests {
         let spacing_ns = NANOS_PER_SECOND / 10; // 100ms between requests
 
         // Requests spaced exactly at the rate limit should all succeed
+        let config = RateLimiterConfig::new(10.0, 0);
         test_ratelimiter(
-            RateLimiter::new(10.0, 0),
+            RateLimiter::new(&config),
             &[
                 (0 * spacing_ns, false),
                 (1 * spacing_ns, false),
@@ -209,8 +233,9 @@ mod tests {
     #[test]
     fn fractional_rate() {
         // 0.5 requests per second = 1 request every 2 seconds
+        let config = RateLimiterConfig::new(0.5, 0);
         test_ratelimiter(
-            RateLimiter::new(0.5, 0),
+            RateLimiter::new(&config),
             &[
                 // First request allowed
                 (0, false),
