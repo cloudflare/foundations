@@ -203,10 +203,39 @@ macro_rules! __add_fields {
 /// ]);
 /// ```
 ///
+/// # Rate Limiting
+///
+/// Log messages can be rate limited using the `ratelimit` prefix to prevent log spam
+/// in hot paths. Each call site gets its own rate limiter, so the same log statement
+/// in a loop will be rate limited independently from other log statements. Rate limits
+/// are rather cheap (fetch_add CAS loop + 32 bytes per-callsite), so feel free to add
+/// them.
+///
+/// The rate limiter uses the Generic Cell Rate Algorithm (GCRA), which provides smooth
+/// rate limiting without the burstiness of fixed time windows.
+///
+/// ## Parameters
+///
+/// - `rate`: The sustained rate in logs per second (e.g., `1.0` for 1 log/second)
+/// - `burst`: how many logs can be emitted before rate limiting kicks in, resets over time.
+///
+/// ## Example
+///
+/// ```ignore
+/// // Allow 1 log per second with a burst of 3 (will emit up to 3 logs immediately,
+/// // then 1 per second thereafter)
+/// log::error!(ratelimit(rate=1.0, burst=3), "Connection failed"; "addr" => addr);
+/// ```
+///
 /// [`LoggingSettings::redact_keys`]: crate::telemetry::settings::LoggingSettings::redact_keys
 #[macro_export]
 #[doc(hidden)]
 macro_rules! __error {
+    (ratelimit(rate=$rate:expr, burst=$burst:expr), $($args:tt)+) => {
+        $crate::ratelimit!(rate=$rate, burst=$burst, {
+            $crate::__error!($($args)+)
+        });
+    };
     ( $($args:tt)+ ) => {
         $crate::reexports_for_macros::slog::error!(
             $crate::telemetry::log::internal::current_log().read(),
@@ -222,6 +251,9 @@ macro_rules! __error {
 ///
 /// Certain added fields may not be present in the resulting logs if
 /// [`LoggingSettings::redact_keys`] is used.
+///
+/// This macro supports `ratelimit(rate=<...>, burst=<...>)`. See the [`error!`] macro for
+/// more details.
 ///
 /// # Examples
 /// ```
@@ -269,6 +301,11 @@ macro_rules! __error {
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __warn {
+    (ratelimit(rate=$rate:expr, burst=$burst:expr), $($args:tt)+) => {
+        $crate::ratelimit!(rate=$rate, burst=$burst, {
+            $crate::__warn!($($args)+)
+        });
+    };
     ( $($args:tt)+ ) => {
         $crate::reexports_for_macros::slog::warn!(
             $crate::telemetry::log::internal::current_log().read(),
@@ -284,6 +321,9 @@ macro_rules! __warn {
 ///
 /// Certain added fields may not be present in the resulting logs if
 /// [`LoggingSettings::redact_keys`] is used.
+///
+/// This macro supports `ratelimit(rate=<...>, burst=<...>)`. See the [`error!`] macro for
+/// more details.
 ///
 /// # Examples
 /// ```
@@ -331,6 +371,11 @@ macro_rules! __warn {
 #[macro_export]
 #[doc(hidden)]
 macro_rules! __debug {
+    (ratelimit(rate=$rate:expr, burst=$burst:expr), $($args:tt)+) => {
+        $crate::ratelimit!(rate=$rate, burst=$burst, {
+            $crate::__debug!($($args)+)
+        });
+    };
     ( $($args:tt)+ ) => {
         $crate::reexports_for_macros::slog::debug!(
             $crate::telemetry::log::internal::current_log().read(),
@@ -346,6 +391,9 @@ macro_rules! __debug {
 ///
 /// Certain added fields may not be present in the resulting logs if
 /// [`LoggingSettings::redact_keys`] is used.
+///
+/// This macro supports `ratelimit(rate=<...>, burst=<...>)`. See the [`error!`] macro for
+/// more details.
 ///
 /// # Examples
 /// ```
@@ -393,6 +441,11 @@ macro_rules! __debug {
 #[macro_export]
 #[doc(hidden)]
 macro_rules! __info {
+    (ratelimit(rate=$rate:expr, burst=$burst:expr), $($args:tt)+) => {
+        $crate::ratelimit!(rate=$rate, burst=$burst, {
+            $crate::__info!($($args)+)
+        });
+    };
     ( $($args:tt)+ ) => {
         $crate::reexports_for_macros::slog::info!(
             $crate::telemetry::log::internal::current_log().read(),
@@ -408,6 +461,9 @@ macro_rules! __info {
 ///
 /// Certain added fields may not be present in the resulting logs if
 /// [`LoggingSettings::redact_keys`] is used.
+///
+/// This macro supports `ratelimit(rate=<...>, burst=<...>)`; see the [`error!`] macro for
+/// more details.
 ///
 /// # Examples
 /// ```
@@ -455,6 +511,11 @@ macro_rules! __info {
 #[macro_export]
 #[doc(hidden)]
 macro_rules! __trace {
+    (ratelimit(rate=$rate:expr, burst=$burst:expr), $($args:tt)+) => {
+        $crate::ratelimit!(rate=$rate, burst=$burst, {
+            $crate::__trace!($($args)+)
+        });
+    };
     ( $($args:tt)+ ) => {
         $crate::reexports_for_macros::slog::trace!(
             $crate::telemetry::log::internal::current_log().read(),
