@@ -90,6 +90,42 @@ fn now_ns() -> u64 {
     EPOCH.elapsed().as_nanos() as u64
 }
 
+/// Conditionally executes a block of code based on a per-callsite rate limiter.
+///
+/// Each invocation of this macro creates a unique static rate limiter at the call site.
+/// The code block will only execute if the rate limiter allows it (i.e., not rate limited).
+///
+/// # Arguments
+///
+/// * `rate` - The rate limit in requests per second (e.g., `1.0` for 1 request/second)
+/// * `burst` - The burst capacity (number of requests allowed before rate limiting kicks in)
+///
+/// # Example
+///
+/// ```
+/// use foundations::ratelimit;
+///
+/// // Allow 1 request per second with burst of 3
+/// ratelimit!(rate=1.0, burst=3, {
+///     println!("This will be rate limited");
+/// });
+/// ```
+#[macro_export]
+macro_rules! ratelimit {
+    (rate=$rate:expr, burst=$burst:expr, { $($body:tt)* }) => {
+        {
+            static __RATELIMIT_CONFIG: $crate::RateLimiterConfig =
+                $crate::RateLimiterConfig::new($rate, $burst);
+            static __RATELIMITER: $crate::RateLimiter =
+                $crate::RateLimiter::new(&__RATELIMIT_CONFIG);
+
+            if !__RATELIMITER.is_ratelimited() {
+                $($body)*
+            }
+        }
+    };
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
