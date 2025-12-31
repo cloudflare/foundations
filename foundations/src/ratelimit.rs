@@ -243,6 +243,7 @@ mod tests {
     }
 
     #[test]
+    #[expect(clippy::erasing_op)]
     fn steady_rate_within_limit() {
         // 10 requests per second, no extra burst
         let spacing_ns = NANOS_PER_SECOND / 10; // 100ms between requests
