@@ -50,6 +50,24 @@
 //! [Prometheus]: https://prometheus.io/
 //! [jemalloc]: https://github.com/jemalloc/jemalloc
 
+use std::sync::atomic::{AtomicBool, Ordering};
+
+/// Tracks whether telemetry::init() has been called.
+#[allow(
+    dead_code,
+    reason = "only dead if no foundations telemetry features are enabled"
+)]
+static TELEMETRY_INITIALIZED: AtomicBool = AtomicBool::new(false);
+
+/// Returns `true` if [`init`] has been called successfully.
+#[allow(
+    dead_code,
+    reason = "only dead if no foundations telemetry features are enabled"
+)]
+pub(crate) fn is_initialized() -> bool {
+    TELEMETRY_INITIALIZED.load(Ordering::Relaxed)
+}
+
 #[cfg(any(feature = "logging", feature = "tracing"))]
 mod scope;
 
@@ -297,7 +315,21 @@ pub struct TelemetryConfig<'c> {
     feature = "metrics",
     feature = "telemetry-server",
 ))]
+#[track_caller]
 pub fn init(config: TelemetryConfig) -> BootstrapResult<TelemetryDriver> {
+    if is_initialized() {
+        let loc = std::panic::Location::caller();
+        anyhow::bail!(
+            "foundations::telemetry::init() should only be called once. Called at {}:{}:{}",
+            loc.file(),
+            loc.line(),
+            loc.column()
+        )
+    }
+
+    #[cfg(feature = "metrics")]
+    crate::panic::install_hook();
+
     let tele_futures: FuturesUnordered<_> = Default::default();
 
     #[cfg(feature = "logging")]
@@ -315,6 +347,8 @@ pub fn init(config: TelemetryConfig) -> BootstrapResult<TelemetryDriver> {
     #[cfg(feature = "metrics")]
     self::metrics::init::init(config.service_info, &config.settings.metrics);
 
+    TELEMETRY_INITIALIZED.store(true, Ordering::Relaxed);
+
     #[cfg(feature = "telemetry-server")]
     {
         let server_fut = server::TelemetryServerFuture::new(
@@ -327,4 +361,32 @@ pub fn init(config: TelemetryConfig) -> BootstrapResult<TelemetryDriver> {
 
     #[cfg(not(feature = "telemetry-server"))]
     Ok(TelemetryDriver::new(tele_futures))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::init;
+    use crate::{
+        service_info,
+        telemetry::{TelemetryConfig, is_initialized},
+    };
+
+    #[tokio::test]
+    async fn double_init_call_errors() {
+        let first_res = init(TelemetryConfig {
+            service_info: &service_info!(),
+            settings: &Default::default(),
+            custom_server_routes: Default::default(),
+        });
+        assert!(first_res.is_ok());
+        assert!(is_initialized());
+
+        let second_res = init(TelemetryConfig {
+            service_info: &service_info!(),
+            settings: &Default::default(),
+            custom_server_routes: Default::default(),
+        });
+        assert!(second_res.is_err());
+        assert!(is_initialized());
+    }
 }

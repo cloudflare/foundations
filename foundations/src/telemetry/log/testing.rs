@@ -11,7 +11,7 @@ pub(crate) type TestLogRecords = Arc<RwLock<Vec<TestLogRecord>>>;
 /// Log record produced in the [test telemetry context].
 ///
 /// [test telemetry context]: crate::telemetry::TelemetryContext::test
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TestLogRecord {
     /// Verbosity level of the log record.
     pub level: Level,

@@ -74,6 +74,7 @@ reqwest = { version = "0.12", default-features = false }
 socket2 = { version = "0.5", features = ["all"] }
 syn = "2"
 serde = "1.0.198"
+serde_json = "1.0"
 serde_path_to_error = "0.1.17"
 serde_yaml = "0.8.26"
 serde_with = "3.3"
@@ -91,6 +92,14 @@ tower-service = "0.3"
 tracing-slog = "0.3.0"
 tracing-subscriber = "0.3"
 yaml-merge-keys = { version = "0.5", features = ["serde_yaml"] }
+sentry-core = { version = "0.36", default-features = false }
+sentry = { version = "0.36", default-features = false, features = [
+    "backtrace",
+    "contexts",
+    "panic",
+    "ureq",
+    "rustls",
+] }
 
 # needed for minver
 async-stream = "0.3"

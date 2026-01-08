@@ -1,4 +1,6 @@
 name: CI
+permissions:
+  contents: read
 
 on:
   pull_request:
@@ -25,6 +27,7 @@ jobs:
       - fmt
       - check-features
       - test
+      - build-targets
       - minimal-versions
     steps:
       - run: exit 0
@@ -66,7 +69,7 @@ jobs:
       - name: Check minimal versions
         env:
           # empty those flags!
-          RUSTFLAGS:
+          RUSTFLAGS: ""
         run: |
           # Remove dev-dependencies from Cargo.toml to prevent the next `cargo update`
           # from determining minimal versions based on dev-dependencies.
@@ -192,8 +195,10 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@cargo-nextest
       - name: Test unstable
-        run: cargo test --all-features
+        run: cargo nextest run --all-features
         env:
           RUSTFLAGS: -Dwarnings --cfg tokio_unstable --cfg foundations_unstable
           _RJEM_MALLOC_CONF: prof:true
@@ -211,32 +216,23 @@ jobs:
       - name: Run example (dry run)
         run: cargo run --example http_server -- --dry-run --config examples/http_server/example_conf.yaml
 
-  test:
-    name: Test
+  build-targets:
+    name: Build
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         thing:
-          - x86_64-linux
           - aarch64-linux
           - arm64-android
           - arm-android
           - aarch64-ios
-          - x86_64-macos
           - x86_64-windows
         include:
           - apt_packages: ""
           - custom_env: {}
-          - build_only: false
           - cargo_args: ""
 
-          - thing: x86_64-linux
-            target: x86_64-unknown-linux-gnu
-            rust: stable
-            os: ubuntu-latest
-
           - thing: aarch64-linux
-            build_only: true
             target: aarch64-unknown-linux-gnu
             rust: stable
             os: ubuntu-latest
@@ -247,33 +243,24 @@ jobs:
               CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-g++
 
           - thing: arm64-android
-            build_only: true
             target: aarch64-linux-android
             rust: stable
             os: ubuntu-latest
             cargo_args: --no-default-features --features server-client-common-default
 
           - thing: arm-android
-            build_only: true
             target: armv7-linux-androideabi
             rust: stable
             os: ubuntu-latest
             cargo_args: --no-default-features --features server-client-common-default
 
           - thing: aarch64-ios
-            build_only: true
             target: aarch64-apple-ios
             rust: stable
             os: macos-latest
             cargo_args: --no-default-features --features server-client-common-default
 
-          - thing: x86_64-macos
-            target: x86_64-apple-darwin
-            rust: stable
-            os: macos-latest
-
           - thing: x86_64-windows
-            build_only: true
             target: x86_64-pc-windows-msvc
             rust: stable
             os: windows-latest
@@ -296,13 +283,44 @@ jobs:
       - name: Set Android Linker path
         if: endsWith(matrix.thing, '-android')
         run: echo "CARGO_TARGET_$(echo ${{ matrix.target }} | tr \\-a-z _A-Z)_LINKER=$ANDROID_NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/$(echo ${{ matrix.target }} | sed s/armv7/armv7a/)21-clang++" >> "$GITHUB_ENV"
-      - name: Build tests
-        # We `build` because we want the linker to verify we are cross-compiling correctly for check-only targets.
-        run: cargo build --target ${{ matrix.target }} ${{matrix.cargo_args}}
+      - name: Build
+        run: cargo build -p foundations --target ${{ matrix.target }} ${{matrix.cargo_args}}
         shell: bash
         env: ${{ matrix.custom_env }}
-      - name: Run tests
-        if: "!matrix.build_only"
-        run: _RJEM_MALLOC_CONF=prof:true cargo test --target ${{ matrix.target }} ${{matrix.cargo_args}}
+
+  test:
+    name: Test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        thing:
+          - x86_64-linux
+          - x86_64-macos
+        include:
+          - thing: x86_64-linux
+            target: x86_64-unknown-linux-gnu
+            rust: stable
+            os: ubuntu-latest
+
+          - thing: x86_64-macos
+            target: x86_64-apple-darwin
+            rust: stable
+            os: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: "recursive"
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.rust }}
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@cargo-nextest
+      - name: Run foundations tests
+        run: _RJEM_MALLOC_CONF=prof:true cargo nextest run --target ${{ matrix.target }}
         shell: bash
-        env: ${{ matrix.custom_env }}
+      - name: Run doc tests
+        run: _RJEM_MALLOC_CONF=prof:true cargo test --doc --target ${{ matrix.target }}
