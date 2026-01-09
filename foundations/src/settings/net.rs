@@ -6,9 +6,11 @@
 use super::Settings;
 use serde::{Deserialize, Serialize};
 use std::fmt;
+use std::net::AddrParseError;
 use std::net::ToSocketAddrs;
 use std::ops::{Deref, DerefMut};
 use std::option::IntoIter;
+use std::str::FromStr;
 
 macro_rules! wrap {
     ( $Ty:ident, Default = $default:expr ) => {
@@ -35,6 +37,13 @@ macro_rules! wrap {
         impl From<$Ty> for std::net::$Ty {
             fn from(addr: $Ty) -> Self {
                 addr.0
+            }
+        }
+
+        impl FromStr for $Ty {
+            type Err = AddrParseError;
+            fn from_str(s: &str) -> Result<Self, Self::Err> {
+                s.parse().map(Self)
             }
         }
 
@@ -109,5 +118,65 @@ impl_to_socket_addrs!(SocketAddrV6);
 impl<I: Into<std::net::IpAddr>> From<(I, u16)> for SocketAddr {
     fn from(pieces: (I, u16)) -> SocketAddr {
         std::net::SocketAddr::from(pieces).into()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn socket_addr_from_str() {
+        assert_eq!(
+            "127.0.0.1:8080".parse::<SocketAddr>().unwrap(),
+            std::net::SocketAddr::from(([127, 0, 0, 1], 8080))
+        );
+    }
+
+    #[test]
+    fn socket_addr_from_str_invalid() {
+        assert!("invalid".parse::<SocketAddr>().is_err());
+    }
+
+    #[test]
+    fn socket_addr_v4_from_str() {
+        assert_eq!(
+            "192.168.1.1:443".parse::<SocketAddrV4>().unwrap(),
+            std::net::SocketAddrV4::new(std::net::Ipv4Addr::new(192, 168, 1, 1), 443)
+        );
+    }
+
+    #[test]
+    fn socket_addr_v6_from_str() {
+        assert_eq!(
+            "[::1]:9000".parse::<SocketAddrV6>().unwrap(),
+            std::net::SocketAddrV6::new(std::net::Ipv6Addr::LOCALHOST, 9000, 0, 0)
+        );
+    }
+
+    #[test]
+    fn ip_addr_from_str() {
+        assert_eq!(
+            "10.0.0.1".parse::<IpAddr>().unwrap(),
+            std::net::IpAddr::V4(std::net::Ipv4Addr::new(10, 0, 0, 1))
+        );
+        assert_eq!(
+            "::1".parse::<IpAddr>().unwrap(),
+            std::net::IpAddr::V6(std::net::Ipv6Addr::LOCALHOST)
+        );
+    }
+
+    #[test]
+    fn ipv4_addr_from_str() {
+        assert_eq!(
+            "8.8.8.8".parse::<Ipv4Addr>().unwrap(),
+            std::net::Ipv4Addr::new(8, 8, 8, 8)
+        );
+    }
+
+    #[test]
+    fn ipv6_addr_from_str() {
+        let addr: Ipv6Addr = "2001:db8::1".parse().unwrap();
+        assert_eq!(addr.segments()[0], 0x2001);
     }
 }
