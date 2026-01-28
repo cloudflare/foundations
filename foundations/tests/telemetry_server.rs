@@ -3,10 +3,12 @@ use foundations::telemetry::settings::{
 };
 use foundations::telemetry::{
     TelemetryConfig, TelemetryContext, TelemetryRouteBody, TelemetryServerRoute,
-    reexports::hyper::{Method, Response},
+    reexports::{
+        http_body_util::{BodyExt, Full},
+        hyper::{Method, Response},
+    },
 };
 use futures_util::FutureExt;
-use http_body_util::{BodyExt, Full};
 use std::future::IntoFuture;
 use std::net::{Ipv4Addr, SocketAddr};
 
