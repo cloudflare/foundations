@@ -156,6 +156,7 @@ pub use self::server::{
 #[cfg(feature = "telemetry-server")]
 /// Re-exported crates which are used in public `telemetry` APIs.
 pub mod reexports {
+    pub use http_body_util;
     pub use hyper;
 }
 

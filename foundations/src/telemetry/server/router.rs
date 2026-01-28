@@ -2,12 +2,11 @@
 use super::memory_profiling;
 #[cfg(feature = "metrics")]
 use crate::telemetry::metrics;
+use crate::telemetry::reexports::http_body_util::{BodyExt, Empty, Full, combinators::BoxBody};
 use crate::telemetry::settings::TelemetrySettings;
 #[cfg(feature = "tracing")]
 use crate::telemetry::tracing;
 use futures_util::future::{BoxFuture, FutureExt};
-use http_body_util::combinators::BoxBody;
-use http_body_util::{BodyExt, Empty, Full};
 use hyper::body::{Bytes, Incoming};
 use hyper::service::Service;
 use hyper::{Method, Request, Response, StatusCode, header};
