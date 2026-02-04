@@ -497,13 +497,37 @@ pub fn from_yaml_str<T: Settings>(data: impl AsRef<str>) -> BootstrapResult<T> {
     Ok(serde_path_to_error::deserialize(value)?)
 }
 
-/// Parse settings from YAML file.
+/// Parse settings from a YAML file.
 ///
 /// Note: [YAML key references] will be merged during parsing.
 ///
 /// [YAML key references]: https://yaml.org/type/merge.html
 pub fn from_file<T: Settings>(path: impl AsRef<Path>) -> BootstrapResult<T> {
-    let data = std::fs::read_to_string(path)?;
+    from_files([path])
+}
+
+/// Parse settings from YAML file(s).
+///
+/// Note: [YAML key references] will be merged during parsing.
+///
+/// [YAML key references]: https://yaml.org/type/merge.html
+pub fn from_files<T, I, P>(paths: I) -> BootstrapResult<T>
+where
+    T: Settings,
+    I: IntoIterator<Item = P>,
+    P: AsRef<Path>,
+{
+    let mut data = String::new();
+
+    for path in paths {
+        let file_data = std::fs::read_to_string(path)?;
+
+        if !data.is_empty() && !data.ends_with('\n') {
+            data.push('\n');
+        }
+
+        data.push_str(&file_data);
+    }
 
     from_yaml_str(data)
 }

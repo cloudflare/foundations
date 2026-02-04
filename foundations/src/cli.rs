@@ -69,9 +69,9 @@ impl<S: Settings> Cli<S> {
             .author(service_info.author)
             .about(service_info.description)
             .arg(
-                Arg::new("config")
+                Arg::new(USE_CONFIG_OPT_ID)
                     .required_unless_present(GENERATE_CONFIG_OPT_ID)
-                    .action(ArgAction::Set)
+                    .action(ArgAction::Append)
                     .long("config")
                     .short('c')
                     .help("Specifies the config to run the service with"),
@@ -125,8 +125,8 @@ fn get_settings<S: Settings>(arg_matches: &ArgMatches) -> BootstrapResult<S> {
         return Ok(settings);
     }
 
-    if let Some(path) = arg_matches.get_one::<String>(USE_CONFIG_OPT_ID) {
-        return crate::settings::from_file(path).map_err(|e| anyhow!(e));
+    if let Some(paths) = arg_matches.get_many::<String>(USE_CONFIG_OPT_ID) {
+        return crate::settings::from_files(paths.map(|p| p.as_str())).map_err(|e| anyhow!(e));
     }
 
     unreachable!("clap should require config options to be present")
