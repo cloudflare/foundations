@@ -332,10 +332,17 @@ pub fn init(config: TelemetryConfig) -> BootstrapResult<TelemetryDriver> {
     crate::panic::install_hook();
 
     let tele_futures: FuturesUnordered<_> = Default::default();
+    #[cfg(feature = "logging")]
+    let mut logging_guard: Option<slog_async::AsyncGuard> = Default::default();
 
     #[cfg(feature = "logging")]
-    self::log::init::init(config.service_info, &config.settings.logging)?;
-
+    {
+        if let Some(async_guard) =
+            self::log::init::init(config.service_info, &config.settings.logging)?
+        {
+            logging_guard.replace(async_guard);
+        }
+    }
     #[cfg(feature = "tracing")]
     {
         if let Some(reporter_fut) =
@@ -357,11 +364,31 @@ pub fn init(config: TelemetryConfig) -> BootstrapResult<TelemetryDriver> {
             config.custom_server_routes,
         )?;
 
-        Ok(TelemetryDriver::new(server_fut, tele_futures))
+        #[cfg(feature = "logging")]
+        {
+            Ok(TelemetryDriver::new(
+                server_fut,
+                tele_futures,
+                logging_guard,
+            ))
+        }
+        #[cfg(not(feature = "logging"))]
+        {
+            Ok(TelemetryDriver::new(server_fut, tele_futures))
+        }
     }
 
     #[cfg(not(feature = "telemetry-server"))]
-    Ok(TelemetryDriver::new(tele_futures))
+    {
+        #[cfg(feature = "logging")]
+        {
+            Ok(TelemetryDriver::new(tele_futures, logging_guard))
+        }
+        #[cfg(not(feature = "logging"))]
+        {
+            Ok(TelemetryDriver::new(tele_futures))
+        }
+    }
 }
 
 #[cfg(test)]
