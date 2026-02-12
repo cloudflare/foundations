@@ -97,12 +97,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: "recursive"
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
       - name: Run cargo deny checks
         uses: EmbarkStudios/cargo-deny-action@v2
         with:
+          rust-version: stable
           command: check
 
   clippy:
