@@ -16,7 +16,7 @@ use slog::{
     Discard, Drain, FnValue, Fuse, LevelFilter, Logger, Never, OwnedKV, SendSyncRefUnwindSafeDrain,
     SendSyncRefUnwindSafeKV, SendSyncUnwindSafeDrain,
 };
-use slog_async::Async as AsyncDrain;
+use slog_async::{Async as AsyncDrain, AsyncGuard};
 use slog_json::{Json as JsonDrain, Json};
 use slog_term::{FullFormat as TextDrain, PlainDecorator, TermDecorator};
 use std::fs::File;
@@ -69,16 +69,19 @@ impl LogHarness {
 const BUF_SIZE: usize = 4096;
 
 // NOTE: Does nothing if logging has already been initialized in this process.
-pub(crate) fn init(service_info: &ServiceInfo, settings: &LoggingSettings) -> BootstrapResult<()> {
+pub(crate) fn init(
+    service_info: &ServiceInfo,
+    settings: &LoggingSettings,
+) -> BootstrapResult<Option<AsyncGuard>> {
     // Already initialized
     if HARNESS.get().is_some() {
-        return Ok(());
+        return Ok(None);
     }
 
     // NOTE: OXY-178, default is 128 (https://docs.rs/slog-async/2.7.0/src/slog_async/lib.rs.html#251)
     const CHANNEL_SIZE: usize = 1024;
 
-    let async_drain = match (&settings.output, &settings.format) {
+    let (async_drain, async_guard) = match (&settings.output, &settings.format) {
         (output @ (LogOutput::Terminal | LogOutput::Stderr), LogFormat::Text) => {
             let decorator = if matches!(output, LogOutput::Terminal) {
                 TermDecorator::new().stdout().build()
@@ -87,7 +90,9 @@ pub(crate) fn init(service_info: &ServiceInfo, settings: &LoggingSettings) -> Bo
             };
 
             let drain = TextDrain::new(decorator).build().fuse();
-            AsyncDrain::new(drain).chan_size(CHANNEL_SIZE).build()
+            AsyncDrain::new(drain)
+                .chan_size(CHANNEL_SIZE)
+                .build_with_guard()
         }
         (output @ (LogOutput::Terminal | LogOutput::Stderr), LogFormat::Json) => {
             let writer = if matches!(output, LogOutput::Terminal) {
@@ -96,23 +101,29 @@ pub(crate) fn init(service_info: &ServiceInfo, settings: &LoggingSettings) -> Bo
                 stderr_writer_without_line_buffering()
             };
             let drain = build_json_log_drain(writer);
-            AsyncDrain::new(drain).chan_size(CHANNEL_SIZE).build()
+            AsyncDrain::new(drain)
+                .chan_size(CHANNEL_SIZE)
+                .build_with_guard()
         }
         (LogOutput::File(file_path), LogFormat::Text) => {
             let file = RetryPipeWriter::new(file_path.into())?;
             let drain = TextDrain::new(PlainDecorator::new(file)).build().fuse();
-            AsyncDrain::new(drain).chan_size(CHANNEL_SIZE).build()
+            AsyncDrain::new(drain)
+                .chan_size(CHANNEL_SIZE)
+                .build_with_guard()
         }
         (LogOutput::File(file_path), LogFormat::Json) => {
             let file = RetryPipeWriter::new(file_path.into())?;
             let buf = BufWriter::with_capacity(BUF_SIZE, file);
             let drain = build_json_log_drain(buf);
-            AsyncDrain::new(drain).chan_size(CHANNEL_SIZE).build()
+            AsyncDrain::new(drain)
+                .chan_size(CHANNEL_SIZE)
+                .build_with_guard()
         }
         #[cfg(feature = "tracing-rs-compat")]
         (LogOutput::TracingRsCompat, _) => AsyncDrain::new(tracing_slog::TracingSlogDrain {})
             .chan_size(CHANNEL_SIZE)
-            .build(),
+            .build_with_guard(),
     };
 
     let root_drain = get_root_drain(settings, Arc::new(async_drain.fuse()));
@@ -136,7 +147,7 @@ pub(crate) fn init(service_info: &ServiceInfo, settings: &LoggingSettings) -> Bo
 
     let _ = HARNESS.set(harness);
 
-    Ok(())
+    Ok(Some(async_guard))
 }
 
 /// Opens fd 1 directly and wraps with a [`BufWriter`] with [`BUF_SIZE`] capacity.
