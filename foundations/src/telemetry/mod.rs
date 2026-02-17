@@ -334,7 +334,7 @@ pub fn init(config: TelemetryConfig) -> BootstrapResult<TelemetryDriver> {
     let tele_futures: FuturesUnordered<_> = Default::default();
 
     #[cfg(feature = "logging")]
-    self::log::init::init(config.service_info, &config.settings.logging)?;
+    let logging_guard = self::log::init::init(config.service_info, &config.settings.logging)?;
 
     #[cfg(feature = "tracing")]
     {
@@ -357,11 +357,23 @@ pub fn init(config: TelemetryConfig) -> BootstrapResult<TelemetryDriver> {
             config.custom_server_routes,
         )?;
 
-        Ok(TelemetryDriver::new(server_fut, tele_futures))
+        #[allow(unused_mut)]
+        let mut telemetry_driver = TelemetryDriver::new(server_fut, tele_futures);
+        #[cfg(feature = "logging")]
+        telemetry_driver.set_logging_guard(logging_guard);
+
+        Ok(telemetry_driver)
     }
 
     #[cfg(not(feature = "telemetry-server"))]
-    Ok(TelemetryDriver::new(tele_futures))
+    {
+        #[allow(unused_mut)]
+        let mut telemetry_driver = TelemetryDriver::new(tele_futures);
+        #[cfg(feature = "logging")]
+        telemetry_driver.set_logging_guard(logging_guard);
+
+        Ok(telemetry_driver)
+    }
 }
 
 #[cfg(test)]
