@@ -5,7 +5,11 @@ use crate::utils::feature_use;
 use futures_util::future::BoxFuture;
 use futures_util::stream::FuturesUnordered;
 use futures_util::{FutureExt, Stream};
+#[cfg(feature = "logging")]
+use slog_async::AsyncGuard;
 use std::future::Future;
+#[cfg(feature = "logging")]
+use std::mem::ManuallyDrop;
 use std::pin::Pin;
 use std::task::{Context, Poll, ready};
 
@@ -27,6 +31,9 @@ pub struct TelemetryDriver {
     #[cfg(feature = "telemetry-server")]
     server_fut: Option<TelemetryServerFuture>,
 
+    #[cfg(feature = "logging")]
+    logging_guard: Option<ManuallyDrop<AsyncGuard>>,
+
     tele_futures: FuturesUnordered<BoxFuture<'static, BootstrapResult<()>>>,
 }
 
@@ -42,8 +49,17 @@ impl TelemetryDriver {
             #[cfg(feature = "telemetry-server")]
             server_fut,
 
+            #[cfg(feature = "logging")]
+            logging_guard: None,
+
             tele_futures,
         }
+    }
+
+    /// Binds to a `slog::AsyncGuard` to ensure logs get dropped when calling `shutdown_logger`
+    #[cfg(feature = "logging")]
+    pub(super) fn set_logging_guard(&mut self, logging_async_guard: Option<AsyncGuard>) {
+        self.logging_guard = logging_async_guard.map(ManuallyDrop::new);
     }
 
     /// Address of the telemetry server.
@@ -82,6 +98,19 @@ impl TelemetryDriver {
             }
             .boxed(),
         );
+    }
+
+    /// Waits for all pending records to flush, then shuts down logging permanently.
+    ///
+    /// By default, logging is not automatically shut down when TelemetryDriver goes out of scope,
+    /// and manual shutdown is necessary. Calling this blocks the calling thread, so it is advised
+    /// to wrap in `[spawn_blocking](https://docs.rs/tokio/latest/tokio/task/fn.spawn_blocking.html)`
+    /// in async contexts.
+    #[cfg(feature = "logging")]
+    pub fn shutdown_logger(&mut self) {
+        if let Some(guard) = self.logging_guard.take() {
+            drop(ManuallyDrop::into_inner(guard))
+        }
     }
 }
 
