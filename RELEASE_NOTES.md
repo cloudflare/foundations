@@ -137,7 +137,7 @@
 - 2024-08-12 Fix seccomp violation in MemoryProfiler introduce by Rust 1.80.0 std
 - 2024-08-06 Make clippy happy
 - 2024-08-05 Expose TraceId, as it now can be used in serializable state ctor
-- 2024-07-24 Rename depricated tokio metric
+- 2024-07-24 Rename deprecated tokio metric
 - 2024-07-22 Bump syn and darling (closes #50)
 - 2024-07-19 Telemetry API improvements
 - 2024-07-17 ZTC-1545: Error during settings deserialization if YAML contains unused keys (#49)
