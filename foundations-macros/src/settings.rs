@@ -1,8 +1,8 @@
 use crate::common::{Result, error, parse_meta_list};
 use darling::FromMeta;
-use darling::ast::NestedMeta;
+use darling::util::Flag;
 use proc_macro::TokenStream;
-use quote::{TokenStreamExt, quote, quote_spanned};
+use quote::{ToTokens, TokenStreamExt, quote, quote_spanned};
 use syn::parse::{Parse, ParseStream};
 use syn::spanned::Spanned;
 use syn::{
@@ -69,6 +69,19 @@ impl Parse for Options {
         };
 
         Ok(options)
+    }
+}
+
+#[derive(FromMeta)]
+struct SerdeArgs {
+    flatten: Flag,
+    default: Option<Path>,
+}
+
+impl SerdeArgs {
+    fn parse_from_attrs(attrs: &[Attribute]) -> Option<Self> {
+        let attr = attrs.iter().find(|a| a.path().is_ident("serde"))?;
+        Self::from_meta(&attr.meta).ok()
     }
 }
 
@@ -227,7 +240,6 @@ fn impl_settings_trait_for_field(
     let span = field.ty.span();
     let name_str = name.to_string();
     let docs = extract_doc_comments(&field.attrs);
-    let mut impl_for_field = quote! {};
 
     let cfg_attrs = field
         .attrs
@@ -235,10 +247,21 @@ fn impl_settings_trait_for_field(
         .filter(|a| a.path().is_ident("cfg"))
         .collect::<Vec<_>>();
 
-    impl_for_field.append_all(quote_spanned! { span=>
+    // foundations#42: Flattened structs need to be forwarded directly, rather than
+    // under their own key.
+    if is_serde_flattened(&field.attrs) {
+        return quote_spanned! { span=>
+            #(#cfg_attrs)*
+            {
+                #crate_path::settings::Settings::add_docs(&self.#name, parent_key, docs);
+            }
+        };
+    }
+
+    let mut impl_for_field = quote_spanned! { span=>
         let mut key = parent_key.to_vec();
         key.push(#name_str.into());
-    });
+    };
 
     // foundations#150: `[T; 0]` used to impl Settings for `T: !Default`, but this
     // is not possible anymore. We thus can't call `Settings::add_docs` for such
@@ -316,6 +339,11 @@ fn is_array_zst(ty: &Type) -> bool {
         .unwrap_or(false)
 }
 
+/// Returns whether `attrs` contains `serde(flatten)`.
+fn is_serde_flattened(attrs: &[Attribute]) -> bool {
+    SerdeArgs::parse_from_attrs(attrs).is_some_and(|a| a.flatten.is_present())
+}
+
 fn impl_serde_aware_default(item: &ItemStruct) -> proc_macro2::TokenStream {
     let name = &item.ident;
     let (impl_generics, ty_generics, where_clause) = item.generics.split_for_impl();
@@ -333,7 +361,8 @@ fn impl_serde_aware_default(item: &ItemStruct) -> proc_macro2::TokenStream {
             .iter()
             .filter(|attr| attr.path().is_ident("cfg"));
 
-        let function_path = get_field_default_fn(field)
+        let function_path = SerdeArgs::parse_from_attrs(&field.attrs)
+            .and_then(|a| Some(a.default?.into_token_stream()))
             .unwrap_or_else(|| quote_spanned! { span=> Default::default });
 
         quote_spanned! { span=> #(#cfg_attrs)* #name: #function_path() }
@@ -346,46 +375,6 @@ fn impl_serde_aware_default(item: &ItemStruct) -> proc_macro2::TokenStream {
             }
         }
     }
-}
-
-fn get_field_default_fn(field: &Field) -> Option<proc_macro2::TokenStream> {
-    for attr in &field.attrs {
-        if !attr.path().is_ident("serde") {
-            continue;
-        }
-
-        let Meta::List(list) = &attr.meta else {
-            continue;
-        };
-
-        let Ok(nested_meta_list) = NestedMeta::parse_meta_list(list.tokens.clone()) else {
-            continue;
-        };
-
-        for meta in nested_meta_list {
-            let NestedMeta::Meta(Meta::NameValue(mnv)) = meta else {
-                continue;
-            };
-
-            if !mnv.path.is_ident("default") {
-                continue;
-            }
-
-            let Expr::Lit(ExprLit {
-                lit: Lit::Str(val), ..
-            }) = mnv.value
-            else {
-                continue;
-            };
-
-            match val.parse() {
-                Ok(tokens) => return Some(tokens),
-                Err(_) => continue,
-            }
-        }
-    }
-
-    None
 }
 
 #[cfg(test)]
@@ -698,6 +687,54 @@ mod tests {
             impl Default for TestStruct {
                 fn default() -> Self {
                     Self {
+                    }
+                }
+            }
+        };
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn expand_structure_with_flattened_member() {
+        let options = parse_attr! {
+            #[settings(impl_default = false)]
+        };
+
+        let src = parse_quote! {
+            struct TestStruct {
+                /// A flattened struct.
+                #[serde(flatten)]
+                embedded: OtherSettings,
+            }
+        };
+
+        let actual = expand_from_parsed(options, src).unwrap().to_string();
+
+        let expected = code_str! {
+            #[derive(
+                Clone,
+                ::foundations::reexports_for_macros::serde::Serialize,
+                ::foundations::reexports_for_macros::serde::Deserialize,
+            )]
+            #[derive(Debug)]
+            #[serde(crate = ":: foundations :: reexports_for_macros :: serde")]
+            #[serde(deny_unknown_fields)]
+            #[serde(default)]
+            struct TestStruct {
+                #[doc = r" A flattened struct."]
+                #[serde(flatten)]
+                embedded: OtherSettings,
+            }
+
+            impl ::foundations::settings::Settings for TestStruct {
+                fn add_docs(
+                    &self,
+                    parent_key: &[String],
+                    docs: &mut ::std::collections::HashMap<Vec<String>, &'static [&'static str]>
+                ) {
+                    {
+                        ::foundations::settings::Settings::add_docs(&self.embedded, parent_key, docs);
                     }
                 }
             }
