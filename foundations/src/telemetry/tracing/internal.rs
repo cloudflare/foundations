@@ -6,7 +6,7 @@ use cf_rustracing::sampler::BoxSampler;
 use cf_rustracing::tag::Tag;
 use cf_rustracing_jaeger::span::{Span, SpanContext, SpanContextState};
 use parking_lot::RwLock;
-use rand::{self, Rng};
+use rand::RngExt as _;
 use std::borrow::Cow;
 use std::error::Error;
 use std::sync::Arc;
