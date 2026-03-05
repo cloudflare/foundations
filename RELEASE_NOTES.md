@@ -1,5 +1,22 @@
 
+5.5.0
+- 2026-03-05 Update list of allowed licenses for dependencies
+- 2026-03-05 chore: Upgrade internal dependency to avoid dupes
+- 2026-03-05 Mention libclang-dev dependency for bindgen
+- 2026-03-04 Properly forward doc comments of flattened struct members
+- 2026-03-05 Add regression test for doc comments on flattened members
+- 2026-02-17 feat: allow manually shutting down logging from TelemetryDriver
+- 2026-02-12 ci: Use latest stable for cargo-deny checks
+- 2026-02-04 Support loading multiple YAML config files
+- 2026-01-28 Re-export http-body-util under telemetry reexports
+- 2026-01-09 Adds FromStr implementations for the std::net type wrappers
+- 2026-01-08 feat: panic and sentry hook for foundations (#160)
+- 2025-12-24 chore: cargo fmt for edition 2024
+- 2025-12-23 chore: upgrade to rust 2024
+- 2025-12-23 Implement Settings for Saturating<T> and NonZero<T>
+
 5.4.0
+- 2025-12-01 Release 5.4.0
 - 2025-12-01 Fix minimal-versions check
 - 2025-11-25 Add #[with_removal] attribute to #[metrics] macro
 - 2025-11-25 Reduce nesting in metrics proc-macro functions
