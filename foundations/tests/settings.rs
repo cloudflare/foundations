@@ -38,6 +38,16 @@ struct NestedDup {
 }
 
 #[settings]
+struct FlattenedStruct {
+    /// Doc comments on flattened members itself
+    /// should not appear on the output.
+    #[serde(flatten)]
+    inner: NestedStruct,
+    /// Another field that isn't flattened.
+    x: u32,
+}
+
+#[settings]
 enum SomeEnum {
     VariantA,
     #[default]
@@ -176,6 +186,14 @@ fn nested_duplicate_field() {
     assert_ser_eq!(
         NestedDup::default(),
         "data/settings_nested_duplicate_field.yaml"
+    );
+}
+
+#[test]
+fn flattened_doc_comments() {
+    assert_ser_eq!(
+        FlattenedStruct::default(),
+        "data/settings_flattened_struct.yaml"
     );
 }
 
