@@ -35,7 +35,7 @@
 //! - **logging**: Enables logging functionality.
 //! - **tracing**: Enables distributed tracing functionality.
 //! - **testing**: Enables testing-related functionality.
-//! - **security**: Enables security features. Available only on Linux (x86_64, aarch64).
+//! - **security**: Enables security features. Available only on Linux (x86_64, aarch64) with the `libclang-dev` package installed (for bindgen).
 //! - **jemalloc**: Enables [jemalloc] memory allocator which is known to perform much better than
 //!   system allocators for long living service.
 //! - **memory-profiling**: Enables memory profiling functionality and telemetry. Implicity enables
