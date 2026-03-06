@@ -1,5 +1,9 @@
 
+5.5.2
+- 2026-03-06 Support `serde(default)` without explicit path
+
 5.5.1
+- 2026-03-06 Release 5.5.1
 - 2026-03-06 Fix regression in serde argument parsing
 
 5.5.0
