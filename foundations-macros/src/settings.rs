@@ -1,6 +1,6 @@
 use crate::common::{Result, error, parse_meta_list};
 use darling::FromMeta;
-use darling::util::Flag;
+use darling::util::{Flag, Override};
 use proc_macro::TokenStream;
 use quote::{ToTokens, TokenStreamExt, quote, quote_spanned};
 use syn::parse::{Parse, ParseStream};
@@ -76,7 +76,7 @@ impl Parse for Options {
 #[darling(allow_unknown_fields)]
 struct SerdeArgs {
     flatten: Flag,
-    default: Option<Path>,
+    default: Option<Override<Path>>,
 }
 
 impl SerdeArgs {
@@ -372,7 +372,7 @@ fn impl_serde_aware_default(item: &ItemStruct) -> Result<proc_macro2::TokenStrea
                 .filter(|attr| attr.path().is_ident("cfg"));
 
             let function_path = SerdeArgs::parse_from_attrs(&field.attrs)?
-                .and_then(|a| Some(a.default?.into_token_stream()))
+                .and_then(|a| Some(a.default?.explicit()?.into_token_stream()))
                 .unwrap_or_else(|| quote_spanned! { span=> Default::default });
 
             Ok(quote_spanned! { span=> #(#cfg_attrs)* #name: #function_path() })
