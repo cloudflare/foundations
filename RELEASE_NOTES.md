@@ -1,5 +1,9 @@
 
+5.5.1
+- 2026-03-06 Fix regression in serde argument parsing
+
 5.5.0
+- 2026-03-05 Release 5.5.0
 - 2026-03-05 Update list of allowed licenses for dependencies
 - 2026-03-05 chore: Upgrade internal dependency to avoid dupes
 - 2026-03-05 Mention libclang-dev dependency for bindgen
