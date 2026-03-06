@@ -11,6 +11,7 @@ struct NestedStruct {
     #[serde(default = "NestedStruct::default_b")]
     b: u32,
     // no doc comment at all
+    #[serde(default)]
     c: u32,
 }
 
@@ -232,6 +233,7 @@ fn defaults() {
     let simple_struct = NestedStruct::default();
 
     assert_eq!(simple_struct.b, 0xb);
+    assert_eq!(simple_struct.c, 0);
 
     let nested_struct = serde_yaml::from_str::<SimpleStruct>("---\nx: 1").unwrap();
 
