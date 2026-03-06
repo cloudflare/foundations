@@ -124,6 +124,15 @@ struct WithMap {
 struct WithOption {
     /// Optional field
     optional: Option<NestedStruct>,
+    /// A field that is not parsed at all.
+    #[serde(skip, default = "WithOption::default_a")]
+    a: u32,
+}
+
+impl WithOption {
+    fn default_a() -> u32 {
+        123
+    }
 }
 
 impl Default for NoDefaultStruct {
@@ -228,6 +237,10 @@ fn defaults() {
 
     assert_eq!(nested_struct.inner.b, 0xb);
     assert_eq!(nested_struct.x, 1);
+
+    let struct_with_skip = WithOption::default();
+    assert!(struct_with_skip.optional.is_none());
+    assert_eq!(struct_with_skip.a, 123);
 }
 
 #[test]
@@ -259,11 +272,15 @@ fn map() {
 fn option() {
     let s = WithOption {
         optional: Some(NestedStruct { a: 1, b: 2, c: 3 }),
+        a: 4,
     };
 
     assert_ser_eq!(s, "data/with_option_some.yaml");
 
-    let s = WithOption { optional: None };
+    let s = WithOption {
+        optional: None,
+        a: 4,
+    };
 
     assert_ser_eq!(s, "data/with_option_none.yaml");
 }

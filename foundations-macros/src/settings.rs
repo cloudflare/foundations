@@ -73,15 +73,19 @@ impl Parse for Options {
 }
 
 #[derive(FromMeta)]
+#[darling(allow_unknown_fields)]
 struct SerdeArgs {
     flatten: Flag,
     default: Option<Path>,
 }
 
 impl SerdeArgs {
-    fn parse_from_attrs(attrs: &[Attribute]) -> Option<Self> {
-        let attr = attrs.iter().find(|a| a.path().is_ident("serde"))?;
-        Self::from_meta(&attr.meta).ok()
+    fn parse_from_attrs(attrs: &[Attribute]) -> Result<Option<Self>> {
+        let Some(attr) = attrs.iter().find(|a| a.path().is_ident("serde")) else {
+            return Ok(None);
+        };
+
+        Ok(Some(Self::from_meta(&attr.meta)?))
     }
 }
 
@@ -166,7 +170,7 @@ fn expand_struct(options: Options, item: &mut ItemStruct) -> Result<proc_macro2:
     let impl_settings = impl_settings_trait(&options, item)?;
 
     let impl_default = if options.impl_default {
-        impl_serde_aware_default(item)
+        impl_serde_aware_default(item)?
     } else {
         quote!()
     };
@@ -341,40 +345,47 @@ fn is_array_zst(ty: &Type) -> bool {
 
 /// Returns whether `attrs` contains `serde(flatten)`.
 fn is_serde_flattened(attrs: &[Attribute]) -> bool {
-    SerdeArgs::parse_from_attrs(attrs).is_some_and(|a| a.flatten.is_present())
+    matches!(
+        SerdeArgs::parse_from_attrs(attrs),
+        Ok(Some(args)) if args.flatten.is_present(),
+    )
 }
 
-fn impl_serde_aware_default(item: &ItemStruct) -> proc_macro2::TokenStream {
+fn impl_serde_aware_default(item: &ItemStruct) -> Result<proc_macro2::TokenStream> {
     let name = &item.ident;
     let (impl_generics, ty_generics, where_clause) = item.generics.split_for_impl();
 
-    let initializers = item.fields.iter().map(|field| {
-        let name = field
-            .ident
-            .as_ref()
-            .expect("should not generate field docs for tuple struct");
+    let initializers = item
+        .fields
+        .iter()
+        .map(|field| {
+            let name = field
+                .ident
+                .as_ref()
+                .expect("should not generate field docs for tuple struct");
 
-        let span = field.ty.span();
+            let span = field.ty.span();
 
-        let cfg_attrs = field
-            .attrs
-            .iter()
-            .filter(|attr| attr.path().is_ident("cfg"));
+            let cfg_attrs = field
+                .attrs
+                .iter()
+                .filter(|attr| attr.path().is_ident("cfg"));
 
-        let function_path = SerdeArgs::parse_from_attrs(&field.attrs)
-            .and_then(|a| Some(a.default?.into_token_stream()))
-            .unwrap_or_else(|| quote_spanned! { span=> Default::default });
+            let function_path = SerdeArgs::parse_from_attrs(&field.attrs)?
+                .and_then(|a| Some(a.default?.into_token_stream()))
+                .unwrap_or_else(|| quote_spanned! { span=> Default::default });
 
-        quote_spanned! { span=> #(#cfg_attrs)* #name: #function_path() }
-    });
+            Ok(quote_spanned! { span=> #(#cfg_attrs)* #name: #function_path() })
+        })
+        .collect::<Result<Vec<_>>>()?;
 
-    quote! {
+    Ok(quote! {
         impl #impl_generics Default for #name #ty_generics #where_clause {
             fn default() -> Self {
                 Self { #(#initializers,)* }
             }
         }
-    }
+    })
 }
 
 #[cfg(test)]
