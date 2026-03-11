@@ -143,9 +143,14 @@ fn panic_hook_does_not_override_current_hook() {
     assert_eq!(metrics::panics::total().get(), 1);
 }
 
-#[with_test_telemetry(test)]
-fn error_log_is_emitted(ctx: TestTelemetryContext) {
-    foundations::panic::install_hook();
+#[with_test_telemetry(tokio::test)]
+async fn error_log_is_emitted(ctx: TestTelemetryContext) {
+    foundations::telemetry::init(TelemetryConfig {
+        service_info: &service_info!(),
+        settings: &Default::default(),
+        custom_server_routes: Default::default(),
+    })
+    .expect("telemetry is not already initialized");
 
     simulate_panic();
     assert_eq!(metrics::panics::total().get(), 1);
