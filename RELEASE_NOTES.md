@@ -1,5 +1,9 @@
 
+5.5.3
+- 2026-03-11 fix: don't initialize telemetry when constructing a TestTelemetryContext
+
 5.5.2
+- 2026-03-06 Release 5.5.2
 - 2026-03-06 Support `serde(default)` without explicit path
 
 5.5.1
