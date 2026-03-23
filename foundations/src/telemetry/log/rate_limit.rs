@@ -1,24 +1,19 @@
-use crate::telemetry::settings::LoggingSettings;
-use governor::clock::DefaultClock;
-use governor::middleware::NoOpMiddleware;
-use governor::state::{InMemoryState, NotKeyed};
-use governor::{Quota, RateLimiter};
-use slog::{Drain, Never, OwnedKVList, Record};
+use crate::telemetry::settings::RateLimitingSettings;
+use governor::{DefaultDirectRateLimiter, Quota, RateLimiter};
+use slog::{Drain, OwnedKVList, Record};
+use std::num::NonZeroU32;
 
-pub(crate) struct RateLimitingDrain<D: Drain<Err = Never>> {
+pub(crate) struct RateLimitingDrain<D> {
     inner: D,
-    rate_limiter: Option<RateLimiter<NotKeyed, InMemoryState, DefaultClock, NoOpMiddleware>>,
+    rate_limiter: Option<DefaultDirectRateLimiter>,
 }
 
-impl<D: Drain<Err = Never>> RateLimitingDrain<D> {
-    pub(crate) fn new(inner: D, settings: &LoggingSettings) -> Self {
-        let rate_limiter = if settings.rate_limit.enabled {
-            settings
-                .rate_limit
-                .max_events_per_second
-                .try_into()
-                .ok()
-                .map(|r| RateLimiter::direct(Quota::per_second(r)))
+impl<D: Drain> RateLimitingDrain<D> {
+    pub(crate) fn new(inner: D, settings: &RateLimitingSettings) -> Self {
+        let rate_limiter = if settings.enabled
+            && let Some(rate) = NonZeroU32::new(settings.max_events_per_second)
+        {
+            Some(RateLimiter::direct(Quota::per_second(rate)))
         } else {
             None
         };
@@ -30,21 +25,27 @@ impl<D: Drain<Err = Never>> RateLimitingDrain<D> {
     }
 }
 
-impl<D: Drain<Err = Never>> Drain for RateLimitingDrain<D> {
+impl<D: Drain> Drain for RateLimitingDrain<D> {
     type Ok = ();
     type Err = D::Err;
 
     fn log(&self, record: &Record, values: &OwnedKVList) -> Result<Self::Ok, Self::Err> {
-        let should_log = self
-            .rate_limiter
-            .as_ref()
-            .map(|r| r.check().is_ok())
-            .unwrap_or(true);
-
-        if should_log {
-            self.inner.log(record, values).map(|_| ())
-        } else {
-            Ok(())
+        if let Some(limiter) = &self.rate_limiter
+            && limiter.check().is_err()
+        {
+            return Ok(());
         }
+
+        self.inner.log(record, values).map(|_| ())
+    }
+
+    #[inline]
+    fn is_enabled(&self, level: slog::Level) -> bool {
+        Drain::is_enabled(&self.inner, level)
+    }
+
+    #[inline]
+    fn flush(&self) -> Result<(), slog::FlushError> {
+        Drain::flush(&self.inner)
     }
 }

@@ -1,5 +1,5 @@
 use super::field_dedup::FieldDedupFilterFactory;
-use super::field_filtering::FieldFilteringDrain;
+use super::field_filtering::{FieldFilteringDrain, FilterFactory};
 use super::field_redact::FieldRedactFilterFactory;
 use super::internal::{LoggerWithKvNestingTracking, SharedLog};
 
@@ -9,12 +9,12 @@ use crate::telemetry::log::log_volume::LogVolumeMetricsDrain;
 use crate::telemetry::log::rate_limit::RateLimitingDrain;
 use crate::telemetry::log::retry_writer::RetryPipeWriter;
 use crate::telemetry::scope::ScopeStack;
-use crate::telemetry::settings::{LogFormat, LogOutput, LoggingSettings};
+use crate::telemetry::settings::{LogFormat, LogOutput, LogVerbosity, LoggingSettings};
 use crate::{BootstrapResult, ServiceInfo};
 use crossbeam_utils::CachePadded;
 use slog::{
-    Discard, Drain, FnValue, Fuse, LevelFilter, Logger, Never, OwnedKV, SendSyncRefUnwindSafeDrain,
-    SendSyncRefUnwindSafeKV, SendSyncUnwindSafeDrain,
+    Discard, Drain, FnValue, Fuse, Logger, Never, OwnedKV, SendSyncRefUnwindSafeDrain,
+    SendSyncRefUnwindSafeKV,
 };
 use slog_async::{Async as AsyncDrain, AsyncGuard};
 use slog_json::{Json as JsonDrain, Json};
@@ -22,21 +22,18 @@ use slog_term::{FullFormat as TextDrain, PlainDecorator, TermDecorator};
 use std::fs::File;
 use std::io;
 use std::io::BufWriter;
-use std::panic::RefUnwindSafe;
 use std::sync::{Arc, LazyLock, OnceLock};
 
-type FilteredDrain<D> = LevelFilter<
-    FieldFilteringDrain<FieldRedactFilterFactory, FieldFilteringDrain<FieldDedupFilterFactory, D>>,
->;
+type SharedDrain = Arc<dyn SendSyncRefUnwindSafeDrain<Ok = (), Err = Never>>;
 
 // These singletons are accessed _very often_, and each access requires an atomic load to
 // ensure initialization. Make sure nobody else invalidates our cache lines.
 static HARNESS: CachePadded<OnceLock<LogHarness>> = CachePadded::new(OnceLock::new());
 
 static NOOP_HARNESS: CachePadded<LazyLock<LogHarness>> = CachePadded::new(LazyLock::new(|| {
-    let root_drain = Arc::new(Discard);
+    let root_drain = Arc::new(Discard) as Arc<_>;
     let noop_log =
-        LoggerWithKvNestingTracking::new(Logger::root(Arc::clone(&root_drain), slog::o!()));
+        LoggerWithKvNestingTracking::new(Logger::root_typed(Arc::clone(&root_drain), slog::o!()));
 
     LogHarness {
         root_drain,
@@ -48,7 +45,7 @@ static NOOP_HARNESS: CachePadded<LazyLock<LogHarness>> = CachePadded::new(LazyLo
 
 pub(crate) struct LogHarness {
     pub(crate) root_log: SharedLog,
-    pub(crate) root_drain: Arc<dyn SendSyncRefUnwindSafeDrain<Ok = (), Err = Never>>,
+    pub(crate) root_drain: SharedDrain,
     pub(crate) settings: LoggingSettings,
     pub(crate) log_scope_stack: ScopeStack<SharedLog>,
 }
@@ -126,7 +123,7 @@ pub(crate) fn init(
             .build_with_guard(),
     };
 
-    let root_drain = get_root_drain(settings, Arc::new(async_drain.fuse()));
+    let root_drain = wrap_root_drain(settings, async_drain.fuse());
     let root_kv = slog::o!(
         "module" => FnValue(|record| {
             format!("{}:{}", record.module(), record.line())
@@ -135,7 +132,7 @@ pub(crate) fn init(
         "pid" => std::process::id(),
     );
 
-    let root_log = build_log_with_drain(settings, root_kv, Arc::clone(&root_drain));
+    let root_log = build_log_with_drain(settings.verbosity, root_kv, Arc::clone(&root_drain));
     let harness = LogHarness {
         root_drain,
         root_log: Arc::new(parking_lot::RwLock::new(LoggerWithKvNestingTracking::new(
@@ -194,44 +191,31 @@ fn stderr_writer_without_line_buffering() -> BufWriter<File> {
     BufWriter::with_capacity(BUF_SIZE, stderr)
 }
 
-fn get_root_drain(
-    _settings: &LoggingSettings,
-    base_drain: Arc<dyn SendSyncRefUnwindSafeDrain<Err = Never, Ok = ()> + 'static>,
-) -> Arc<dyn SendSyncRefUnwindSafeDrain<Err = Never, Ok = ()> + 'static> {
-    #[cfg(feature = "metrics")]
-    if _settings.log_volume_metrics.enabled {
-        return Arc::new(LogVolumeMetricsDrain::new(base_drain));
-    }
-    base_drain
-}
-
-pub(crate) fn apply_filters_to_drain<D>(
-    drain: D,
-    settings: &LoggingSettings,
-) -> RateLimitingDrain<FilteredDrain<D>>
+pub(crate) fn wrap_root_drain<D>(settings: &LoggingSettings, drain: D) -> SharedDrain
 where
-    D: Drain<Ok = (), Err = Never> + 'static,
+    D: SendSyncRefUnwindSafeDrain<Ok = (), Err = Never> + 'static,
 {
-    let drain = FieldFilteringDrain::new(drain, FieldDedupFilterFactory);
-    let drain = FieldFilteringDrain::new(
-        drain,
-        FieldRedactFilterFactory::new(settings.redact_keys.clone()),
-    );
-    let drain = drain.filter_level(settings.verbosity.into());
+    let drain = drain
+        .field_filter(FieldDedupFilterFactory)
+        .field_filter(FieldRedactFilterFactory::new(settings.redact_keys.clone()));
 
-    RateLimitingDrain::new(drain, settings)
+    #[cfg(feature = "metrics")]
+    if settings.log_volume_metrics.enabled {
+        return drain.volume_metrics().rate_limit(settings).shared();
+    }
+
+    drain.rate_limit(settings).shared()
 }
 
-pub(crate) fn build_log_with_drain<D, K>(
-    settings: &LoggingSettings,
+pub(crate) fn build_log_with_drain<K>(
+    verbosity: LogVerbosity,
     kv: OwnedKV<K>,
-    drain: D,
+    drain: SharedDrain,
 ) -> Logger
 where
-    D: SendSyncUnwindSafeDrain<Ok = (), Err = Never> + RefUnwindSafe + 'static,
     K: SendSyncRefUnwindSafeKV + 'static,
 {
-    let drain = apply_filters_to_drain(drain, settings);
+    let drain = drain.filter_level(verbosity.into()).ignore_res();
     Logger::root(drain, kv)
 }
 
@@ -246,3 +230,33 @@ where
         .build()
         .fuse()
 }
+
+/// [`Drain`] extension trait for easier layering.
+trait DrainExt: Drain + Sized {
+    /// Layers a [`FieldFilteringDrain`] on top of the current drain.
+    fn field_filter<F: FilterFactory>(self, filter_factory: F) -> FieldFilteringDrain<F, Self> {
+        FieldFilteringDrain::new(self, filter_factory)
+    }
+
+    /// Layers a [`LogVolumeMetricsDrain`] on top of the current drain.
+    #[cfg(feature = "metrics")]
+    fn volume_metrics(self) -> LogVolumeMetricsDrain<Self> {
+        LogVolumeMetricsDrain::new(self)
+    }
+
+    /// Layers a [`RateLimitingDrain`] on top of the current drain.
+    fn rate_limit(self, settings: &LoggingSettings) -> RateLimitingDrain<Self> {
+        RateLimitingDrain::new(self, &settings.rate_limit)
+    }
+
+    /// Converts the current drain into an `Arc<dyn _>` for sharing between
+    /// multiple loggers.
+    fn shared(self) -> Arc<dyn SendSyncRefUnwindSafeDrain<Ok = Self::Ok, Err = Self::Err>>
+    where
+        Self: SendSyncRefUnwindSafeDrain + 'static,
+    {
+        Arc::new(self)
+    }
+}
+
+impl<D: Drain + Sized> DrainExt for D {}
