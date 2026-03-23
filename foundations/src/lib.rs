@@ -103,6 +103,8 @@ pub mod security;
 pub mod reexports_for_macros {
     #[cfg(feature = "tracing")]
     pub use cf_rustracing;
+    #[cfg(feature = "ratelimit")]
+    pub use governor;
     #[cfg(feature = "security")]
     pub use once_cell;
     #[cfg(feature = "metrics")]
@@ -152,6 +154,10 @@ pub type Error = Box<dyn std::error::Error + Send + Sync + 'static>;
 
 /// Operational (post-initialization) result that has [`Error`] as an error variant.
 pub type Result<T> = std::result::Result<T, Error>;
+
+#[cfg(feature = "ratelimit")]
+#[doc(inline)]
+pub use utils::ratelimit;
 
 /// Basic service information.
 #[derive(Clone, Debug, Default)]
