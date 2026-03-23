@@ -426,7 +426,7 @@ pub fn to_yaml_string(settings: &impl Settings) -> BootstrapResult<String> {
     const LIST_ITEM_PREFIX: &str = "- ";
 
     let mut doc_comments = Default::default();
-    let yaml = serde_yaml::to_string(settings)?;
+    let yaml = serde_saphyr::to_string(settings)?;
     let mut yaml_with_docs = String::new();
     let mut key_stack = vec![];
     let mut list_index = 0;
@@ -489,12 +489,9 @@ pub fn to_yaml_file(settings: &impl Settings, path: impl AsRef<Path>) -> Bootstr
 ///
 /// [YAML key references]: https://yaml.org/type/merge.html
 pub fn from_yaml_str<T: Settings>(data: impl AsRef<str>) -> BootstrapResult<T> {
-    let de = serde_yaml::Deserializer::from_str(data.as_ref());
-    let value: serde_yaml::Value = serde_path_to_error::deserialize(de)?;
-    // NOTE: merge dict key refs: https://yaml.org/type/merge.html
-    let value = yaml_merge_keys::merge_keys_serde(value)?;
-
-    Ok(serde_path_to_error::deserialize(value)?)
+    // NOTE: merge dict key refs handled natively by serde-saphyr
+    // https://yaml.org/type/merge.html
+    Ok(serde_saphyr::from_str(data.as_ref())?)
 }
 
 /// Parse settings from a YAML file.
