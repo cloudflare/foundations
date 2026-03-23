@@ -43,9 +43,6 @@ pub use self::testing::TestLogRecord;
 pub fn set_verbosity(verbosity: LogVerbosity) -> Result<()> {
     let harness = LogHarness::get();
 
-    let mut settings = harness.settings.clone();
-    settings.verbosity = verbosity;
-
     let current_log = current_log();
     let current_log_lock = current_log.write();
 
@@ -56,7 +53,7 @@ pub fn set_verbosity(verbosity: LogVerbosity) -> Result<()> {
     };
 
     let kv = OwnedKV(current_log_lock.list().clone());
-    current_log_lock.inner = build_log_with_drain(&settings, kv, Arc::clone(&harness.root_drain));
+    current_log_lock.inner = build_log_with_drain(verbosity, kv, Arc::clone(&harness.root_drain));
 
     Ok(())
 }

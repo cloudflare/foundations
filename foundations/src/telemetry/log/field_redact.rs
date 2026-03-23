@@ -25,6 +25,11 @@ impl FilterFactory for FieldRedactFilterFactory {
             redacted_keys: Arc::clone(&self.redacted_keys),
         }
     }
+
+    #[inline]
+    fn filter_active(&self, _: &slog::Record, _: &slog::OwnedKVList) -> bool {
+        !self.redacted_keys.is_empty()
+    }
 }
 
 pub(crate) struct FieldRedactFilter {

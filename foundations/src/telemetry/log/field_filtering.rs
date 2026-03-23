@@ -1,6 +1,4 @@
-use slog::{
-    BorrowedKV, Drain, KV, Key, Never, OwnedKV, OwnedKVList, Record, RecordStatic, Serializer,
-};
+use slog::{BorrowedKV, Drain, KV, Key, OwnedKV, OwnedKVList, Record, RecordStatic, Serializer};
 use std::fmt::Arguments;
 use std::panic::RefUnwindSafe;
 
@@ -12,6 +10,11 @@ pub(crate) trait FilterFactory: Clone {
     type Filter: Filter;
 
     fn create_filter(&self) -> Self::Filter;
+
+    /// Fast path to disable a [`Filter`] for a given record.
+    fn filter_active(&self, _record: &Record, _values: &OwnedKVList) -> bool {
+        true
+    }
 }
 
 pub(crate) struct FieldFilteringDrain<F, D> {
@@ -31,12 +34,16 @@ impl<F, D> FieldFilteringDrain<F, D> {
 impl<F, D> Drain for FieldFilteringDrain<F, D>
 where
     F: FilterFactory + Send + Sync + RefUnwindSafe + 'static,
-    D: Drain<Err = Never>,
+    D: Drain,
 {
-    type Ok = ();
-    type Err = Never;
+    type Ok = D::Ok;
+    type Err = D::Err;
 
     fn log(&self, record: &Record, values: &OwnedKVList) -> Result<Self::Ok, Self::Err> {
+        if !self.filter_factory.filter_active(record, values) {
+            return self.inner.log(record, values);
+        }
+
         let context_fields_kv = FieldFilteringKV {
             inner: values.clone(),
             filter_factory: self.filter_factory.clone(),
@@ -58,7 +65,16 @@ where
 
         self.inner
             .log(&filtered_record, &OwnedKV(context_fields_kv).into())
-            .map(|_| ())
+    }
+
+    #[inline]
+    fn is_enabled(&self, level: slog::Level) -> bool {
+        Drain::is_enabled(&self.inner, level)
+    }
+
+    #[inline]
+    fn flush(&self) -> Result<(), slog::FlushError> {
+        Drain::flush(&self.inner)
     }
 }
 
