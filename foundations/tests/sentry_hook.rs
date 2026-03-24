@@ -2,12 +2,11 @@
 //! These tests assume a separate process is used. Make sure you run with `cargo
 //! nextest run`.
 
-use std::sync::{
-    Arc,
-    atomic::{AtomicU64, Ordering},
-};
+use std::num::NonZeroU32;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
-use foundations::sentry::{Level, metrics};
+use foundations::sentry::{Level, SentrySettings, metrics};
 
 const TEST_DSN: &str = "https://example@sentry.io/123";
 
@@ -18,7 +17,7 @@ fn simulate_sentry_event() {
 #[test]
 fn sentry_hook_increments_metric_on_event() {
     let mut options = sentry::ClientOptions::default();
-    foundations::sentry::install_hook(&mut options);
+    foundations::sentry::install_hook_with_settings(&mut options, &Default::default());
 
     let _guard = sentry::init((TEST_DSN, options));
 
@@ -29,7 +28,7 @@ fn sentry_hook_increments_metric_on_event() {
 #[test]
 fn sentry_hook_metrics_are_well_formed() {
     let mut options = sentry::ClientOptions::default();
-    foundations::sentry::install_hook(&mut options);
+    foundations::sentry::install_hook_with_settings(&mut options, &Default::default());
 
     let _guard = sentry::init((TEST_DSN, options));
 
@@ -46,7 +45,7 @@ fn sentry_hook_metrics_are_well_formed() {
 #[test]
 fn sentry_hook_increments_metric_on_multiple_events() {
     let mut options = sentry::ClientOptions::default();
-    foundations::sentry::install_hook(&mut options);
+    foundations::sentry::install_hook_with_settings(&mut options, &Default::default());
 
     let _guard = sentry::init((TEST_DSN, options));
 
@@ -55,6 +54,25 @@ fn sentry_hook_increments_metric_on_multiple_events() {
     simulate_sentry_event();
 
     assert_eq!(metrics::sentry::events_total(Level::Error).get(), 3);
+}
+
+#[test]
+fn sentry_hook_rate_limits_events() {
+    let mut options = sentry::ClientOptions::default();
+    let settings = SentrySettings {
+        max_events_per_second: Some(NonZeroU32::new(1).unwrap()),
+    };
+    foundations::sentry::install_hook_with_settings(&mut options, &settings);
+
+    let _guard = sentry::init((TEST_DSN, options));
+
+    for _ in 0..3 {
+        simulate_sentry_event();
+    }
+
+    let num_events = metrics::sentry::events_total(Level::Error).get();
+    assert!(num_events >= 1);
+    assert!(num_events < 3);
 }
 
 #[test]
@@ -72,7 +90,7 @@ fn sentry_hook_preserves_previous_before_send_hook() {
     };
 
     // Now install foundations hook
-    foundations::sentry::install_hook(&mut options);
+    foundations::sentry::install_hook_with_settings(&mut options, &Default::default());
 
     let _guard = sentry::init((TEST_DSN, options));
 
@@ -87,7 +105,7 @@ fn sentry_hook_preserves_previous_before_send_hook() {
 #[test]
 fn sentry_hook_works_across_threads() {
     let mut options = sentry::ClientOptions::default();
-    foundations::sentry::install_hook(&mut options);
+    foundations::sentry::install_hook_with_settings(&mut options, &Default::default());
 
     let _guard = sentry::init((TEST_DSN, options));
 
@@ -106,7 +124,7 @@ fn sentry_hook_works_across_threads() {
 #[test]
 fn sentry_hook_works_in_tokio_tasks() {
     let mut options = sentry::ClientOptions::default();
-    foundations::sentry::install_hook(&mut options);
+    foundations::sentry::install_hook_with_settings(&mut options, &Default::default());
 
     let _guard = sentry::init((TEST_DSN, options));
 
@@ -135,7 +153,7 @@ fn cloned_client_options_have_hook_installed() {
     use sentry::{Client, Hub, Scope};
 
     let mut options = sentry::ClientOptions::default();
-    foundations::sentry::install_hook(&mut options);
+    foundations::sentry::install_hook_with_settings(&mut options, &Default::default());
 
     // Initialize the global client
     let _guard = sentry::init((TEST_DSN, options));
