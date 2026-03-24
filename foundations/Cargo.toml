@@ -105,6 +105,7 @@ tokio-runtime-metrics = [
 
 # Enables logging functionality.
 logging = [
+    "ratelimit",
     "dep:governor",
     "dep:parking_lot",
     "dep:slog-async",
