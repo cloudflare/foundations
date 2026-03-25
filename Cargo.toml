@@ -101,7 +101,10 @@ sentry = { version = "0.36", default-features = false, features = [
 ] }
 
 # needed for minver
+ahash = "0.8.7"
+annotate-snippets = "0.12.13"
 async-stream = "0.3"
+encoding_rs_io = "0.1.2"
 local-ip-address = "0.6.5"
 lock_api = "0.4.7"
 log = "0.4.27"

@@ -234,9 +234,13 @@ tikv-jemallocator = { workspace = true, optional = true, features = [
     "background_threads",
 ] }
 sentry-core = { workspace = true, optional = true }
+pin-project-lite = { workspace = true }
 
 # needed for minver purposes
+ahash = { workspace = true, optional = true }
+annotate-snippets = { workspace = true, optional = true }
 async-stream = { workspace = true, optional = true }
+encoding_rs_io = { workspace = true, optional = true }
 local-ip-address = { workspace = true, optional = true }
 lock_api = { workspace = true, optional = true }
 log = { workspace = true, optional = true }
@@ -244,7 +248,6 @@ parking_lot_core = { workspace = true, optional = true }
 regex = { workspace = true, optional = true }
 thiserror = { workspace = true, optional = true }
 tower = { workspace = true, optional = true }
-pin-project-lite = { workspace = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 tikv-jemalloc-ctl = { workspace = true, optional = true, features = [
