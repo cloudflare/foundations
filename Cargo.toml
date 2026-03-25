@@ -76,7 +76,7 @@ syn = "2"
 serde = "1.0.198"
 serde_json = "1.0"
 serde_path_to_error = "0.1.17"
-serde-saphyr = "0.0.22"
+serde-saphyr = { version = "0.0.22", default-features = false }
 serde_with = "3.3"
 slab = "0.4.7"
 slog = "2.8"
