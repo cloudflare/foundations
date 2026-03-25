@@ -1,4 +1,3 @@
----
 # Proxy address.
 # Using the option multiple times will specify multiple addresses for the proxy.
 # Use `systemd:` prefix to specify systemd as a listen source, and
@@ -11,7 +10,7 @@ egress:
     # Path to pipefitter's unix socket, for routing origin TCP connections through Argo.
     #
     # *NOTE:* Pipefitter is disabled if not specified.
-    addr: ~
+    addr: null
 # TLS interception
 tls_interception:
   # Specifies whether TLS interception should be enabled for the endpoint.
