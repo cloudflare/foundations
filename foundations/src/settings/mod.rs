@@ -425,8 +425,16 @@ pub trait Settings: Default + Clone + Serialize + DeserializeOwned + Debug + 'st
 pub fn to_yaml_string(settings: &impl Settings) -> BootstrapResult<String> {
     const LIST_ITEM_PREFIX: &str = "- ";
 
+    let saphyr_settings = serde_saphyr::SerializerOptions {
+        empty_as_braces: true,
+        indent_step: 2,
+        // Need this so the truncate calculation below doesn't break
+        compact_list_indent: false,
+        ..Default::default()
+    };
+    let yaml = serde_saphyr::to_string_with_options(settings, saphyr_settings)?;
+
     let mut doc_comments = Default::default();
-    let yaml = serde_saphyr::to_string(settings)?;
     let mut yaml_with_docs = String::new();
     let mut key_stack = vec![];
     let mut list_index = 0;
@@ -438,9 +446,8 @@ pub fn to_yaml_string(settings: &impl Settings) -> BootstrapResult<String> {
         let mut spaces = line.find(|c: char| !c.is_whitespace()).unwrap_or(0);
 
         // This is where we remove the keys we have just handled, by truncating the length
-        // of the key stack based on how much indentation the current line got. serde_yaml
-        // always uses 2 spaces indents, so we know we need to truncate by the amount of
-        // spaces divided by 2.
+        // of the key stack based on how much indentation the current line got. We hardcode
+        // an indent_step of 2 spaces, so we know we need to truncate by `spaces / 2`.
         key_stack.truncate(spaces / 2);
 
         if let Some(colon_idx) = line.find(':') {
@@ -489,9 +496,33 @@ pub fn to_yaml_file(settings: &impl Settings, path: impl AsRef<Path>) -> Bootstr
 ///
 /// [YAML key references]: https://yaml.org/type/merge.html
 pub fn from_yaml_str<T: Settings>(data: impl AsRef<str>) -> BootstrapResult<T> {
+    let saphyr_settings = serde_saphyr::Options {
+        // Prevent leakage of secrets from the raw document in error messages
+        with_snippet: false,
+        ..Default::default()
+    };
+
     // NOTE: merge dict key refs handled natively by serde-saphyr
-    // https://yaml.org/type/merge.html
-    Ok(serde_saphyr::from_str(data.as_ref())?)
+    let mut path_res = None;
+    let saphyr_res = serde_saphyr::with_deserializer_from_str_with_options(
+        data.as_ref(),
+        saphyr_settings,
+        |de| {
+            // Converting serde_path_to_error::Error to serde_saphyr::Error here would
+            // lose type structure (to_string()), so instead we use this slight hack.
+            path_res = Some(serde_path_to_error::deserialize(de));
+            Ok(())
+        },
+    );
+
+    match (path_res, saphyr_res) {
+        // serde_path_to_error::Error takes precedence if set
+        (Some(Err(e)), _) => Err(e.into()),
+        (_, Err(e)) => Err(e.into()),
+        // Both results are Ok(_), return the parsed value
+        (Some(Ok(v)), _) => Ok(v),
+        (None, Ok(_)) => unreachable!("path_res must be set if serde_saphyr returns Ok"),
+    }
 }
 
 /// Parse settings from a YAML file.
