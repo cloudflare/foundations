@@ -1,11 +1,11 @@
+use crate::ratelimit::{DirectRateLimiter, Quota, StaticQuantaClock};
 use crate::telemetry::settings::RateLimitingSettings;
-use governor::{DefaultDirectRateLimiter, Quota, RateLimiter};
 use slog::{Drain, OwnedKVList, Record};
 use std::num::NonZeroU32;
 
 pub(crate) struct RateLimitingDrain<D> {
     inner: D,
-    rate_limiter: Option<DefaultDirectRateLimiter>,
+    rate_limiter: Option<DirectRateLimiter>,
 }
 
 impl<D: Drain> RateLimitingDrain<D> {
@@ -13,7 +13,10 @@ impl<D: Drain> RateLimitingDrain<D> {
         let rate_limiter = if settings.enabled
             && let Some(rate) = NonZeroU32::new(settings.max_events_per_second)
         {
-            Some(RateLimiter::direct(Quota::per_second(rate)))
+            Some(DirectRateLimiter::direct_with_clock(
+                Quota::per_second(rate),
+                StaticQuantaClock::default(),
+            ))
         } else {
             None
         };

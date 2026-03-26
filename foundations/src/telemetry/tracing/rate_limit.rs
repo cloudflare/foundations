@@ -1,16 +1,14 @@
+use crate::ratelimit::{DirectRateLimiter, Quota, StaticQuantaClock};
 use crate::telemetry::settings::ActiveSamplingSettings;
 use cf_rustracing::sampler::Sampler;
 use cf_rustracing::span::CandidateSpan;
 use cf_rustracing::{Result, sampler::ProbabilisticSampler};
-use governor::clock::DefaultClock;
-use governor::middleware::NoOpMiddleware;
-use governor::state::{InMemoryState, NotKeyed};
-use governor::{Quota, RateLimiter};
+use std::num::NonZeroU32;
 
 #[derive(Debug)]
 pub(crate) struct RateLimitingProbabilisticSampler {
     inner: ProbabilisticSampler,
-    rate_limiter: Option<RateLimiter<NotKeyed, InMemoryState, DefaultClock, NoOpMiddleware>>,
+    rate_limiter: Option<DirectRateLimiter>,
 }
 
 impl Default for RateLimitingProbabilisticSampler {
@@ -27,13 +25,13 @@ impl RateLimitingProbabilisticSampler {
     /// If `sampling_rate` is not in the range `0.0...1.0`,
     /// it will return an error with the kind `ErrorKind::InvalidInput`.
     pub(crate) fn new(settings: &ActiveSamplingSettings) -> Result<Self> {
-        let rate_limiter = if settings.rate_limit.enabled {
-            settings
-                .rate_limit
-                .max_events_per_second
-                .try_into()
-                .ok()
-                .map(|r| RateLimiter::direct(Quota::per_second(r)))
+        let rate_limiter = if settings.rate_limit.enabled
+            && let Some(rate) = NonZeroU32::new(settings.rate_limit.max_events_per_second)
+        {
+            Some(DirectRateLimiter::direct_with_clock(
+                Quota::per_second(rate),
+                StaticQuantaClock::default(),
+            ))
         } else {
             None
         };

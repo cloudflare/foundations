@@ -1,6 +1,7 @@
 //! Sentry hook implementation for tracking sentry events and rate-limiting them.
 
 use super::SentrySettings;
+use crate::ratelimit::StaticQuantaClock;
 use governor::{Quota, RateLimiter};
 use std::borrow::Cow;
 use std::num::NonZeroU32;
@@ -34,9 +35,9 @@ pub fn install_hook_with_settings(
     options: &mut sentry_core::ClientOptions,
     settings: &SentrySettings,
 ) {
-    let rate_limiter = settings
-        .max_events_per_second
-        .map(|rl| RateLimiter::<Fingerprint, _, _>::dashmap(Quota::per_second(rl)));
+    let rate_limiter = settings.max_events_per_second.map(|rl| {
+        RateLimiter::dashmap_with_clock(Quota::per_second(rl), StaticQuantaClock::default())
+    });
 
     let previous = options.before_send.take();
 
