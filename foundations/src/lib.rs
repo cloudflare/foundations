@@ -34,6 +34,7 @@
 //! - **metrics**: Enables metrics functionality.
 //! - **logging**: Enables logging functionality.
 //! - **tracing**: Enables distributed tracing functionality.
+//! - **ratelimit**: Enables helpers to simplify rate-limiting your code.
 //! - **testing**: Enables testing-related functionality.
 //! - **security**: Enables security features. Available only on Linux (x86_64, aarch64) with the `libclang-dev` package installed (for bindgen).
 //! - **jemalloc**: Enables [jemalloc] memory allocator which is known to perform much better than
