@@ -107,7 +107,6 @@ tokio-runtime-metrics = [
 # Enables logging functionality.
 logging = [
     "ratelimit",
-    "dep:governor",
     "dep:parking_lot",
     "dep:slog-async",
     "dep:slog-json",
@@ -121,8 +120,8 @@ logging = [
 
 # Enables distributed tracing functionality.
 tracing = [
+    "ratelimit",
     "dep:foundations-macros",
-    "dep:governor",
     "dep:parking_lot",
     "dep:rand",
     "dep:cf-rustracing-jaeger",
