@@ -75,7 +75,7 @@ telemetry = [
 ]
 
 # Enables a subset of telemetry features suitable for usage in clients.
-client-telemetry = ["logging", "metrics", "tracing"]
+client-telemetry = ["logging", "metrics", "tracing", "ratelimit"]
 
 # Enables the telemetry server.
 telemetry-server = [
@@ -104,6 +104,7 @@ tokio-runtime-metrics = [
 
 # Enables logging functionality.
 logging = [
+    "ratelimit",
     "dep:governor",
     "dep:parking_lot",
     "dep:slog-async",
@@ -170,6 +171,9 @@ cli = ["settings", "dep:clap"]
 
 # Enables testing-related functionality.
 testing = ["dep:foundations-macros"]
+
+# Enables the ratelimit! utility macro.
+ratelimit = ["dep:governor"]
 
 # Enables panicking when too much nesting is reached on the logger
 panic_on_too_much_logger_nesting = []

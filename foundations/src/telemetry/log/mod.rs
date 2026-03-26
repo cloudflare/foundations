@@ -178,6 +178,11 @@ macro_rules! __add_fields {
 /// // and fields by `;`.
 /// log::error!("Answer: {}", 42; "foo" => "bar", "baz" => 1337);
 ///
+/// // Log messages can be rate-limited with an extra keyword
+/// for _ in 0..2 {
+///     log::error!(ratelimit=1/h; "Answer: {}", 42; "foo" => "bar");
+/// }
+///
 /// assert_eq!(*ctx.log_records(), &[
 ///     TestLogRecord {
 ///         level: Level::Error,
@@ -196,6 +201,13 @@ macro_rules! __add_fields {
 ///             ("baz".into(), "1337".into()),
 ///             ("foo".into(), "bar".into())
 ///         ]
+///     },
+///     TestLogRecord {
+///         level: Level::Error,
+///         message: "Answer: 42".into(),
+///         fields: vec![
+///             ("foo".into(), "bar".into())
+///         ]
 ///     }
 /// ]);
 /// ```
@@ -204,6 +216,14 @@ macro_rules! __add_fields {
 #[macro_export]
 #[doc(hidden)]
 macro_rules! __error {
+    ( ratelimit=$limit:literal / $unit:tt ; $($args:tt)+ ) => {
+        $crate::ratelimit!($limit / $unit;
+            $crate::reexports_for_macros::slog::error!(
+                $crate::telemetry::log::internal::current_log().read(),
+                $($args)+
+            )
+        );
+    };
     ( $($args:tt)+ ) => {
         $crate::reexports_for_macros::slog::error!(
             $crate::telemetry::log::internal::current_log().read(),
@@ -240,6 +260,11 @@ macro_rules! __error {
 /// // and fields by `;`.
 /// log::warn!("Answer: {}", 42; "foo" => "bar", "baz" => 1337);
 ///
+/// // Log messages can be rate-limited with an extra keyword
+/// for _ in 0..2 {
+///     log::warn!(ratelimit=1/h; "Answer: {}", 42; "foo" => "bar");
+/// }
+///
 /// assert_eq!(*ctx.log_records(), &[
 ///     TestLogRecord {
 ///         level: Level::Warning,
@@ -258,6 +283,13 @@ macro_rules! __error {
 ///             ("baz".into(), "1337".into()),
 ///             ("foo".into(), "bar".into())
 ///         ]
+///     },
+///     TestLogRecord {
+///         level: Level::Warning,
+///         message: "Answer: 42".into(),
+///         fields: vec![
+///             ("foo".into(), "bar".into())
+///         ]
 ///     }
 /// ]);
 /// ```
@@ -266,6 +298,14 @@ macro_rules! __error {
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __warn {
+    ( ratelimit=$limit:literal / $unit:tt ; $($args:tt)+ ) => {
+        $crate::ratelimit!($limit / $unit;
+            $crate::reexports_for_macros::slog::warn!(
+                $crate::telemetry::log::internal::current_log().read(),
+                $($args)+
+            )
+        );
+    };
     ( $($args:tt)+ ) => {
         $crate::reexports_for_macros::slog::warn!(
             $crate::telemetry::log::internal::current_log().read(),
@@ -302,6 +342,11 @@ macro_rules! __warn {
 /// // and fields by `;`.
 /// log::debug!("Answer: {}", 42; "foo" => "bar", "baz" => 1337);
 ///
+/// // Log messages can be rate-limited with an extra keyword
+/// for _ in 0..2 {
+///     log::debug!(ratelimit=1/h; "Answer: {}", 42; "foo" => "bar");
+/// }
+///
 /// assert_eq!(*ctx.log_records(), &[
 ///     TestLogRecord {
 ///         level: Level::Debug,
@@ -320,6 +365,13 @@ macro_rules! __warn {
 ///             ("baz".into(), "1337".into()),
 ///             ("foo".into(), "bar".into())
 ///         ]
+///     },
+///     TestLogRecord {
+///         level: Level::Debug,
+///         message: "Answer: 42".into(),
+///         fields: vec![
+///             ("foo".into(), "bar".into())
+///         ]
 ///     }
 /// ]);
 /// ```
@@ -328,6 +380,14 @@ macro_rules! __warn {
 #[macro_export]
 #[doc(hidden)]
 macro_rules! __debug {
+    ( ratelimit=$limit:literal / $unit:tt ; $($args:tt)+ ) => {
+        $crate::ratelimit!($limit / $unit;
+            $crate::reexports_for_macros::slog::debug!(
+                $crate::telemetry::log::internal::current_log().read(),
+                $($args)+
+            )
+        );
+    };
     ( $($args:tt)+ ) => {
         $crate::reexports_for_macros::slog::debug!(
             $crate::telemetry::log::internal::current_log().read(),
@@ -364,6 +424,11 @@ macro_rules! __debug {
 /// // and fields by `;`.
 /// log::info!("Answer: {}", 42; "foo" => "bar", "baz" => 1337);
 ///
+/// // Log messages can be rate-limited with an extra keyword
+/// for _ in 0..2 {
+///     log::info!(ratelimit=1/h; "Answer: {}", 42; "foo" => "bar");
+/// }
+///
 /// assert_eq!(*ctx.log_records(), &[
 ///     TestLogRecord {
 ///         level: Level::Info,
@@ -382,6 +447,13 @@ macro_rules! __debug {
 ///             ("baz".into(), "1337".into()),
 ///             ("foo".into(), "bar".into())
 ///         ]
+///     },
+///     TestLogRecord {
+///         level: Level::Info,
+///         message: "Answer: 42".into(),
+///         fields: vec![
+///             ("foo".into(), "bar".into())
+///         ]
 ///     }
 /// ]);
 /// ```
@@ -390,6 +462,14 @@ macro_rules! __debug {
 #[macro_export]
 #[doc(hidden)]
 macro_rules! __info {
+    ( ratelimit=$limit:literal / $unit:tt ; $($args:tt)+ ) => {
+        $crate::ratelimit!($limit / $unit;
+            $crate::reexports_for_macros::slog::info!(
+                $crate::telemetry::log::internal::current_log().read(),
+                $($args)+
+            )
+        );
+    };
     ( $($args:tt)+ ) => {
         $crate::reexports_for_macros::slog::info!(
             $crate::telemetry::log::internal::current_log().read(),
@@ -426,6 +506,11 @@ macro_rules! __info {
 /// // and fields by `;`.
 /// log::trace!("Answer: {}", 42; "foo" => "bar", "baz" => 1337);
 ///
+/// // Log messages can be rate-limited with an extra keyword
+/// for _ in 0..2 {
+///     log::trace!(ratelimit=1/h; "Answer: {}", 42; "foo" => "bar");
+/// }
+///
 /// assert_eq!(*ctx.log_records(), &[
 ///     TestLogRecord {
 ///         level: Level::Trace,
@@ -444,6 +529,13 @@ macro_rules! __info {
 ///             ("baz".into(), "1337".into()),
 ///             ("foo".into(), "bar".into())
 ///         ]
+///     },
+///     TestLogRecord {
+///         level: Level::Trace,
+///         message: "Answer: 42".into(),
+///         fields: vec![
+///             ("foo".into(), "bar".into())
+///         ]
 ///     }
 /// ]);
 /// ```
@@ -452,6 +544,14 @@ macro_rules! __info {
 #[macro_export]
 #[doc(hidden)]
 macro_rules! __trace {
+    ( ratelimit=$limit:literal / $unit:tt ; $($args:tt)+ ) => {
+        $crate::ratelimit!($limit / $unit;
+            $crate::reexports_for_macros::slog::trace!(
+                $crate::telemetry::log::internal::current_log().read(),
+                $($args)+
+            )
+        );
+    };
     ( $($args:tt)+ ) => {
         $crate::reexports_for_macros::slog::trace!(
             $crate::telemetry::log::internal::current_log().read(),
