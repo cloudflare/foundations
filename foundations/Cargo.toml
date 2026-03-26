@@ -176,7 +176,7 @@ cli = ["settings", "dep:clap"]
 testing = ["dep:foundations-macros"]
 
 # Enables the ratelimit! utility macro.
-ratelimit = ["dep:governor"]
+ratelimit = ["dep:governor", "dep:crossbeam-utils"]
 
 # Enables panicking when a frozen logger is mutated
 panic_on_frozen_logger = []
