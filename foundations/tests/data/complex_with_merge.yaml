@@ -12,14 +12,11 @@ egress:
     # *NOTE:* Pipefitter is disabled if not specified.
     addr: null
 # TLS interception
-tls_interception:
+tls_interception: &tls
   # Specifies whether TLS interception should be enabled for the endpoint.
-  enabled: false
+  enabled: true
 # Endpoints TLS
 tls:
-  # Specifies whether TLS should be enabled for the endpoint.
-  enabled: false
+  <<: *tls
   # mTLS
-  mtls:
-    # Specifies whether mTLS should be enabled for the endpoint.
-    enabled: false
+  mtls: *tls

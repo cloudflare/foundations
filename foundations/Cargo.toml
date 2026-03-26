@@ -55,9 +55,8 @@ server-client-common-default = ["settings", "client-telemetry", "testing"]
 settings = [
     "dep:foundations-macros",
     "dep:serde_path_to_error",
-    "dep:serde_yaml",
+    "dep:serde-saphyr",
     "dep:serde",
-    "dep:yaml-merge-keys",
     "dep:indexmap",
 ]
 
@@ -220,7 +219,7 @@ rand = { workspace = true, optional = true }
 serde = { workspace = true, optional = true, features = ["derive", "rc"] }
 serde_json = { workspace = true, optional = true }
 serde_path_to_error = { workspace = true, optional = true }
-serde_yaml = { workspace = true, optional = true }
+serde-saphyr = { workspace = true, optional = true }
 serde_with = { workspace = true, optional = true }
 slab = { workspace = true, optional = true }
 slog = { workspace = true, optional = true, features = ["max_level_trace"] }
@@ -238,13 +237,14 @@ tikv-jemallocator = { workspace = true, optional = true, features = [
     "stats",
     "background_threads",
 ] }
-yaml-merge-keys = { workspace = true, optional = true, features = [
-    "serde_yaml",
-] }
 sentry-core = { workspace = true, optional = true }
+pin-project-lite = { workspace = true }
 
 # needed for minver purposes
+ahash = { workspace = true, optional = true }
+annotate-snippets = { workspace = true, optional = true }
 async-stream = { workspace = true, optional = true }
+encoding_rs_io = { workspace = true, optional = true }
 local-ip-address = { workspace = true, optional = true }
 lock_api = { workspace = true, optional = true }
 log = { workspace = true, optional = true }
@@ -252,7 +252,6 @@ parking_lot_core = { workspace = true, optional = true }
 regex = { workspace = true, optional = true }
 thiserror = { workspace = true, optional = true }
 tower = { workspace = true, optional = true }
-pin-project-lite = { workspace = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 tikv-jemalloc-ctl = { workspace = true, optional = true, features = [

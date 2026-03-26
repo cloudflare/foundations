@@ -76,7 +76,7 @@ syn = "2"
 serde = "1.0.198"
 serde_json = "1.0"
 serde_path_to_error = "0.1.17"
-serde_yaml = "0.8.26"
+serde-saphyr = { version = "0.0.22", default-features = false }
 serde_with = "3.3"
 slab = "0.4.7"
 slog = "2.8"
@@ -91,7 +91,6 @@ tikv-jemalloc-ctl = "0.6"
 tower-service = "0.3"
 tracing-slog = "0.3.0"
 tracing-subscriber = "0.3"
-yaml-merge-keys = { version = "0.5", features = ["serde_yaml"] }
 sentry-core = { version = "0.36", default-features = false }
 sentry = { version = "0.36", default-features = false, features = [
     "backtrace",
@@ -102,7 +101,10 @@ sentry = { version = "0.36", default-features = false, features = [
 ] }
 
 # needed for minver
+ahash = "0.8.7"
+annotate-snippets = "0.12.13"
 async-stream = "0.3"
+encoding_rs_io = "0.1.2"
 local-ip-address = "0.6.5"
 lock_api = "0.4.7"
 log = "0.4.27"

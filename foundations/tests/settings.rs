@@ -1,6 +1,6 @@
 use foundations::settings::collections::Map;
 use foundations::settings::net::SocketAddr;
-use foundations::settings::{settings, to_yaml_string};
+use foundations::settings::{from_file, from_yaml_str, settings, to_yaml_string};
 
 #[settings]
 struct NestedStruct {
@@ -235,7 +235,7 @@ fn defaults() {
     assert_eq!(simple_struct.b, 0xb);
     assert_eq!(simple_struct.c, 0);
 
-    let nested_struct = serde_yaml::from_str::<SimpleStruct>("---\nx: 1").unwrap();
+    let nested_struct = from_yaml_str::<SimpleStruct>("---\nx: 1").unwrap();
 
     assert_eq!(nested_struct.inner.b, 0xb);
     assert_eq!(nested_struct.x, 1);
@@ -294,4 +294,32 @@ fn vec() {
     };
 
     assert_ser_eq!(s, "data/with_vec.yaml");
+}
+
+#[test]
+fn parse() {
+    const INVALID_YAML_WITH_SECRET: &str = r#"
+inner:
+  a: 38682
+  b: 123_MY_SECRET_KEY
+  c: 15
+x: 1
+    "#;
+
+    // Verify that we don't leak secrets in error messages
+    let err = from_yaml_str::<SimpleStruct>(INVALID_YAML_WITH_SECRET)
+        .expect_err("parsing invalid YAML should fail")
+        .to_string();
+    assert!(
+        !err.contains("MY_SECRET_KEY"),
+        "YAML error exposes secret payload:\n\n{err}",
+    );
+
+    // Verify that YAML anchors and merge expressions resolve correctly
+    let complex: ProxySettings = from_file("tests/data/complex_with_merge.yaml").unwrap();
+    assert_eq!(&complex.addr, &[] as &[String]);
+    assert!(complex.egress.pipefitter.addr.is_none());
+    assert!(complex.tls_interception.enabled);
+    assert!(complex.tls.enabled);
+    assert!(complex.tls.mtls.enabled);
 }
