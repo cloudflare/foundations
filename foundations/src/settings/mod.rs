@@ -143,6 +143,7 @@
 mod basic_impls;
 
 pub mod collections;
+pub mod external;
 pub mod net;
 pub mod secret;
 
