@@ -144,6 +144,7 @@ mod basic_impls;
 
 pub mod collections;
 pub mod net;
+pub mod secret;
 
 use crate::BootstrapResult;
 use serde::Serialize;
