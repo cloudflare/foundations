@@ -59,6 +59,7 @@ settings = [
     "dep:serde-saphyr",
     "dep:serde",
     "dep:indexmap",
+    "dep:zeroize",
 ]
 
 # Whether settings structs annotated with `#[settings]` will, by default, error on unknown fields.
@@ -245,6 +246,7 @@ tikv-jemallocator = { workspace = true, optional = true, features = [
 ] }
 sentry-core = { workspace = true, optional = true }
 pin-project-lite = { workspace = true }
+zeroize = { workspace = true, optional = true }
 
 # needed for minver purposes
 ahash = { workspace = true, optional = true }
