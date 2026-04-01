@@ -21,6 +21,9 @@ use tokio::sync::watch;
 
 mod router;
 
+#[cfg(feature = "memory-profiling")]
+mod pprof_symbol;
+
 use router::Router;
 
 enum TelemetryStream {

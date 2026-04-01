@@ -1,5 +1,7 @@
 #[cfg(all(target_os = "linux", feature = "memory-profiling"))]
 use super::memory_profiling;
+#[cfg(feature = "memory-profiling")]
+use super::pprof_symbol;
 #[cfg(feature = "metrics")]
 use crate::telemetry::metrics;
 use crate::telemetry::reexports::http_body_util::{BodyExt, Empty, Full, combinators::BoxBody};
@@ -103,6 +105,21 @@ impl RouteMap {
                     into_response(
                         "text/plain; charset=utf-8",
                         memory_profiling::heap_stats(settings).await,
+                    )
+                }
+                .boxed()
+            }),
+        });
+
+        #[cfg(feature = "memory-profiling")]
+        self.set(TelemetryServerRoute {
+            path: "/pprof/symbol".into(),
+            methods: vec![Method::GET, Method::POST],
+            handler: Box::new(|req, _| {
+                async move {
+                    into_response(
+                        "text/plain; charset=utf-8",
+                        pprof_symbol::pprof_symbol(req).await,
                     )
                 }
                 .boxed()
