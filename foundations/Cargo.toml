@@ -152,6 +152,7 @@ metrics = [
 
 # Enables memory profiling features (require `jemalloc` feature to be enabled)
 memory-profiling = [
+    "dep:backtrace",
     "dep:once_cell",
     "dep:tikv-jemalloc-ctl",
     "dep:tempfile",
@@ -194,6 +195,7 @@ workspace = true
 
 [dependencies]
 anyhow = { workspace = true, features = ["backtrace", "std"] }
+backtrace = { workspace = true, optional = true }
 foundations-macros = { workspace = true, optional = true, default-features = false }
 cf-rustracing = { workspace = true, optional = true }
 cf-rustracing-jaeger = { workspace = true, optional = true }
@@ -264,6 +266,7 @@ neli = { workspace = true, optional = true }
 neli-proc-macros = { workspace = true, optional = true }
 
 [dev-dependencies]
+backtrace = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true, features = ["rc"] }
 tempfile = { workspace = true }
