@@ -57,7 +57,7 @@ pub(crate) struct SharedSpan {
     pub(crate) inner: SharedSpanHandle,
     // NOTE: store sampling flag separately, so we don't need to acquire lock
     // every time we need to check the flag.
-    is_sampled: bool,
+    pub(crate) is_sampled: bool,
 }
 
 impl From<Span> for SharedSpan {
