@@ -232,9 +232,17 @@ pub struct StartTraceOptions {
     pub override_sampling_ratio: Option<f64>,
 }
 
+/// Determines whether the current span is sampled or not.
+///
+/// This is useful to do a cheap check before commencing more expensive work,
+/// for example to set up span tags.
+pub fn span_is_sampled() -> bool {
+    matches!(current_span(), Some(span) if span.is_sampled)
+}
+
 /// Returns a trace ID of the current span.
 ///
-/// Returns `None` if the span is not sampled and don't have associated trace.
+/// Returns `None` if the span is not sampled and doesn't have associated trace.
 pub fn trace_id() -> Option<String> {
     current_span()?.inner.with_read(span_trace_id)
 }
