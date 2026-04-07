@@ -1,6 +1,7 @@
+use foundations::telemetry::TelemetryContext;
 use foundations::telemetry::TestTelemetryContext;
 use foundations::telemetry::log::internal::LoggerWithKvNestingTracking;
-use foundations::telemetry::log::{add_fields, set_verbosity, warn};
+use foundations::telemetry::log::{add_fields, freeze, is_frozen, set_verbosity, unfreeze, warn};
 use foundations::telemetry::settings::{LogVerbosity, LoggingSettings, RateLimitingSettings};
 use foundations_macros::with_test_telemetry;
 
@@ -72,6 +73,71 @@ fn test_not_exceed_limit_kv_nesting(_ctx: TestTelemetryContext) {
     for _ in 0..((LoggerWithKvNestingTracking::MAX_NESTING / 2) - 5) {
         add_fields! { "key1" => "hello" }
         set_verbosity(LogVerbosity::Info).expect("set_verbosity");
+    }
+}
+
+// Tests for freeze/unfreeze/is_frozen
+
+// Verify that is_frozen() tracks the frozen state correctly and that
+// unfreeze() re-enables mutations without panicking.
+#[with_test_telemetry(test)]
+fn test_is_frozen(_ctx: TestTelemetryContext) {
+    assert!(!is_frozen(), "logger should start unfrozen");
+
+    // mutating the log at this point should be OK
+    add_fields! { "request_id" => "abc123" }
+    set_verbosity(LogVerbosity::Debug).expect("set_verbosity on logger creation");
+
+    freeze();
+    assert!(is_frozen());
+
+    unfreeze();
+
+    // mutating the log at this point should be OK again
+    add_fields! { "response_id" => "abc123" }
+    set_verbosity(LogVerbosity::Info).expect("set_verbosity after unfreeze");
+
+    assert!(!is_frozen());
+}
+
+// Verify that a forked logger starts unfrozen even when forked from a frozen parent.
+#[with_test_telemetry(test)]
+fn test_fork_resets_frozen(_ctx: TestTelemetryContext) {
+    freeze();
+    assert!(is_frozen());
+
+    let forked_ctx = TelemetryContext::current().with_forked_log();
+    let _scope = forked_ctx.scope();
+
+    assert!(
+        !is_frozen(),
+        "forked logger should start unfrozen regardless of parent's frozen state"
+    );
+
+    // Mutations on the fork should work without panicking.
+    add_fields! { "request_id" => "abc123" }
+    set_verbosity(LogVerbosity::Info).expect("set_verbosity on forked logger");
+}
+
+// With the panic_on_frozen_logger feature, add_fields! on a frozen logger must panic with the
+// expected message.
+#[with_test_telemetry(test)]
+fn test_frozen_logger_add_fields_panics(_ctx: TestTelemetryContext) {
+    freeze();
+
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        add_fields! { "key" => "value" }
+    })) {
+        Ok(_) => panic!("expected a panic when calling add_fields! on a frozen logger"),
+        Err(err) => {
+            if let Some(msg) = err.downcast_ref::<&'static str>() {
+                assert_eq!(*msg, LoggerWithKvNestingTracking::FROZEN_LOGGER_ERROR);
+            } else if let Some(msg) = err.downcast_ref::<String>() {
+                assert_eq!(*msg, LoggerWithKvNestingTracking::FROZEN_LOGGER_ERROR);
+            } else {
+                panic!("panic payload was not castable to the expected type");
+            }
+        }
     }
 }
 

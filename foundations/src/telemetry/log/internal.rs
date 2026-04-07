@@ -19,18 +19,60 @@ pub struct LoggerWithKvNestingTracking {
     // zero if you replace the logger with a "root" logger that doesn't have any nested KVs in it.
     // (That said, accuracy is not critical, as this is only used as a safety check)
     pub(crate) nesting_level: u32,
+
+    // Whether the logger is frozen. When frozen, any attempt to mutate the logger (via
+    // add_fields! or set_verbosity) is detected and causes a panic by default, or is logged as
+    // an error with a backtrace if the `panic_on_frozen_logger` feature is disabled.
+    //
+    // Forked loggers always start unfrozen, regardless of the parent's frozen state.
+    pub(crate) frozen: bool,
 }
 
 impl LoggerWithKvNestingTracking {
     pub const MAX_NESTING: u32 = 1000;
     pub const EXCEEDED_MAX_NESTING_ERROR: &'static str = "foundations: maximum logger KV nesting exceeded (are add_fields! or set_verbosity being called in a loop?)";
 
+    pub const FROZEN_LOGGER_ERROR: &'static str = "foundations: attempt to modify a frozen logger \
+         (are you modifying the root logger from a spawned task/thread that lacks a forked context?)";
+
     /// Create a new LoggerWithKvNestingTracking based on a fresh logger. The KV nesting level is
-    /// initialized to zero.
+    /// initialized to zero and the logger starts unfrozen.
     pub(crate) fn new(logger: Logger) -> Self {
         Self {
             inner: logger,
             nesting_level: 0,
+            frozen: false,
+        }
+    }
+
+    /// Check whether the logger is frozen before performing a mutation.
+    ///
+    /// If the logger is not frozen, returns `Some(lock_guard)` and the caller may proceed.
+    ///
+    /// If the logger is frozen and `panic_on_frozen_logger` is enabled, the lock is dropped and
+    /// this function panics. Otherwise it logs a `slog::error!` with a backtrace and returns
+    /// `None`, causing the caller to skip the mutation.
+    pub(crate) fn check_frozen(
+        current_log_lock: parking_lot::lock_api::RwLockWriteGuard<
+            parking_lot::RawRwLock,
+            LoggerWithKvNestingTracking,
+        >,
+    ) -> Option<
+        parking_lot::lock_api::RwLockWriteGuard<
+            parking_lot::RawRwLock,
+            LoggerWithKvNestingTracking,
+        >,
+    > {
+        if !current_log_lock.frozen {
+            return Some(current_log_lock);
+        }
+
+        if cfg!(feature = "panic_on_frozen_logger") {
+            drop(current_log_lock);
+            panic!("{}", Self::FROZEN_LOGGER_ERROR);
+        } else {
+            slog::error!(current_log_lock, "{}", Self::FROZEN_LOGGER_ERROR; "backtrace" => std::backtrace::Backtrace::capture().to_string());
+            None
         }
     }
 
@@ -100,6 +142,10 @@ where
     let log = current_log();
     let log_lock = log.write();
 
+    let Some(log_lock) = LoggerWithKvNestingTracking::check_frozen(log_lock) else {
+        return; // logger is frozen, mutation rejected
+    };
+
     let Some(mut log_lock) = LoggerWithKvNestingTracking::check_nesting_level(log_lock) else {
         return; // avoid changes, nesting level was beyond threshold
     };
@@ -116,7 +162,27 @@ pub fn current_log() -> SharedLog {
 
 pub(crate) fn fork_log() -> SharedLog {
     let parent = current_log();
-    let log = parent.read().clone();
+    let mut log = parent.read().clone();
+
+    // Forked loggers always start unfrozen, regardless of the parent's frozen state.
+    log.frozen = false;
 
     Arc::new(parking_lot::RwLock::new(log))
+}
+
+/// Freezes the current logger. Any subsequent call to [`add_log_fields`] or `set_verbosity`
+/// will be rejected: by default a panic is raised; if the `panic_on_frozen_logger` feature is
+/// disabled, an error is logged with a backtrace instead.
+pub(crate) fn freeze() {
+    current_log().write().frozen = true;
+}
+
+/// Unfreezes the current logger, re-enabling mutations.
+pub(crate) fn unfreeze() {
+    current_log().write().frozen = false;
+}
+
+/// Returns `true` if the current logger is frozen.
+pub(crate) fn is_frozen() -> bool {
+    current_log().read().frozen
 }
