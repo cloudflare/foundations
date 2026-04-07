@@ -1,12 +1,12 @@
+use super::channel::SharedSpanReceiver;
 use super::internal::{SharedSpan, Tracer};
+use super::live::ActiveRoots;
 use super::output_jaeger_thrift_udp;
+use super::rate_limit::RateLimitingProbabilisticSampler;
 use crate::telemetry::scope::ScopeStack;
 use crate::telemetry::settings::{SamplingStrategy, TracesOutput, TracingSettings};
-use crate::telemetry::tracing::live::ActiveRoots;
-use crate::telemetry::tracing::rate_limit::RateLimitingProbabilisticSampler;
 use crate::{BootstrapResult, ServiceInfo};
 use cf_rustracing::sampler::{NullSampler, PassiveSampler, Sampler};
-use cf_rustracing_jaeger::span::SpanReceiver;
 use crossbeam_utils::CachePadded;
 use futures_util::future::BoxFuture;
 use std::sync::{LazyLock, OnceLock};
@@ -66,9 +66,9 @@ impl TracingHarness {
     }
 }
 
-pub(crate) fn create_tracer_and_span_rx(
+pub(super) fn create_tracer_and_span_rx(
     settings: &TracingSettings,
-) -> BootstrapResult<(Tracer, SpanReceiver)> {
+) -> BootstrapResult<(Tracer, SharedSpanReceiver)> {
     let sampler = match &settings.sampling_strategy {
         SamplingStrategy::Passive => PassiveSampler.boxed(),
         SamplingStrategy::Active(settings) => {
@@ -76,7 +76,21 @@ pub(crate) fn create_tracer_and_span_rx(
         }
     };
 
-    Ok(Tracer::new(sampler))
+    if let Some(cap) = settings.max_queue_size {
+        #[cfg(feature = "metrics")]
+        super::metrics::tracing::max_queue_size().set(cap.get() as u64);
+
+        let (consumer, span_rx) = super::channel::channel(cap);
+        let tracer = Tracer::with_consumer(sampler, consumer);
+        Ok((tracer, span_rx))
+    } else {
+        #[cfg(feature = "metrics")]
+        super::metrics::tracing::max_queue_size().set(usize::MAX as u64);
+
+        let (consumer, span_rx) = super::channel::unbounded_channel();
+        let tracer = Tracer::with_consumer(sampler, consumer);
+        Ok((tracer, span_rx))
+    }
 }
 
 // NOTE: does nothing if tracing has already been initialized in this process.
