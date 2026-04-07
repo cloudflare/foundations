@@ -46,6 +46,12 @@ pub fn set_verbosity(verbosity: LogVerbosity) -> Result<()> {
     let current_log = current_log();
     let current_log_lock = current_log.write();
 
+    let Some(current_log_lock) =
+        internal::LoggerWithKvNestingTracking::check_frozen(current_log_lock)
+    else {
+        return Ok(()); // logger is frozen, mutation rejected
+    };
+
     let Some(mut current_log_lock) =
         internal::LoggerWithKvNestingTracking::check_nesting_level(current_log_lock)
     else {
@@ -72,6 +78,41 @@ pub fn verbosity() -> LogVerbosity {
 /// [slog]: https://crates.io/crates/slog
 pub fn slog_logger() -> Arc<parking_lot::RwLock<impl Deref<Target = Logger>>> {
     current_log()
+}
+
+/// Freezes the current logger.
+///
+/// Once frozen, any attempt to mutate the logger via [`add_fields!`] or [`set_verbosity`] will be
+/// rejected. By default, the violation is reported as a `slog::error!` with a captured backtrace.
+/// If the `panic_on_frozen_logger` feature is enabled, a panic is raised instead, giving you an
+/// exact stack trace pointing to where the rogue mutation is happening.
+///
+/// This is useful to guard the root logger after initialization: freeze it, and any code path that
+/// accidentally mutates the root logger (e.g. a spawned task that forgot to fork the context) will
+/// be immediately caught.
+///
+/// Forked loggers (created via [`TelemetryContext::with_forked_log`]) always start **unfrozen**,
+/// regardless of the parent's state.
+///
+/// Use [`unfreeze`] to reverse this, and [`is_frozen`] to query the current state.
+///
+/// [`TelemetryContext::with_forked_log`]: crate::telemetry::TelemetryContext::with_forked_log
+pub fn freeze() {
+    internal::freeze();
+}
+
+/// Unfreezes the current logger, re-enabling mutations via [`add_fields!`] and [`set_verbosity`].
+///
+/// See [`freeze`] for details on the freeze/unfreeze mechanism.
+pub fn unfreeze() {
+    internal::unfreeze();
+}
+
+/// Returns `true` if the current logger is frozen.
+///
+/// See [`freeze`] for details on the freeze/unfreeze mechanism.
+pub fn is_frozen() -> bool {
+    internal::is_frozen()
 }
 
 // NOTE: `#[doc(hidden)]` + `#[doc(inline)]` for `pub use` trick is used to prevent these macros

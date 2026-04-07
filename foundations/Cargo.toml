@@ -40,6 +40,7 @@ platform-common-default = [
     "cli",
     "testing",
     "settings_deny_unknown_fields_by_default",
+    "panic_on_frozen_logger",
     "panic_on_too_much_logger_nesting",
     "sentry",
 ]
@@ -175,6 +176,9 @@ testing = ["dep:foundations-macros"]
 
 # Enables the ratelimit! utility macro.
 ratelimit = ["dep:governor"]
+
+# Enables panicking when a frozen logger is mutated
+panic_on_frozen_logger = []
 
 # Enables panicking when too much nesting is reached on the logger
 panic_on_too_much_logger_nesting = []
