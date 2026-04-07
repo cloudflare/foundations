@@ -1,6 +1,7 @@
 use crate::telemetry::settings::RateLimitingSettings;
 use crate::utils::feature_use;
 use std::net::Ipv4Addr;
+use std::num::NonZeroUsize;
 
 feature_use!(cfg(feature = "settings"), {
     use crate::settings::net::SocketAddr;
@@ -21,11 +22,21 @@ pub struct TracingSettings {
     #[serde(default = "TracingSettings::default_enabled")]
     pub enabled: bool,
 
+    /// Maximum number of spans to buffer for output. Any spans above
+    /// this limit will be dropped until the queue regains capacity.
+    ///
+    /// The default is to buffer up to 1 million spans in memory. This protects
+    /// services from out-of-memory errors when the output gets heavily backed up.
+    /// To disable the limit entirely, set this setting to `None`.
+    #[serde(default = "TracingSettings::default_max_queue_size")]
+    pub max_queue_size: Option<NonZeroUsize>,
+
     /// The output for the collected traces.
     pub output: TracesOutput,
 
     /// The strategy used to sample traces.
     pub sampling_strategy: SamplingStrategy,
+
     /// Enable liveness tracking of all generated spans. Even if the spans are
     /// unsampled. This can be useful for debugging potential hangs cause by
     /// some objects remaining in memory.  The default value is false, meaning
@@ -41,6 +52,7 @@ impl Default for TracingSettings {
     fn default() -> Self {
         Self {
             enabled: TracingSettings::default_enabled(),
+            max_queue_size: TracingSettings::default_max_queue_size(),
             output: Default::default(),
             sampling_strategy: Default::default(),
             liveness_tracking: Default::default(),
@@ -51,6 +63,11 @@ impl Default for TracingSettings {
 impl TracingSettings {
     fn default_enabled() -> bool {
         true
+    }
+
+    const fn default_max_queue_size() -> Option<NonZeroUsize> {
+        // Since this is a const block, the expect is evaluated at compile time
+        Some(const { NonZeroUsize::new(1_000_000).expect("1_000_000 is not zero") })
     }
 }
 
@@ -100,6 +117,16 @@ pub struct JaegerThriftUdpOutputSettings {
     /// Jaeger agent is on another host (for example, Docker).
     /// Must have the same address family as `jaeger_tracing_server_addr`.
     pub reporter_bind_addr: Option<SocketAddr>,
+
+    /// Maximum number of spans to batch together for output.
+    ///
+    /// Currently, each span is still sent as a separate UDP datagram due to
+    /// datagram size limits. This setting only affects how many spans are
+    /// taken from the queue as a batch.
+    ///
+    /// Defaults to `100`.
+    #[serde(default = "JaegerThriftUdpOutputSettings::default_max_batch_size")]
+    pub max_batch_size: usize,
 }
 
 #[cfg(not(feature = "settings"))]
@@ -108,6 +135,7 @@ impl Default for JaegerThriftUdpOutputSettings {
         Self {
             server_addr: JaegerThriftUdpOutputSettings::default_server_addr(),
             reporter_bind_addr: None,
+            max_batch_size: JaegerThriftUdpOutputSettings::default_max_batch_size(),
         }
     }
 }
@@ -120,6 +148,10 @@ impl JaegerThriftUdpOutputSettings {
         let server_addr = server_addr.into();
 
         server_addr
+    }
+
+    const fn default_max_batch_size() -> usize {
+        100
     }
 }
 

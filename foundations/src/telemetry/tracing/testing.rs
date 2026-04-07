@@ -1,10 +1,11 @@
+use super::channel::SharedSpanReceiver;
 use super::init::{TracingHarness, create_tracer_and_span_rx};
 use super::internal::Tracer;
 use crate::telemetry::scope::Scope;
 use crate::telemetry::settings::TracingSettings;
 use cf_rustracing::span::SpanReference;
 use cf_rustracing::tag::TagValue;
-use cf_rustracing_jaeger::span::{FinishedSpan, SpanReceiver};
+use cf_rustracing_jaeger::span::FinishedSpan;
 use std::collections::HashMap;
 use std::iter::{FusedIterator, Iterator};
 use std::time::SystemTime;
@@ -160,13 +161,13 @@ impl TestTracerScope {
 }
 
 pub(crate) struct TestTracesSink {
-    span_rx: SpanReceiver,
+    span_rx: SharedSpanReceiver,
     raw_spans: HashMap<ParentId, Vec<FinishedSpan>>,
 }
 
 impl TestTracesSink {
     pub(crate) fn traces(&mut self, options: TestTraceOptions) -> Vec<TestTrace> {
-        while let Ok(span) = self.span_rx.try_recv() {
+        while let Some(span) = self.span_rx.try_unique_recv() {
             add_raw_span(span, &mut self.raw_spans);
         }
 

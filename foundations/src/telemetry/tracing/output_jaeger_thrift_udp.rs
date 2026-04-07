@@ -1,10 +1,10 @@
+use super::channel::SharedSpanReceiver;
 use super::internal::reporter_error;
 use crate::telemetry::settings::JaegerThriftUdpOutputSettings;
 use crate::{BootstrapResult, ServiceInfo};
 use anyhow::bail;
 use cf_rustracing::tag::Tag;
 use cf_rustracing_jaeger::reporter::JaegerCompactReporter;
-use cf_rustracing_jaeger::span::SpanReceiver;
 use futures_util::future::{BoxFuture, FutureExt as _};
 use std::net::SocketAddr;
 use std::net::{Ipv4Addr, Ipv6Addr};
@@ -12,8 +12,9 @@ use std::net::{Ipv4Addr, Ipv6Addr};
 pub(super) fn start(
     service_info: ServiceInfo,
     settings: &JaegerThriftUdpOutputSettings,
-    span_rx: SpanReceiver,
+    span_rx: SharedSpanReceiver,
 ) -> BootstrapResult<BoxFuture<'static, BootstrapResult<()>>> {
+    let max_batch_size = settings.max_batch_size;
     let server_addr = settings.server_addr.into();
     let reporter_bind_addr = get_reporter_bind_addr(settings)?;
 
@@ -32,7 +33,7 @@ pub(super) fn start(
 
         reporter.add_service_tag(Tag::new("app.version", service_info.version));
 
-        do_export(reporter, span_rx).await;
+        do_export(reporter, span_rx, max_batch_size).await;
 
         Ok(())
     }
@@ -59,18 +60,26 @@ fn get_reporter_bind_addr(settings: &JaegerThriftUdpOutputSettings) -> Bootstrap
     })
 }
 
-async fn do_export(reporter: JaegerCompactReporter, mut span_rx: SpanReceiver) {
-    while let Some(span) = span_rx.recv().await {
-        // NOTE: we are limited with a UDP dgram size here, so doing batching is risky.
-        let spans = [span];
-        if let Err(err) = reporter.report(&spans).await {
-            #[cfg(feature = "logging")]
-            if self::logging::is_msgsize_error(&err) {
-                self::logging::log_span_too_large_err(&err, &spans[0]);
-                continue;
-            }
+async fn do_export(
+    reporter: JaegerCompactReporter,
+    span_rx: SharedSpanReceiver,
+    max_batch_size: usize,
+) {
+    let mut batch = Vec::with_capacity(max_batch_size);
 
-            reporter_error(err);
+    while span_rx.recv_many(&mut batch, max_batch_size).await > 0 {
+        // NOTE: we are limited with a UDP dgram size here, so doing batching is risky.
+        for span in batch.drain(..) {
+            let spans = [span];
+            if let Err(err) = reporter.report(&spans).await {
+                #[cfg(feature = "logging")]
+                if self::logging::is_msgsize_error(&err) {
+                    self::logging::log_span_too_large_err(&err, &spans[0]);
+                    continue;
+                }
+
+                reporter_error(err);
+            }
         }
     }
 }

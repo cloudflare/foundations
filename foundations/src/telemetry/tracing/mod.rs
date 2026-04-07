@@ -7,6 +7,10 @@ pub(crate) mod init;
 #[cfg(any(test, feature = "testing"))]
 pub(crate) mod testing;
 
+#[cfg(feature = "metrics")]
+pub mod metrics;
+
+mod channel;
 mod live;
 mod output_jaeger_thrift_udp;
 mod rate_limit;

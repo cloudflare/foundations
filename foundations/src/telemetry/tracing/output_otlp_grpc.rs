@@ -1,9 +1,9 @@
+use super::channel::SharedSpanReceiver;
 use super::internal::reporter_error;
 use crate::telemetry::otlp_conversion::tracing::convert_span;
 use crate::telemetry::settings::OpenTelemetryGrpcOutputSettings;
 use crate::{BootstrapResult, ServiceInfo};
 use anyhow::Context as _;
-use cf_rustracing_jaeger::span::SpanReceiver;
 use futures_util::future::{BoxFuture, FutureExt as _};
 use http::uri::PathAndQuery;
 use opentelemetry_proto::tonic::collector::trace::v1::{
@@ -22,7 +22,7 @@ static TRACE_SERVICE: &str = "opentelemetry.proto.collector.trace.v1.TraceServic
 pub(super) fn start(
     service_info: ServiceInfo,
     settings: &OpenTelemetryGrpcOutputSettings,
-    span_rx: SpanReceiver,
+    span_rx: SharedSpanReceiver,
 ) -> BootstrapResult<BoxFuture<'static, BootstrapResult<()>>> {
     let max_batch_size = settings.max_batch_size;
 
@@ -48,18 +48,12 @@ pub(super) fn start(
 async fn do_export(
     mut client: Grpc<Channel>,
     service_info: ServiceInfo,
-    mut span_rx: SpanReceiver,
+    span_rx: SharedSpanReceiver,
     max_batch_size: usize,
 ) {
     let mut batch = Vec::with_capacity(max_batch_size);
 
-    loop {
-        let received = span_rx.recv_many(&mut batch, max_batch_size).await;
-
-        if received == 0 {
-            break;
-        }
-
+    while span_rx.recv_many(&mut batch, max_batch_size).await > 0 {
         let resource_spans = batch
             .drain(..)
             .map(|span| convert_span(span, &service_info))
