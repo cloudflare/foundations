@@ -1,19 +1,21 @@
 use super::channel::SharedSpanReceiver;
+use super::init::TraceOutputFutures;
 use super::internal::reporter_error;
 use crate::telemetry::settings::JaegerThriftUdpOutputSettings;
 use crate::{BootstrapResult, ServiceInfo};
 use anyhow::bail;
 use cf_rustracing::tag::Tag;
 use cf_rustracing_jaeger::reporter::JaegerCompactReporter;
-use futures_util::future::{BoxFuture, FutureExt as _};
+use futures_util::future::FutureExt as _;
 use std::net::SocketAddr;
 use std::net::{Ipv4Addr, Ipv6Addr};
+use std::sync::Arc;
 
 pub(super) fn start(
-    service_info: ServiceInfo,
+    service_info: &ServiceInfo,
     settings: &JaegerThriftUdpOutputSettings,
     span_rx: SharedSpanReceiver,
-) -> BootstrapResult<BoxFuture<'static, BootstrapResult<()>>> {
+) -> BootstrapResult<TraceOutputFutures> {
     let max_batch_size = settings.max_batch_size;
     let server_addr = settings.server_addr.into();
     let reporter_bind_addr = get_reporter_bind_addr(settings)?;
@@ -21,23 +23,27 @@ pub(super) fn start(
     // NOTE: do socket binding as early as possible. It's a good practice to disable binding
     // with seccomp after the service initialisaion.
     let socket = std::net::UdpSocket::bind(reporter_bind_addr)?;
-
     socket.set_nonblocking(true)?;
 
-    Ok(async move {
-        let mut reporter = JaegerCompactReporter::new_with_transport(
-            service_info.name,
-            server_addr,
-            tokio::net::UdpSocket::from_std(socket)?,
-        )?;
+    let mut reporter = JaegerCompactReporter::new_with_transport(
+        service_info.name,
+        server_addr,
+        tokio::net::UdpSocket::from_std(socket)?,
+    )?;
+    reporter.add_service_tag(Tag::new("app.version", service_info.version));
+    let reporter = Arc::new(reporter);
 
-        reporter.add_service_tag(Tag::new("app.version", service_info.version));
+    let futs: Vec<_> = (0..settings.max_batch_size)
+        .map(|_| {
+            let reporter = Arc::clone(&reporter);
+            do_export(reporter, span_rx.clone(), max_batch_size).boxed()
+        })
+        .collect();
 
-        do_export(reporter, span_rx, max_batch_size).await;
-
-        Ok(())
-    }
-    .boxed())
+    Ok(TraceOutputFutures {
+        initializer: None,
+        workers: futs,
+    })
 }
 
 fn get_reporter_bind_addr(settings: &JaegerThriftUdpOutputSettings) -> BootstrapResult<SocketAddr> {
@@ -61,7 +67,7 @@ fn get_reporter_bind_addr(settings: &JaegerThriftUdpOutputSettings) -> Bootstrap
 }
 
 async fn do_export(
-    reporter: JaegerCompactReporter,
+    reporter: Arc<JaegerCompactReporter>,
     span_rx: SharedSpanReceiver,
     max_batch_size: usize,
 ) {

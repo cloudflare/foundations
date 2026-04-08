@@ -118,6 +118,14 @@ pub struct JaegerThriftUdpOutputSettings {
     /// Must have the same address family as `jaeger_tracing_server_addr`.
     pub reporter_bind_addr: Option<SocketAddr>,
 
+    /// Number of concurrent tasks to spawn for output.
+    ///
+    /// A higher number means more spans can be collected in parallel in a
+    /// multi-threaded runtime. All tasks share a UDP socket for sending datagrams.
+    /// The default is 1 task.
+    #[serde(default = "JaegerThriftUdpOutputSettings::default_num_tasks")]
+    pub num_tasks: usize,
+
     /// Maximum number of spans to batch together for output.
     ///
     /// Currently, each span is still sent as a separate UDP datagram due to
@@ -135,6 +143,7 @@ impl Default for JaegerThriftUdpOutputSettings {
         Self {
             server_addr: JaegerThriftUdpOutputSettings::default_server_addr(),
             reporter_bind_addr: None,
+            num_tasks: JaegerThriftUdpOutputSettings::default_num_tasks(),
             max_batch_size: JaegerThriftUdpOutputSettings::default_max_batch_size(),
         }
     }
@@ -148,6 +157,10 @@ impl JaegerThriftUdpOutputSettings {
         let server_addr = server_addr.into();
 
         server_addr
+    }
+
+    const fn default_num_tasks() -> usize {
+        1
     }
 
     const fn default_max_batch_size() -> usize {

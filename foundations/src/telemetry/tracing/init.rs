@@ -93,25 +93,41 @@ pub(super) fn create_tracer_and_span_rx(
     }
 }
 
+pub(super) struct TraceOutputFutures {
+    pub initializer: Option<BoxFuture<'static, BootstrapResult<()>>>,
+    pub workers: Vec<BoxFuture<'static, ()>>,
+}
+
 // NOTE: does nothing if tracing has already been initialized in this process.
 pub(crate) fn init(
-    service_info: ServiceInfo,
+    service_info: &ServiceInfo,
     settings: &TracingSettings,
 ) -> BootstrapResult<Option<BoxFuture<'static, BootstrapResult<()>>>> {
-    let reporter_fut = if settings.enabled {
-        let (tracer, span_rx) = create_tracer_and_span_rx(settings)?;
+    if !settings.enabled || HARNESS.get().is_some() {
+        return Ok(None);
+    }
 
-        let reporter_fut = match &settings.output {
-            TracesOutput::JaegerThriftUdp(output_settings) => {
-                output_jaeger_thrift_udp::start(service_info, output_settings, span_rx)?
-            }
-            #[cfg(feature = "telemetry-otlp-grpc")]
-            TracesOutput::OpenTelemetryGrpc(output_settings) => {
-                output_otlp_grpc::start(service_info, output_settings, span_rx)?
-            }
-        };
+    let (tracer, span_rx) = create_tracer_and_span_rx(settings)?;
 
-        let harness = TracingHarness {
+    let futs = match &settings.output {
+        TracesOutput::JaegerThriftUdp(output_settings) => {
+            output_jaeger_thrift_udp::start(service_info, output_settings, span_rx)?
+        }
+        #[cfg(feature = "telemetry-otlp-grpc")]
+        TracesOutput::OpenTelemetryGrpc(output_settings) => {
+            output_otlp_grpc::start(service_info, output_settings, span_rx)?
+        }
+    };
+
+    // Only spawn the futures if we are actually initializing the harness
+    let mut res = Ok(None);
+    HARNESS.get_or_init(|| {
+        res = Ok(futs.initializer);
+        for f in futs.workers {
+            tokio::spawn(f);
+        }
+
+        TracingHarness {
             tracer,
             span_scope_stack: Default::default(),
 
@@ -119,14 +135,7 @@ pub(crate) fn init(
             test_tracer_scope_stack: Default::default(),
 
             active_roots: ActiveRoots::new(settings.liveness_tracking.clone()),
-        };
-
-        let _ = HARNESS.set(harness);
-
-        Some(reporter_fut)
-    } else {
-        None
-    };
-
-    Ok(reporter_fut)
+        }
+    });
+    res
 }

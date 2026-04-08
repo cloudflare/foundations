@@ -25,6 +25,14 @@ pub struct OpenTelemetryGrpcOutputSettings {
     #[serde(default = "OpenTelemetryGrpcOutputSettings::default_request_timeout_seconds")]
     pub request_timeout_seconds: u64,
 
+    /// Number of concurrent tasks to spawn for output.
+    ///
+    /// A higher number means more spans can be collected in parallel in a
+    /// multi-threaded runtime. All tasks share a gRPC channel, but can send
+    /// RPCs in parallel. The default is 1 task.
+    #[serde(default = "OpenTelemetryGrpcOutputSettings::default_num_tasks")]
+    pub num_tasks: usize,
+
     /// Maximum number of entries to be batched together and sent in one request.
     ///
     /// # Default
@@ -41,6 +49,7 @@ impl Default for OpenTelemetryGrpcOutputSettings {
             endpoint_url: OpenTelemetryGrpcOutputSettings::default_endpoint_url(),
             request_timeout_seconds:
                 OpenTelemetryGrpcOutputSettings::default_request_timeout_seconds(),
+            num_tasks: OpenTelemetryGrpcOutputSettings::default_num_tasks(),
             max_batch_size: OpenTelemetryGrpcOutputSettings::default_max_batch_size(),
         }
     }
@@ -53,6 +62,10 @@ impl OpenTelemetryGrpcOutputSettings {
 
     fn default_request_timeout_seconds() -> u64 {
         10
+    }
+
+    const fn default_num_tasks() -> usize {
+        1
     }
 
     fn default_max_batch_size() -> usize {
