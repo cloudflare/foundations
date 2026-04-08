@@ -338,10 +338,9 @@ pub fn init(config: TelemetryConfig) -> BootstrapResult<TelemetryDriver> {
 
     #[cfg(feature = "tracing")]
     {
-        if let Some(reporter_fut) =
-            self::tracing::init::init(config.service_info.clone(), &config.settings.tracing)?
+        if let Some(fut) = self::tracing::init::init(config.service_info, &config.settings.tracing)?
         {
-            tele_futures.push(reporter_fut);
+            tele_futures.push(fut);
         }
     }
 
