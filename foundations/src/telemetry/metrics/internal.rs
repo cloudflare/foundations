@@ -39,22 +39,30 @@ pub struct Registries {
 }
 
 impl Registries {
-    pub(super) fn init(service_info: &ServiceInfo, settings: &MetricsSettings) {
+    pub(super) fn init(service_info: &ServiceInfo, settings: &MetricsSettings) -> bool {
         let service_name = MetricsServiceName::new(
             &service_info.name_in_metrics,
             settings.service_name_format.clone(),
         );
 
+        let mut first_install = false;
+
         // FIXME(nox): Due to prometheus-client 0.18 not supporting the creation of
         // registries with specific label values, we use `MetricsServiceName::Label`
         // directly in `Registries::get_subsystem`.
-        REGISTRIES.get_or_init(|| Registries {
-            main: Default::default(),
-            opt: Default::default(),
-            info: Default::default(),
-            service_name,
-            extra_producers: Default::default(),
+        REGISTRIES.get_or_init(|| {
+            let regs = Registries {
+                main: Default::default(),
+                opt: Default::default(),
+                info: Default::default(),
+                service_name,
+                extra_producers: Default::default(),
+            };
+            first_install = true;
+            regs
         });
+
+        first_install
     }
 
     pub(super) fn collect(buffer: &mut Vec<u8>, collect_optional: bool) -> Result<()> {

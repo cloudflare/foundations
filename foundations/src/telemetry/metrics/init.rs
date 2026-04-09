@@ -8,13 +8,14 @@ use crate::telemetry::settings::MetricsSettings;
 /// Must be called before any use of metrics defined
 /// by the `metrics` proc macro attribute.
 pub(crate) fn init(service_info: &ServiceInfo, settings: &MetricsSettings) {
-    Registries::init(service_info, settings);
+    let first_install = Registries::init(service_info, settings);
+    if first_install {
+        report_info(BuildInfo {
+            version: service_info.version,
+        });
 
-    report_info(BuildInfo {
-        version: service_info.version,
-    });
-
-    report_info(RuntimeInfo {
-        pid: std::process::id(),
-    });
+        report_info(RuntimeInfo {
+            pid: std::process::id(),
+        });
+    }
 }
