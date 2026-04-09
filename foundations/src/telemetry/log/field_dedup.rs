@@ -29,7 +29,10 @@ pub(crate) struct FieldDedupFilter {
 impl Filter for FieldDedupFilter {
     #[inline]
     fn filter(&mut self, key: &Key) -> bool {
-        self.seen_keys.insert(*key)
+        // With `dynamic-keys`, Key is an owned struct and needs cloning.
+        // Without it, Key is `&'static str` (Copy), and clone on `&&str` copies the reference.
+        #[allow(suspicious_double_ref_op)]
+        self.seen_keys.insert(key.clone())
     }
 }
 

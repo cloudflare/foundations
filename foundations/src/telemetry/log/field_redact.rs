@@ -39,7 +39,7 @@ pub(crate) struct FieldRedactFilter {
 impl Filter for FieldRedactFilter {
     #[inline]
     fn filter(&mut self, key: &Key) -> bool {
-        !self.redacted_keys.contains(*key)
+        !self.redacted_keys.contains::<str>(key.as_ref())
     }
 }
 
