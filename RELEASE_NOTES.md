@@ -1,5 +1,23 @@
 
-5.5.3
+5.6.0
+- 2026-04-08 Allow multiple concurrent trace exporter tasks
+- 2026-04-07 Prepare foundations for multi-consumer tracing output
+- 2026-03-26 Add ratelimit feature to library docs
+- 2026-03-26 Use StaticQuantaClock in telemetry rate limiters
+- 2026-03-26 Replace governor's default clock with StaticQuantaClock
+- 2026-03-27 Add MaybeExternal helper to load config values from external sources
+- 2026-03-27 Add Settings/RawSettings wrappers to protect sensitive values
+- 2026-04-09 fix public docs for log::freeze
+- 2026-04-07 feat(logging): add logger freeze/unfreeze
+- 2026-04-02 Add test for public `current_span()` accessors
+- 2026-04-02 Expose `span_is_sampled` for cheap sampling checks
+- 2026-04-01 Implement /pprof/symbol
+- 2026-03-24 Add configurable rate limiting for sentry events
+- 2026-03-26 Replace serde-yaml with serde-saphyr (#181)
+- 2026-03-24 Add special `ratelimit=` syntax to logging macros
+- 2026-03-23 Add ratelimit! utility macro
+- 2026-03-23 Refactor slog::Drain setup code and fix rate limiting bug
+- 2026-03-11 Release 5.5.3
 - 2026-03-11 fix: don't initialize telemetry when constructing a TestTelemetryContext
 
 5.5.2
