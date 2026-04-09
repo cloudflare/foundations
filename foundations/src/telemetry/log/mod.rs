@@ -83,9 +83,9 @@ pub fn slog_logger() -> Arc<parking_lot::RwLock<impl Deref<Target = Logger>>> {
 /// Freezes the current logger.
 ///
 /// Once frozen, any attempt to mutate the logger via [`add_fields!`] or [`set_verbosity`] will be
-/// rejected. By default, the violation is reported as a `slog::error!` with a captured backtrace.
-/// If the `panic_on_frozen_logger` feature is enabled, a panic is raised instead, giving you an
-/// exact stack trace pointing to where the rogue mutation is happening.
+/// rejected. By default, a panic is raised, giving you an exact stack trace pointing to where the
+/// rogue mutation is happening. If the `panic_on_frozen_logger` feature is disabled, the
+/// violation is reported as a `slog::error!` with a captured backtrace instead.
 ///
 /// This is useful to guard the root logger after initialization: freeze it, and any code path that
 /// accidentally mutates the root logger (e.g. a spawned task that forgot to fork the context) will
