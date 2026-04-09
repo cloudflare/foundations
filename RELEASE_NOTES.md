@@ -1,5 +1,9 @@
 
+5.6.1
+- 2026-04-09 fix: Initialize metrics first among telemetry subsystems
+
 5.6.0
+- 2026-04-09 Release 5.6.0
 - 2026-04-08 Allow multiple concurrent trace exporter tasks
 - 2026-04-07 Prepare foundations for multi-consumer tracing output
 - 2026-03-26 Add ratelimit feature to library docs
