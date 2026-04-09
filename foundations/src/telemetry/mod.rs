@@ -329,6 +329,9 @@ pub fn init(config: TelemetryConfig) -> BootstrapResult<TelemetryDriver> {
     }
 
     #[cfg(feature = "metrics")]
+    self::metrics::init::init(config.service_info, &config.settings.metrics);
+
+    #[cfg(feature = "metrics")]
     crate::panic::install_hook();
 
     let tele_futures: FuturesUnordered<_> = Default::default();
@@ -343,9 +346,6 @@ pub fn init(config: TelemetryConfig) -> BootstrapResult<TelemetryDriver> {
             tele_futures.push(fut);
         }
     }
-
-    #[cfg(feature = "metrics")]
-    self::metrics::init::init(config.service_info, &config.settings.metrics);
 
     TELEMETRY_INITIALIZED.store(true, Ordering::Relaxed);
 
