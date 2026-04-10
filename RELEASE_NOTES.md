@@ -1,5 +1,9 @@
 
+5.6.2
+- 2026-04-09 Support slog's  feature in log field filters
+
 5.6.1
+- 2026-04-09 Release 5.6.1
 - 2026-04-09 fix: Initialize metrics first among telemetry subsystems
 
 5.6.0
