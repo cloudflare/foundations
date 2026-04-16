@@ -1,0 +1,17 @@
+---
+# Map items
+items:
+  foo:
+    # A field, which is named the same as another field.
+    a: 1
+    # multi-line
+    # doc comment
+    b: 2
+    c: 3
+  bar:
+    # A field, which is named the same as another field.
+    a: 4
+    # multi-line
+    # doc comment
+    b: 5
+    c: 6
