@@ -1,5 +1,10 @@
 
+5.6.3
+- 2026-04-16 fix: Default back to serde_yaml, with serde-saphyr opt-in
+- 2026-04-16 foundations: fix 'occured' -> 'occurred' in doc comment
+
 5.6.2
+- 2026-04-10 Release 5.6.2
 - 2026-04-09 Support slog's  feature in log field filters
 
 5.6.1
