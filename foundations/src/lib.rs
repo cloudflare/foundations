@@ -144,7 +144,7 @@ pub static JEMALLOC_MEMORY_ALLOCATOR: tikv_jemallocator::Jemalloc = tikv_jemallo
 /// This is an alias for [`anyhow::Error`]. On service bootstrap all such errors can be
 /// propagated to the `main` function and eventually terminate the process. [Sentry] logs those
 /// errors on application termination and in order to have proper understanding of the place where
-/// error has occured we use `anyhow` errors that provide backtraces for error creation site.
+/// error has occurred we use `anyhow` errors that provide backtraces for error creation site.
 ///
 /// [Sentry]: https://sentry.io
 pub type BootstrapError = anyhow::Error;
