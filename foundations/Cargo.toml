@@ -56,11 +56,17 @@ server-client-common-default = ["settings", "client-telemetry", "testing"]
 settings = [
     "dep:foundations-macros",
     "dep:serde_path_to_error",
-    "dep:serde-saphyr",
+    "dep:serde_yaml",
+    "dep:yaml-merge-keys",
     "dep:serde",
     "dep:indexmap",
     "dep:zeroize",
 ]
+
+# Opt-in to the serde-saphyr YAML parser instead of the default serde_yaml.
+# serde-saphyr is a pure Rust YAML implementation and is actively maintained, but it
+# is more strict with regards to YAML spec compliance.
+serde-saphyr = ["dep:serde-saphyr"]
 
 # Whether settings structs annotated with `#[settings]` will, by default, error on unknown fields.
 settings_deny_unknown_fields_by_default = ["foundations-macros?/settings_deny_unknown_fields_by_default"]
@@ -226,6 +232,8 @@ serde = { workspace = true, optional = true, features = ["derive", "rc"] }
 serde_json = { workspace = true, optional = true }
 serde_path_to_error = { workspace = true, optional = true }
 serde-saphyr = { workspace = true, optional = true }
+serde_yaml = { workspace = true, optional = true }
+yaml-merge-keys = { workspace = true, optional = true }
 serde_with = { workspace = true, optional = true }
 slab = { workspace = true, optional = true }
 slog = { workspace = true, optional = true, features = ["max_level_trace"] }

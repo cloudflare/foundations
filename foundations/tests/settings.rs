@@ -177,7 +177,13 @@ struct StructWithCrateReexport {
 macro_rules! assert_ser_eq {
     ($obj:expr, $expected:expr) => {
         let actual = to_yaml_string(&$obj).unwrap().trim().to_string();
-        let expected = include_str!($expected).trim();
+
+        #[cfg(feature = "serde-saphyr")]
+        let expected_str = include_str!(concat!("data/serde-saphyr/", $expected));
+        #[cfg(not(feature = "serde-saphyr"))]
+        let expected_str = include_str!(concat!("data/serde-yaml/", $expected));
+
+        let expected = expected_str.trim();
 
         assert_eq!(
             actual, expected,
@@ -188,44 +194,35 @@ macro_rules! assert_ser_eq {
 
 #[test]
 fn nested_doc_comments() {
-    assert_ser_eq!(SimpleStruct::default(), "data/settings_nested_struct.yaml");
+    assert_ser_eq!(SimpleStruct::default(), "settings_nested_struct.yaml");
 }
 
 #[test]
 fn nested_duplicate_field() {
-    assert_ser_eq!(
-        NestedDup::default(),
-        "data/settings_nested_duplicate_field.yaml"
-    );
+    assert_ser_eq!(NestedDup::default(), "settings_nested_duplicate_field.yaml");
 }
 
 #[test]
 fn flattened_doc_comments() {
-    assert_ser_eq!(
-        FlattenedStruct::default(),
-        "data/settings_flattened_struct.yaml"
-    );
+    assert_ser_eq!(FlattenedStruct::default(), "settings_flattened_struct.yaml");
 }
 
 #[test]
 fn simple_config_with_docs() {
     assert_ser_eq!(
         NestedStruct::default(),
-        "data/settings_simple_config_with_docs.yaml"
+        "settings_simple_config_with_docs.yaml"
     );
 }
 
 #[test]
 fn enum_fields() {
-    assert_ser_eq!(
-        StructWithEnumField::default(),
-        "data/settings_enum_fields.yaml"
-    );
+    assert_ser_eq!(StructWithEnumField::default(), "settings_enum_fields.yaml");
 }
 
 #[test]
 fn complex_settings() {
-    assert_ser_eq!(ProxySettings::default(), "data/settings_complex.yaml");
+    assert_ser_eq!(ProxySettings::default(), "settings_complex.yaml");
 }
 
 #[test]
@@ -267,7 +264,7 @@ fn map() {
         .collect(),
     };
 
-    assert_ser_eq!(s, "data/with_map.yaml");
+    assert_ser_eq!(s, "with_map.yaml");
 }
 
 #[test]
@@ -277,14 +274,14 @@ fn option() {
         a: 4,
     };
 
-    assert_ser_eq!(s, "data/with_option_some.yaml");
+    assert_ser_eq!(s, "with_option_some.yaml");
 
     let s = WithOption {
         optional: None,
         a: 4,
     };
 
-    assert_ser_eq!(s, "data/with_option_none.yaml");
+    assert_ser_eq!(s, "with_option_none.yaml");
 }
 
 #[test]
@@ -293,7 +290,7 @@ fn vec() {
         items: vec![Default::default(), Default::default()],
     };
 
-    assert_ser_eq!(s, "data/with_vec.yaml");
+    assert_ser_eq!(s, "with_vec.yaml");
 }
 
 #[test]
@@ -306,13 +303,17 @@ inner:
 x: 1
     "#;
 
-    // Verify that we don't leak secrets in error messages
-    let err = from_yaml_str::<SimpleStruct>(INVALID_YAML_WITH_SECRET)
+    // Verify that parsing invalid YAML returns an error
+    let _err = from_yaml_str::<SimpleStruct>(INVALID_YAML_WITH_SECRET)
         .expect_err("parsing invalid YAML should fail")
         .to_string();
+
+    // serde-yaml always includes the raw document in errors messages, but with
+    // serde-saphyr we explicitly opt out of that behavior with `with_snippet: false`.
+    #[cfg(feature = "serde-saphyr")]
     assert!(
-        !err.contains("MY_SECRET_KEY"),
-        "YAML error exposes secret payload:\n\n{err}",
+        !_err.contains("MY_SECRET_KEY"),
+        "YAML error exposes secret payload:\n\n{_err}",
     );
 
     // Verify that YAML anchors and merge expressions resolve correctly
