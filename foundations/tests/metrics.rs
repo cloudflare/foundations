@@ -1,5 +1,7 @@
+use foundations::service_info;
 use foundations::telemetry::metrics::{self, Counter, metrics};
-use foundations::telemetry::settings::{MetricsSettings, ServiceNameFormat};
+use foundations::telemetry::settings::{MetricsSettings, ServiceNameFormat, TelemetrySettings};
+use foundations::telemetry::{TelemetryConfig, TelemetryContext};
 
 #[metrics]
 mod regular {
@@ -47,4 +49,28 @@ fn metrics_unprefixed() {
     assert!(!metrics.contains("\nundefined_regular_dynamic"));
     assert!(metrics.contains("\nlibrary_calls 1\n"));
     assert!(!metrics.contains("\nlibrary_optional"));
+}
+
+#[tokio::test]
+async fn test_context_cooperates_with_init() {
+    let _ctx = TelemetryContext::test();
+
+    let service_info = service_info!();
+    let settings = TelemetrySettings::default();
+    let config = TelemetryConfig {
+        service_info: &service_info,
+        settings: &settings,
+        custom_server_routes: vec![],
+    };
+    foundations::telemetry::init(config)
+        .expect("telemetry init should succeed under TestTelemetryContext");
+
+    regular::requests().inc();
+    library::calls().inc();
+
+    let metrics = metrics::collect(&settings.metrics).expect("metrics should be collectable");
+
+    // `TelemetryContext::test()` should initialize metrics registry with default service_info!()
+    assert!(metrics.contains("\nfoundations_regular_requests 1\n"));
+    assert!(metrics.contains("\nlibrary_calls 1\n"));
 }
