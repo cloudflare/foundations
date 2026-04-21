@@ -1,5 +1,10 @@
 
+5.6.4
+- 2026-04-09 fix: Initialize metrics first in telemetry testing
+- 2026-04-21 Regression test for uninitialized metrics in foundations' testing framework
+
 5.6.3
+- 2026-04-16 Release 5.6.3
 - 2026-04-16 fix: Default back to serde_yaml, with serde-saphyr opt-in
 - 2026-04-16 foundations: fix 'occured' -> 'occurred' in doc comment
 
