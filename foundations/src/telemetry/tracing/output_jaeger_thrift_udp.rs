@@ -33,7 +33,7 @@ pub(super) fn start(
     reporter.add_service_tag(Tag::new("app.version", service_info.version));
     let reporter = Arc::new(reporter);
 
-    let futs: Vec<_> = (0..settings.max_batch_size)
+    let futs: Vec<_> = (0..settings.num_tasks)
         .map(|_| {
             let reporter = Arc::clone(&reporter);
             do_export(reporter, span_rx.clone(), max_batch_size).boxed()
