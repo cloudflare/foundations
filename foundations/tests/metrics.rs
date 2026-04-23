@@ -1,4 +1,4 @@
-use foundations::service_info;
+use foundations::ServiceInfo;
 use foundations::telemetry::metrics::{self, Counter, metrics};
 use foundations::telemetry::settings::{MetricsSettings, ServiceNameFormat, TelemetrySettings};
 use foundations::telemetry::{TelemetryConfig, TelemetryContext};
@@ -55,7 +55,14 @@ fn metrics_unprefixed() {
 async fn test_context_cooperates_with_init() {
     let _ctx = TelemetryContext::test();
 
-    let service_info = service_info!();
+    let service_info = ServiceInfo {
+        name: "my-bin",
+        name_in_metrics: "my_bin".to_owned(),
+        version: "1.0.0",
+        author: "Foo Bar",
+        description: "An example service",
+    };
+
     let settings = TelemetrySettings::default();
     let config = TelemetryConfig {
         service_info: &service_info,
@@ -70,7 +77,7 @@ async fn test_context_cooperates_with_init() {
 
     let metrics = metrics::collect(&settings.metrics).expect("metrics should be collectable");
 
-    // `TelemetryContext::test()` should initialize metrics registry with default service_info!()
-    assert!(metrics.contains("\nfoundations_regular_requests 1\n"));
+    // Metrics registry should be initialized with explicit ServiceInfo from `foundations::telemetry::init`
+    assert!(metrics.contains("\nmy_bin_regular_requests 1\n"));
     assert!(metrics.contains("\nlibrary_calls 1\n"));
 }
