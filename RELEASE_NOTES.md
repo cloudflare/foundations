@@ -1,5 +1,10 @@
 
+5.6.5
+- 2026-04-23 fix: Revert initialization of metrics in telemetry testing
+- 2026-04-23 fix: Use `num_tasks` setting for Jaeger trace reporter tasks
+
 5.6.4
+- 2026-04-21 Release 5.6.4
 - 2026-04-09 fix: Initialize metrics first in telemetry testing
 - 2026-04-21 Regression test for uninitialized metrics in foundations' testing framework
 
