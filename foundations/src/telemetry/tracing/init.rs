@@ -77,16 +77,10 @@ pub(super) fn create_tracer_and_span_rx(
     };
 
     if let Some(cap) = settings.max_queue_size {
-        #[cfg(feature = "metrics")]
-        super::metrics::tracing::max_queue_size().set(cap.get() as u64);
-
         let (consumer, span_rx) = super::channel::channel(cap);
         let tracer = Tracer::with_consumer(sampler, consumer);
         Ok((tracer, span_rx))
     } else {
-        #[cfg(feature = "metrics")]
-        super::metrics::tracing::max_queue_size().set(usize::MAX as u64);
-
         let (consumer, span_rx) = super::channel::unbounded_channel();
         let tracer = Tracer::with_consumer(sampler, consumer);
         Ok((tracer, span_rx))
@@ -122,6 +116,15 @@ pub(crate) fn init(
     // Only spawn the futures if we are actually initializing the harness
     let mut res = Ok(None);
     HARNESS.get_or_init(|| {
+        #[cfg(feature = "metrics")]
+        {
+            let max_queue_size = settings
+                .max_queue_size
+                .map(std::num::NonZeroUsize::get)
+                .unwrap_or(usize::MAX);
+            super::metrics::tracing::max_queue_size().set(max_queue_size as u64);
+        }
+
         res = Ok(futs.initializer);
         for f in futs.workers {
             tokio::spawn(f);

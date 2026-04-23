@@ -48,12 +48,6 @@ pub struct TestTelemetryContext {
 
 impl TestTelemetryContext {
     pub(crate) fn new() -> Self {
-        #[cfg(feature = "metrics")]
-        {
-            let service_info = crate::service_info!();
-            super::metrics::init::init(&service_info, &Default::default());
-        }
-
         #[cfg(feature = "logging")]
         let (log, log_records) = {
             create_test_log(&LoggingSettings {

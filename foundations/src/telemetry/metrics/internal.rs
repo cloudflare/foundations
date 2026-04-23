@@ -127,6 +127,11 @@ impl Registries {
         self.extra_producers.write().push(producer);
     }
 
+    #[cfg(test)]
+    pub fn is_initialized() -> bool {
+        REGISTRIES.get().is_some()
+    }
+
     pub(super) fn get() -> &'static Registries {
         REGISTRIES.get_or_init(|| Registries {
             main: Default::default(),

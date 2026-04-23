@@ -377,11 +377,8 @@ pub fn init(config: TelemetryConfig) -> BootstrapResult<TelemetryDriver> {
 
 #[cfg(test)]
 mod tests {
-    use super::init;
-    use crate::{
-        service_info,
-        telemetry::{TelemetryConfig, is_initialized},
-    };
+    use super::{TelemetryConfig, TelemetryContext, init, is_initialized};
+    use crate::service_info;
 
     #[tokio::test]
     async fn double_init_call_errors() {
@@ -400,5 +397,16 @@ mod tests {
         });
         assert!(second_res.is_err());
         assert!(is_initialized());
+    }
+
+    /// Ensure that `TelemetryContext::test()` does not default-initialize the metrics registry.
+    /// This has caused CI bugs in the past because metrics will be prefixed by `undefined_`.
+    #[test]
+    fn testing_telemetry_metrics_uninit() {
+        let _ctx = TelemetryContext::test();
+        assert!(
+            !super::metrics::internal::Registries::is_initialized(),
+            "metrics::Registries should not be initialized in `TelemetryContext::test`",
+        );
     }
 }
