@@ -429,12 +429,11 @@ pub fn to_yaml_string(settings: &impl Settings) -> BootstrapResult<String> {
 
     #[cfg(feature = "serde-saphyr")]
     let yaml = {
-        let saphyr_settings = serde_saphyr::SerializerOptions {
+        let saphyr_settings = serde_saphyr::ser_options! {
             empty_as_braces: true,
             indent_step: 2,
             // Need this so the truncate calculation below doesn't break
             compact_list_indent: false,
-            ..Default::default()
         };
         serde_saphyr::to_string_with_options(settings, saphyr_settings)?
     };
@@ -506,10 +505,9 @@ pub fn to_yaml_file(settings: &impl Settings, path: impl AsRef<Path>) -> Bootstr
 pub fn from_yaml_str<T: Settings>(data: impl AsRef<str>) -> BootstrapResult<T> {
     #[cfg(feature = "serde-saphyr")]
     {
-        let saphyr_settings = serde_saphyr::Options {
+        let saphyr_settings = serde_saphyr::options! {
             // Prevent leakage of secrets from the raw document in error messages
             with_snippet: false,
-            ..Default::default()
         };
 
         // NOTE: merge dict key refs handled natively by serde-saphyr
@@ -525,6 +523,7 @@ pub fn from_yaml_str<T: Settings>(data: impl AsRef<str>) -> BootstrapResult<T> {
             },
         );
 
+        #[allow(clippy::needless_return)]
         return match (path_res, saphyr_res) {
             // serde_path_to_error::Error takes precedence if set
             (Some(Err(e)), _) => Err(e.into()),
@@ -541,7 +540,9 @@ pub fn from_yaml_str<T: Settings>(data: impl AsRef<str>) -> BootstrapResult<T> {
         let value: serde_yaml::Value = serde_path_to_error::deserialize(de)?;
         // NOTE: merge dict key refs: https://yaml.org/type/merge.html
         let value = yaml_merge_keys::merge_keys_serde(value)?;
-        Ok(serde_path_to_error::deserialize(value)?)
+
+        #[allow(clippy::needless_return)]
+        return Ok(serde_path_to_error::deserialize(value)?);
     }
 }
 

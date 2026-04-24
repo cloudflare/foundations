@@ -258,7 +258,7 @@ zeroize = { workspace = true, optional = true }
 # needed for minver purposes
 ahash = { workspace = true, optional = true }
 annotate-snippets = { workspace = true, optional = true }
-async-stream = { workspace = true, optional = true }
+chrono = { workspace = true, optional = true }
 encoding_rs_io = { workspace = true, optional = true }
 local-ip-address = { workspace = true, optional = true }
 lock_api = { workspace = true, optional = true }
