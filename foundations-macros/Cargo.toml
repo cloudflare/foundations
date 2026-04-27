@@ -8,6 +8,11 @@ authors = { workspace = true }
 license = { workspace = true }
 readme = "../README.md"
 
+[package.metadata.release]
+shared-version = "foundations"
+tag-prefix = ""
+tag-message = "Release foundations version {{version}}"
+
 [features]
 default = ["settings_deny_unknown_fields_by_default"]
 settings_deny_unknown_fields_by_default = []

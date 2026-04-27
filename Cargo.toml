@@ -16,10 +16,10 @@ authors = ["Cloudflare"]
 license = "BSD-3-Clause"
 
 [workspace.metadata.release]
-pre-release-commit-message = "Release {{version}}"
-shared-version = true
-tag-prefix = ""
+push = false
 publish = false
+pre-release-commit-message = "chore: Release"
+tag-message = "Release {{crate_name}} version {{version}}"
 
 [profile.release]
 debug = 1
