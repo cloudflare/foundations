@@ -2,6 +2,7 @@
 members = [
     "foundations",
     "foundations-macros",
+    "foundations-sentry",
     "examples",
     "tools/gen-syscall-enum",
 ]
@@ -38,7 +39,7 @@ check-cfg = [
 [workspace.dependencies]
 anyhow = "1.0.102"
 backtrace = "0.3.76"
-foundations = { version = "5.6.5", path = "./foundations" }
+foundations = { version = "5.6.5", path = "./foundations", default-features = false }
 foundations-macros = { version = "=5.6.5", path = "./foundations-macros", default-features = false }
 bindgen = { version = "0.72.1", default-features = false }
 cc = "1.2.61"
@@ -95,14 +96,6 @@ tikv-jemalloc-ctl = "0.6.1"
 tower-service = "0.3.3"
 tracing-slog = "0.4.0"
 tracing-subscriber = "0.3.23"
-sentry-core = { version = "0.36.0", default-features = false }
-sentry = { version = "0.36.0", default-features = false, features = [
-    "backtrace",
-    "contexts",
-    "panic",
-    "ureq",
-    "rustls",
-] }
 zeroize = "1.8.2"
 
 # needed for minver
@@ -121,3 +114,7 @@ neli-proc-macros = "0.2.2"
 parking_lot_core = "0.9.12"
 thiserror = "2.0.18"
 tower = "0.5.3"
+
+# Only used in deprecated `foundations` code
+# TODO: remove before next major release
+sentry-core = { version = "0.36.0", default-features = false }

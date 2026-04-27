@@ -1,7 +1,8 @@
-#![allow(deprecated, clippy::needless_doctest_main)]
-//! Sentry hook for tracking sentry events with metrics and rate-limiting them.
+#![allow(clippy::needless_doctest_main, reason = "for illustration")]
+//! [`foundations`] companion crate with Sentry integrations. Includes rate limiting
+//! of sentry events and tracking them with [`foundations`] metrics.
 //!
-//! This module provides a sentry hook that increments the
+//! This crate provides a sentry hook that increments the
 //! `sentry_events_total{level=<...>}` metric for each sentry event. If a
 //! previous `before_send` hook exists, it will be executed after rate limiting
 //! and before the metric is incremented. Only unfiltered events are counted.
@@ -27,8 +28,8 @@
 //! ```rust
 //! fn main() {
 //!     let mut client_opts = sentry_core::ClientOptions::default();
-//!     let sentry_settings = foundations::sentry::SentrySettings::default();
-//!     foundations::sentry::install_hook_with_settings(&mut client_opts, &sentry_settings);
+//!     let sentry_settings = foundations_sentry::SentrySettings::default();
+//!     foundations_sentry::install_hook_with_settings(&mut client_opts, &sentry_settings);
 //!     // sentry::init(client_opts);
 //! }
 //! ```
@@ -38,7 +39,5 @@ pub mod metrics;
 mod hook;
 mod settings;
 
-pub use self::hook::install_hook;
 pub use self::hook::install_hook_with_settings;
 pub use self::settings::SentrySettings;
-pub use sentry_core::Level;

@@ -1,0 +1,22 @@
+[package]
+name = "foundations-sentry"
+description = "Foundations companion crate with Sentry integrations"
+version = "1.0.0"
+edition = { workspace = true }
+repository = { workspace = true }
+authors = { workspace = true }
+license = { workspace = true }
+readme = "../README.md"
+categories = ["development-tools"]
+keywords = ["foundations", "sentry", "telemetry", "metrics"]
+
+[lints]
+workspace = true
+
+[dependencies]
+foundations = { workspace = true, features = ["settings", "ratelimit", "metrics"] }
+governor = { workspace = true }
+sentry-core = "0.47.0"
+
+[dev-dependencies]
+sentry-core = { version = "0.47.0", features = ["test"] }

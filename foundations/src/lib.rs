@@ -76,6 +76,8 @@ pub mod addr;
 pub mod panic;
 
 #[cfg(all(feature = "sentry", feature = "metrics"))]
+#[deprecated = "Replaced by separate `foundations-sentry` crate."]
+// TODO: remove before next major release
 pub mod sentry;
 
 #[cfg(feature = "cli")]

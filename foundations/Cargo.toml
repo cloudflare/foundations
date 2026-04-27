@@ -45,7 +45,8 @@ platform-common-default = [
     "sentry",
 ]
 
-# Sentry integration for fatal error tracking
+# DEPRECATED: Sentry integration for fatal error tracking.
+# Use the separate `foundations-sentry` crate instead.
 sentry = ["dep:sentry-core", "dep:serde", "dep:governor", "ratelimit", "metrics"]
 
 # A subset of features that can be used both on server and client sides. Useful for libraries
@@ -251,7 +252,6 @@ tikv-jemallocator = { workspace = true, optional = true, features = [
     "stats",
     "background_threads",
 ] }
-sentry-core = { workspace = true, optional = true }
 pin-project-lite = { workspace = true }
 zeroize = { workspace = true, optional = true }
 
@@ -267,6 +267,10 @@ parking_lot_core = { workspace = true, optional = true }
 regex = { workspace = true, optional = true }
 thiserror = { workspace = true, optional = true }
 tower = { workspace = true, optional = true }
+
+# Only used in deprecated code
+# TODO: remove before next major release
+sentry-core = { workspace = true, optional = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 tikv-jemalloc-ctl = { workspace = true, optional = true, features = [
@@ -287,7 +291,6 @@ tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 ipnetwork = { workspace = true }
 nix = { workspace = true , features = ["fs"] }
 tracing-subscriber = { workspace = true }
-sentry = { workspace = true }
 
 [build-dependencies]
 bindgen = { workspace = true, features = ["runtime"], optional = true }
