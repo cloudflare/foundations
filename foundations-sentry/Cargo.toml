@@ -10,6 +10,22 @@ readme = "../README.md"
 categories = ["development-tools"]
 keywords = ["foundations", "sentry", "telemetry", "metrics"]
 
+# Generic for any separately-versioned crate at repo root
+[package.metadata.release]
+pre-release-hook = [
+    "git-cliff",
+    "-w",
+    "..",
+    "--include-path",
+    "{{crate_name}}/**",
+    "--tag-pattern",
+    "{{crate_name}}-v[0-9]*",
+    "-o",
+    "RELEASE_NOTES.md",
+    "--tag",
+    "{{version}}",
+]
+
 [lints]
 workspace = true
 

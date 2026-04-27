@@ -5,6 +5,9 @@ edition = { workspace = true }
 repository = { workspace = true }
 publish = false
 
+[package.metadata.release]
+release = false
+
 [dev-dependencies]
 anyhow = { workspace = true }
 foundations = { workspace = true, features = ["default"] }

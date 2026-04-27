@@ -20,5 +20,5 @@ commit_parsers = [
   { message = "^Pull request", skip = true }
 ]
 filter_commits = false
-tag_pattern = "[v0-9]*"
+tag_pattern = "v[0-9]*"
 sort_commits = "newest"

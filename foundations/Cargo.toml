@@ -17,6 +17,9 @@ categories = [
 keywords = ["service", "telemetry", "settings", "seccomp", "metrics"]
 
 [package.metadata.release]
+shared-version = "foundations"
+tag-prefix = ""
+tag-message = "Release foundations version {{version}}"
 # run in the context of workspace root
 pre-release-hook = [
     "git-cliff",
