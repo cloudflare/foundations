@@ -7,7 +7,7 @@ publish = false
 
 [dev-dependencies]
 anyhow = { workspace = true }
-foundations = { workspace = true }
+foundations = { workspace = true, features = ["default"] }
 futures-util = { workspace = true }
 http-body-util = { workspace = true }
 hyper = { workspace = true }
