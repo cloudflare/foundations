@@ -158,7 +158,8 @@ impl TelemetryServerFuture {
                 .map_err(|err| anyhow::anyhow!(err))?;
         }
 
-        let router = Router::new(custom_routes, Arc::clone(&settings));
+        let router = Router::new(custom_routes, Arc::clone(&settings))
+            .context("building telemetry server router")?;
 
         let listener = match &settings.server.addr {
             ListenAddr::Tcp(addr) => {
