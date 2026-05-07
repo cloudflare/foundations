@@ -2,6 +2,7 @@
 use super::memory_profiling;
 #[cfg(feature = "memory-profiling")]
 use super::pprof_symbol;
+use crate::BootstrapResult;
 #[cfg(feature = "metrics")]
 use crate::telemetry::metrics;
 use crate::telemetry::reexports::http_body_util::{BodyExt, Empty, Full, combinators::BoxBody};
@@ -31,8 +32,54 @@ pub type TelemetryRouteHandler = Box<
         + Sync
         + 'static,
 >;
+type RouteHandlerShared = Arc<
+    dyn Fn(Request<Incoming>, Arc<TelemetrySettings>) -> TelemetryRouteHandlerFuture
+        + Send
+        + Sync
+        + 'static,
+>;
 
 /// A telemetry server route descriptor.
+///
+/// There can be only one route handler per (Method, Path) pair. If there is a
+/// collision, the first route to be inserted wins. This includes built-in routes,
+/// which are inserted before any custom routes. The current set of built-in routes
+/// are:
+/// - `/health`
+/// - `/metrics` (`metrics` feature)
+/// - `/pprof/heap` (`memory-profiling` feature)
+/// - `/pprof/heap_stats` (`memory-profiling` feature)
+/// - `/pprof/symbol` (`memory-profiling` feature)
+/// - `/debug/traces` (`tracing` feature)
+///
+/// New built-in routes may be added from time to time. We reserve the `/foundations/`
+/// prefix for this purpose, but other paths may be used if there are existing conventions
+/// for a feature (such as `/pprof/*` and `/metrics`.)
+///
+/// # Pattern-Based Routing
+///
+/// If the optional `telemetry-server-pattern-routing` feature is enabled,
+/// [`TelemetryServerRoute`]s can include parameters in their `path` attributes.
+/// (If the feature is disabled, `path` is interpreted entirely literally.) Parameters
+/// are delimited by single curly braces, i.e. `{my_param}`. To include a literal curly
+/// brace in a pattern-based path, escape it by duplicating it: `{ -> {{` and `} -> }}`.
+///
+/// For routing, paths are split into segments delimited by `/`. Each segment may be
+/// either:
+/// - A static string, like `/foo`.
+/// - A named parameter, like `/{my_param}`. Prefixes and suffixes can be added as
+///   well (`/foo{my_param}bar`).
+/// - A catch-all parameter, like `/{*rest}`. This is only allowed at the end of the
+///   path.
+///
+/// Note that this allows patterns to be overlapping. For the exact details on conflict
+/// handling and priority, see the [`matchit`](matchit#conflict-rules) docs. In essence,
+/// static segments take precedence over parameters, and named parameters take precedence
+/// over catch-all parameters.
+///
+/// We do not pass the parsed parameters to the `handler` function (to keep the route
+/// interface as simply as possible.) If necessary, the handler has to re-parse the
+/// request's path itself.
 pub struct TelemetryServerRoute {
     /// URL path of the route.
     pub path: String,
@@ -44,27 +91,27 @@ pub struct TelemetryServerRoute {
     pub handler: TelemetryRouteHandler,
 }
 
-struct RouteMap(HashMap<Method, HashMap<String, Arc<TelemetryRouteHandler>>>);
+struct Routes(HashMap<Method, matchit::Router<RouteHandlerShared>>);
 
-impl RouteMap {
-    fn new(custom_routes: Vec<TelemetryServerRoute>) -> Self {
-        let mut map = RouteMap(Default::default());
+impl Routes {
+    fn new(custom_routes: Vec<TelemetryServerRoute>) -> BootstrapResult<Self> {
+        let mut map = Self(Default::default());
 
-        map.init_built_in_routes();
+        map.init_built_in_routes()?;
 
         for route in custom_routes {
-            map.set(route);
+            map.set(route)?;
         }
 
-        map
+        Ok(map)
     }
 
-    fn init_built_in_routes(&mut self) {
+    fn init_built_in_routes(&mut self) -> BootstrapResult<()> {
         self.set(TelemetryServerRoute {
             path: "/health".into(),
             methods: vec![Method::GET],
             handler: Box::new(|_, _| async { into_response("text/plain", Ok("")) }.boxed()),
-        });
+        })?;
 
         #[cfg(feature = "metrics")]
         self.set(TelemetryServerRoute {
@@ -79,7 +126,7 @@ impl RouteMap {
                 }
                 .boxed()
             }),
-        });
+        })?;
 
         #[cfg(all(target_os = "linux", feature = "memory-profiling"))]
         self.set(TelemetryServerRoute {
@@ -94,7 +141,7 @@ impl RouteMap {
                 }
                 .boxed()
             }),
-        });
+        })?;
 
         #[cfg(all(target_os = "linux", feature = "memory-profiling"))]
         self.set(TelemetryServerRoute {
@@ -109,7 +156,7 @@ impl RouteMap {
                 }
                 .boxed()
             }),
-        });
+        })?;
 
         #[cfg(feature = "memory-profiling")]
         self.set(TelemetryServerRoute {
@@ -124,7 +171,7 @@ impl RouteMap {
                 }
                 .boxed()
             }),
-        });
+        })?;
 
         #[cfg(feature = "tracing")]
         self.set(TelemetryServerRoute {
@@ -139,25 +186,44 @@ impl RouteMap {
                 }
                 .boxed()
             }),
-        });
+        })?;
+
+        Ok(())
     }
 
-    fn set(&mut self, route: TelemetryServerRoute) {
-        let handler = Arc::new(route.handler);
+    #[allow(unused_mut, reason = "conditional mutation")]
+    fn set(&mut self, mut route: TelemetryServerRoute) -> BootstrapResult<()> {
+        let handler = Arc::from(route.handler);
+
+        #[cfg(not(feature = "telemetry-server-pattern-routing"))]
+        {
+            // Escape parameter delimiters so `matchit` interprets them literally
+            route.path = route.path.replace('{', "{{").replace('}', "}}");
+        }
 
         for method in route.methods {
-            self.0
+            let res = self
+                .0
                 .entry(method)
                 .or_default()
-                .entry(route.path.clone())
-                .or_insert(Arc::clone(&handler));
+                .insert(route.path.clone(), Arc::clone(&handler));
+
+            match res {
+                Ok(()) => {}
+                // Exact matches were allowed and ignored historically. Any other errors
+                // should be reported up.
+                Err(matchit::InsertError::Conflict { with }) if with == route.path => {}
+                Err(e) => anyhow::bail!("tried to insert route `{}`, but {}", &route.path, e),
+            }
         }
+
+        Ok(())
     }
 }
 
 #[derive(Clone)]
 pub(super) struct Router {
-    routes: Arc<RouteMap>,
+    routes: Arc<Routes>,
     settings: Arc<TelemetrySettings>,
 }
 
@@ -165,11 +231,11 @@ impl Router {
     pub(super) fn new(
         custom_routes: Vec<TelemetryServerRoute>,
         settings: Arc<TelemetrySettings>,
-    ) -> Self {
-        Self {
-            routes: Arc::new(RouteMap::new(custom_routes)),
+    ) -> BootstrapResult<Self> {
+        Ok(Self {
+            routes: Arc::new(Routes::new(custom_routes)?),
             settings,
-        }
+        })
     }
 
     async fn handle_request(&self, req: Request<Incoming>) -> Response<TelemetryRouteBody> {
@@ -188,7 +254,7 @@ impl Router {
             .routes
             .0
             .get(req.method())
-            .and_then(|e| e.get(&path.to_string()))
+            .and_then(|r| Some(r.at(&path).ok()?.value))
         else {
             return res
                 .status(StatusCode::NOT_FOUND)
