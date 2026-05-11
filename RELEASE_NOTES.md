@@ -1,5 +1,14 @@
 
+5.7.0
+- 2026-05-11 fix: rustix 0.36 breaks under nightly
+- 2026-05-07 Allow pattern-based routes in TelemetryServer
+- 2026-04-27 chore: Release
+- 2026-04-27 Configure cargo-release for separately-versioned crates
+- 2026-04-27 Extract sentry hook into separate foundations-sentry crate
+- 2026-04-24 Update dependencies.
+
 5.6.5
+- 2026-04-23 Release 5.6.5
 - 2026-04-23 fix: Revert initialization of metrics in telemetry testing
 - 2026-04-23 fix: Use `num_tasks` setting for Jaeger trace reporter tasks
 
