@@ -107,6 +107,7 @@ annotate-snippets = "0.12.15"
 # and the minver CI job fails compiling slog-term.
 chrono = "0.4.44"
 encoding_rs_io = "0.1.7"
+is-terminal = "0.4.8"
 local-ip-address = "0.6.12"
 lock_api = "0.4.14"
 log = "0.4.29"
