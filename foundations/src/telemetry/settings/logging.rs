@@ -3,6 +3,16 @@ use crate::utils::feature_use;
 
 use std::path::PathBuf;
 
+#[cfg(feature = "logging")]
+use std::sync::Arc;
+
+#[cfg(feature = "logging")]
+use slog::{Never, SendSyncRefUnwindSafeDrain};
+
+/// A custom slog drain for use with [`LogOutput::Custom`].
+#[cfg(feature = "logging")]
+pub type CustomDrain = Arc<dyn SendSyncRefUnwindSafeDrain<Ok = (), Err = Never>>;
+
 feature_use!(cfg(feature = "settings"), {
     use crate::settings::settings;
 });
@@ -39,8 +49,11 @@ pub struct LoggingSettings {
 }
 
 /// Log output destination.
-#[cfg_attr(feature = "settings", settings(crate_path = "crate"))]
-#[cfg_attr(not(feature = "settings"), derive(Clone, Debug, Default))]
+#[cfg_attr(
+    feature = "settings",
+    settings(crate_path = "crate", impl_debug = false)
+)]
+#[cfg_attr(not(feature = "settings"), derive(Clone, Default))]
 pub enum LogOutput {
     /// Write log to terminal.
     #[default]
@@ -58,6 +71,48 @@ pub enum LogOutput {
     ///verbosity will not be respected
     #[cfg(feature = "tracing-rs-compat")]
     TracingRsCompat,
+
+    /// User-provided drain. Not serializable — set programmatically only.
+    ///
+    /// [`LogFormat`] is ignored for this variant; the custom drain is responsible for its
+    /// own formatting. All other [`LoggingSettings`] (verbosity, field redaction, rate
+    /// limiting) still apply.
+    ///
+    /// # Examples
+    ///
+    /// Combine a terminal drain with a JSON file drain:
+    ///
+    /// ```ignore
+    /// use slog::{Drain, Duplicate};
+    /// use slog_term::{FullFormat, TermDecorator};
+    /// use slog_json::Json;
+    /// use std::fs::File;
+    /// use std::sync::Arc;
+    ///
+    /// let term = FullFormat::new(TermDecorator::new().build()).build().fuse();
+    /// let file = File::create("/var/log/app.json").unwrap();
+    /// let json = Json::new(file).build().fuse();
+    /// let combined = Duplicate::new(term, json).fuse();
+    ///
+    /// settings.logging.output = LogOutput::Custom(Arc::new(combined));
+    /// ```
+    #[cfg(feature = "logging")]
+    #[cfg_attr(feature = "settings", serde(skip))]
+    Custom(CustomDrain),
+}
+
+impl std::fmt::Debug for LogOutput {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Terminal => write!(f, "Terminal"),
+            Self::Stderr => write!(f, "Stderr"),
+            Self::File(path) => f.debug_tuple("File").field(path).finish(),
+            #[cfg(feature = "tracing-rs-compat")]
+            Self::TracingRsCompat => write!(f, "TracingRsCompat"),
+            #[cfg(feature = "logging")]
+            Self::Custom(_) => write!(f, "Custom(...)"),
+        }
+    }
 }
 
 /// Format of the log output.

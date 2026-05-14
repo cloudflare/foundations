@@ -88,6 +88,22 @@ impl TestTelemetryContext {
         self.log_records = log_records;
     }
 
+    /// Overrides the logging settings on the test telemetry context with a custom drain.
+    ///
+    /// Records are forwarded to the custom drain **and** captured for assertions via
+    /// [`log_records`][Self::log_records].
+    #[cfg(feature = "logging")]
+    pub fn set_custom_log_drain(
+        &mut self,
+        logging_settings: LoggingSettings,
+        custom_drain: super::settings::CustomDrain,
+    ) {
+        use crate::telemetry::log::testing::create_test_log_for_custom;
+        let (log, log_records) = create_test_log_for_custom(&logging_settings, custom_drain);
+        *self.inner.log.write() = log;
+        self.log_records = log_records;
+    }
+
     /// Overrides the logging settings on the test telemetry context with the tracing-rs compat
     /// layer. The `logging_settings` provided must use the [tracing compat] output format
     ///

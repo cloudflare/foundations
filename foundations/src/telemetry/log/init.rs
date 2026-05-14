@@ -121,6 +121,9 @@ pub(crate) fn init(
         (LogOutput::TracingRsCompat, _) => AsyncDrain::new(tracing_slog::TracingSlogDrain {})
             .chan_size(CHANNEL_SIZE)
             .build_with_guard(),
+        (LogOutput::Custom(drain), _) => AsyncDrain::new(Arc::clone(drain))
+            .chan_size(CHANNEL_SIZE)
+            .build_with_guard(),
     };
 
     let root_drain = wrap_root_drain(settings, async_drain.fuse());

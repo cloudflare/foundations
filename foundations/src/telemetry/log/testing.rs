@@ -93,6 +93,32 @@ pub(crate) fn create_test_log(
     (log, log_records)
 }
 
+/// Create a test log with a custom drain installed in addition to the test drain
+pub(crate) fn create_test_log_for_custom(
+    settings: &LoggingSettings,
+    custom_drain: crate::telemetry::settings::CustomDrain,
+) -> (LoggerWithKvNestingTracking, TestLogRecords) {
+    let log_records = Arc::new(RwLock::new(vec![]));
+
+    let drain = TestLogDrain {
+        records: Arc::clone(&log_records),
+        forward: Some(custom_drain),
+    };
+    let drain = wrap_root_drain(settings, drain);
+
+    let logger = build_log_with_drain(settings.verbosity, slog::o!(), Arc::clone(&drain));
+    let log = LoggerWithKvNestingTracking::new(logger);
+
+    let _ = LogHarness::override_for_testing(LogHarness {
+        root_log: Arc::new(ParkingRwLock::new(log.clone())),
+        root_drain: drain,
+        settings: settings.clone(),
+        log_scope_stack: Default::default(),
+    });
+
+    (log, log_records)
+}
+
 /// Create a test log with a tracing-rs compat drain installed in addition to the test drain
 #[cfg(feature = "tracing-rs-compat")]
 pub(crate) fn create_test_log_for_tracing_compat(
