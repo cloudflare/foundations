@@ -26,7 +26,7 @@ impl Drain for CapturingDrain {
 fn custom_drain_receives_log_records(mut ctx: TestTelemetryContext) {
     let messages = Arc::new(Mutex::new(Vec::new()));
     let drain = CapturingDrain {
-        messages: messages.clone(),
+        messages: Arc::clone(&messages),
     };
 
     ctx.set_custom_log_drain(LoggingSettings::default(), Arc::new(drain));
