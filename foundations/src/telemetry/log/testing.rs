@@ -2,7 +2,9 @@ use crate::telemetry::log::init::{LogHarness, build_log_with_drain, wrap_root_dr
 use crate::telemetry::log::internal::LoggerWithKvNestingTracking;
 use crate::telemetry::settings::LoggingSettings;
 use parking_lot::RwLock as ParkingRwLock;
-use slog::{Discard, Drain, KV, Key, Level, Never, OwnedKVList, Record, Serializer};
+use slog::{
+    Drain, KV, Key, Level, Never, OwnedKVList, Record, SendSyncRefUnwindSafeDrain, Serializer,
+};
 use std::fmt::Arguments;
 use std::sync::{Arc, RwLock};
 
@@ -69,40 +71,18 @@ where
     }
 }
 
-pub(crate) fn create_test_log(
+pub(crate) fn create_test_log<D>(
     settings: &LoggingSettings,
-) -> (LoggerWithKvNestingTracking, TestLogRecords) {
+    forward: Option<D>,
+) -> (LoggerWithKvNestingTracking, TestLogRecords)
+where
+    D: SendSyncRefUnwindSafeDrain<Ok = (), Err = Never> + 'static,
+{
     let log_records = Arc::new(RwLock::new(vec![]));
 
-    let drain: TestLogDrain<Discard> = TestLogDrain {
+    let drain: TestLogDrain<D> = TestLogDrain {
         records: Arc::clone(&log_records),
-        forward: None,
-    };
-    let drain = wrap_root_drain(settings, drain);
-
-    let logger = build_log_with_drain(settings.verbosity, slog::o!(), Arc::clone(&drain));
-    let log = LoggerWithKvNestingTracking::new(logger);
-
-    let _ = LogHarness::override_for_testing(LogHarness {
-        root_log: Arc::new(ParkingRwLock::new(log.clone())),
-        root_drain: drain,
-        settings: settings.clone(),
-        log_scope_stack: Default::default(),
-    });
-
-    (log, log_records)
-}
-
-/// Create a test log with a custom drain installed in addition to the test drain
-pub(crate) fn create_test_log_for_custom(
-    settings: &LoggingSettings,
-    custom_drain: crate::telemetry::settings::CustomDrain,
-) -> (LoggerWithKvNestingTracking, TestLogRecords) {
-    let log_records = Arc::new(RwLock::new(vec![]));
-
-    let drain = TestLogDrain {
-        records: Arc::clone(&log_records),
-        forward: Some(custom_drain),
+        forward,
     };
     let drain = wrap_root_drain(settings, drain);
 
@@ -131,25 +111,5 @@ pub(crate) fn create_test_log_for_tracing_compat(
         crate::telemetry::settings::LogOutput::TracingRsCompat
     ));
 
-    let base_drain = TracingSlogDrain {};
-
-    let log_records = Arc::new(RwLock::new(vec![]));
-
-    let drain = TestLogDrain {
-        records: Arc::clone(&log_records),
-        forward: Some(base_drain.fuse()),
-    };
-    let drain = wrap_root_drain(settings, drain);
-
-    let logger = build_log_with_drain(settings.verbosity, slog::o!(), Arc::clone(&drain));
-    let log = LoggerWithKvNestingTracking::new(logger);
-
-    let _ = LogHarness::override_for_testing(LogHarness {
-        root_log: Arc::new(ParkingRwLock::new(log.clone())),
-        root_drain: drain,
-        settings: settings.clone(),
-        log_scope_stack: Default::default(),
-    });
-
-    (log, log_records)
+    create_test_log(settings, Some(TracingSlogDrain {}.fuse()))
 }
