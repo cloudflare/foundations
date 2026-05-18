@@ -50,10 +50,13 @@ impl TestTelemetryContext {
     pub(crate) fn new() -> Self {
         #[cfg(feature = "logging")]
         let (log, log_records) = {
-            create_test_log(&LoggingSettings {
-                verbosity: LogVerbosity::Trace,
-                ..Default::default()
-            })
+            create_test_log(
+                &LoggingSettings {
+                    verbosity: LogVerbosity::Trace,
+                    ..Default::default()
+                },
+                None::<slog::Discard>,
+            )
         };
 
         #[cfg(feature = "tracing")]
@@ -83,7 +86,7 @@ impl TestTelemetryContext {
     /// with the settings
     #[cfg(feature = "logging")]
     pub fn set_logging_settings(&mut self, logging_settings: LoggingSettings) {
-        let (log, log_records) = { create_test_log(&logging_settings) };
+        let (log, log_records) = { create_test_log(&logging_settings, None::<slog::Discard>) };
         *self.inner.log.write() = log;
         self.log_records = log_records;
     }
@@ -98,8 +101,7 @@ impl TestTelemetryContext {
         logging_settings: LoggingSettings,
         custom_drain: super::settings::CustomDrain,
     ) {
-        use crate::telemetry::log::testing::create_test_log_for_custom;
-        let (log, log_records) = create_test_log_for_custom(&logging_settings, custom_drain);
+        let (log, log_records) = create_test_log(&logging_settings, Some(custom_drain));
         *self.inner.log.write() = log;
         self.log_records = log_records;
     }
