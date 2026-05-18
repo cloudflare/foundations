@@ -1,8 +1,8 @@
 use std::sync::{Arc, Mutex};
 
+use foundations::telemetry::TestTelemetryContext;
 use foundations::telemetry::log::error;
 use foundations::telemetry::settings::LoggingSettings;
-use foundations::telemetry::TestTelemetryContext;
 use slog::{Drain, Never, OwnedKVList, Record};
 
 struct CapturingDrain {
