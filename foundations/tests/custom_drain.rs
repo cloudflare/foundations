@@ -3,7 +3,6 @@ use std::sync::{Arc, Mutex};
 use foundations::telemetry::log::error;
 use foundations::telemetry::settings::LoggingSettings;
 use foundations::telemetry::TestTelemetryContext;
-use foundations_macros::with_test_telemetry;
 use slog::{Drain, Never, OwnedKVList, Record};
 
 struct CapturingDrain {
@@ -23,7 +22,7 @@ impl Drain for CapturingDrain {
     }
 }
 
-#[with_test_telemetry(test)]
+#[foundations::telemetry::with_test_telemetry(test)]
 fn custom_drain_receives_log_records(mut ctx: TestTelemetryContext) {
     let messages = Arc::new(Mutex::new(Vec::new()));
     let drain = CapturingDrain {
