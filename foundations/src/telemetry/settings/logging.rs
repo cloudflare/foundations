@@ -3,24 +3,22 @@ use crate::utils::feature_use;
 
 use std::path::PathBuf;
 
-#[cfg(feature = "logging")]
-use std::sync::Arc;
+feature_use!(cfg(feature = "logging"), {
+    use slog::{Never, SendSyncRefUnwindSafeDrain};
+    use std::sync::Arc;
 
-#[cfg(feature = "logging")]
-use slog::{Never, SendSyncRefUnwindSafeDrain};
+    // NOTE: we technically don't need a feature gate here, but if we don't add
+    // it then docs don't mark this re-export as available on when `logging` is
+    // enabled.
+    pub use slog::Level;
 
-/// A custom slog drain for use with [`LogOutput::Custom`].
-#[cfg(feature = "logging")]
-pub type CustomDrain = Arc<dyn SendSyncRefUnwindSafeDrain<Ok = (), Err = Never>>;
+    /// A custom slog drain for use with [`LogOutput::Custom`].
+    pub type CustomDrain = Arc<dyn SendSyncRefUnwindSafeDrain<Ok = (), Err = Never>>;
+});
 
 feature_use!(cfg(feature = "settings"), {
     use crate::settings::settings;
 });
-
-// NOTE: we technically don't need a feature gate here, but if we don't add it then docs don't
-// mark this re-export as available on when `logging` is enabled.
-#[cfg(feature = "logging")]
-pub use slog::Level;
 
 /// Logging settings.
 #[cfg_attr(feature = "settings", settings(crate_path = "crate"))]
