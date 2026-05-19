@@ -9,7 +9,7 @@ members = [
 resolver = "3"
 
 [workspace.package]
-version = "5.7.0"
+version = "5.7.1"
 repository = "https://github.com/cloudflare/foundations"
 edition = "2024"
 authors = ["Cloudflare"]
@@ -39,8 +39,8 @@ check-cfg = [
 [workspace.dependencies]
 anyhow = "1.0.102"
 backtrace = "0.3.76"
-foundations = { version = "5.7.0", path = "./foundations", default-features = false }
-foundations-macros = { version = "=5.7.0", path = "./foundations-macros", default-features = false }
+foundations = { version = "5.7.1", path = "./foundations", default-features = false }
+foundations-macros = { version = "=5.7.1", path = "./foundations-macros", default-features = false }
 bindgen = { version = "0.72.1", default-features = false }
 cc = "1.2.61"
 cf-rustracing = "1.3.0"

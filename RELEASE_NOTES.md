@@ -1,5 +1,16 @@
 
+5.7.1
+- 2026-05-19 chore: Exclude prefixed tags from git-cliff
+- 2026-05-18 feedback: -D clippy::clone_on_ref_ptr
+- 2026-05-18 feedback: formatting
+- 2026-05-18 feedback: create_test_log
+- 2026-05-18 feedback: fqn macro
+- 2026-05-18 feedback: feature_use
+- 2026-05-14 feat: add LogOutput::Custom variant for user-provided slog drains
+- 2026-05-13 ci(semgrep): pin token to contents: read
+
 5.7.0
+- 2026-05-11 chore: Release
 - 2026-05-11 fix: rustix 0.36 breaks under nightly
 - 2026-05-07 Allow pattern-based routes in TelemetryServer
 - 2026-04-27 chore: Release
