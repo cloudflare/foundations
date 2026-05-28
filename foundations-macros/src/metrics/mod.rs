@@ -371,6 +371,10 @@ fn metric_fn(foundations: &Path, metrics_struct: &Ident, fn_: &ItemFn) -> proc_m
 
     let fn_args: Vec<_> = args.iter().map(|arg| arg.to_arg()).collect();
 
+    // Generate compile-time trait bound check for Family label types
+    let trait_bound_check =
+        generate_family_trait_bound_check(foundations, metric_name, metric_type);
+
     let (convert_args, access_metric) = if args.is_empty() {
         let accessor = quote! {
             ::std::clone::Clone::clone(&#metrics_struct.#metric_name)
@@ -432,6 +436,7 @@ fn metric_fn(foundations: &Path, metrics_struct: &Ident, fn_: &ItemFn) -> proc_m
     };
 
     quote! {
+        #trait_bound_check
         #[doc = #doc]
         #(#cfg)*
         #[must_use]
@@ -440,6 +445,77 @@ fn metric_fn(foundations: &Path, metrics_struct: &Ident, fn_: &ItemFn) -> proc_m
             #access_metric
         }
         #removal_fns
+    }
+}
+
+/// Generates a compile-time trait bound check for Family metrics.
+///
+/// This creates a const assertion that validates the label type implements
+/// all required traits: Clone, Hash, PartialEq, Eq, EncodeLabelSet, Serialize.
+/// Without these traits, label encoding would fail during runtime and result in
+/// the prometheus metric handler returning an HTTP 500 response.
+fn generate_family_trait_bound_check(
+    foundations: &Path,
+    metric_name: &Ident,
+    metric_type: &Type,
+) -> proc_macro2::TokenStream {
+    use syn::{GenericArgument, PathArguments, Type, TypePath};
+
+    // Early return if not a Path type
+    let Type::Path(TypePath { path, .. }) = metric_type else {
+        return quote! {};
+    };
+
+    // Early return if no last segment
+    let Some(seg) = path.segments.last() else {
+        return quote! {};
+    };
+
+    // Early return if not a Family type
+    if seg.ident != "Family" {
+        return quote! {};
+    }
+
+    // Early return if no angle-bracketed arguments
+    let PathArguments::AngleBracketed(args) = &seg.arguments else {
+        return quote! {};
+    };
+
+    // Early return if no first type argument
+    let Some(GenericArgument::Type(label_ty)) = args.args.first() else {
+        return quote! {};
+    };
+
+    // Generate the trait bound check
+    let check_name = format_ident!(
+        "_CHECK_FAMILY_LABEL_TRAITS_{}",
+        metric_name.to_string().to_uppercase()
+    );
+
+    let prometheus_client = quote! { #foundations::reexports_for_macros::prometheus_client };
+    let serde = quote! { #foundations::reexports_for_macros::serde };
+
+    quote! {
+        // Compile-time assertion that the label type implements all required traits
+        const _: () = {
+            fn __assert_label_traits<__T>()
+            where
+                __T: ::std::clone::Clone
+                    + ::std::hash::Hash
+                    + ::std::cmp::PartialEq
+                    + ::std::cmp::Eq
+                    + ::prometheus_client::encoding::EncodeLabelSet
+                    + ::serde::Serialize,
+            {
+            }
+
+            // This will fail to compile if #label_ty doesn't implement the required traits
+            fn #check_name() {
+                use #prometheus_client;
+                use #serde;
+                __assert_label_traits::<#label_ty>();
+            }
+        };
     }
 }
 
