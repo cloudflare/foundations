@@ -35,6 +35,7 @@
 //! ```
 
 pub mod metrics;
+pub mod panic;
 
 mod hook;
 mod settings;

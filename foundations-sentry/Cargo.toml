@@ -33,6 +33,7 @@ workspace = true
 foundations = { workspace = true, features = ["settings", "ratelimit", "metrics"] }
 governor = { workspace = true }
 sentry-core = "0.47.0"
+sentry-panic = "0.47.0"
 
 [dev-dependencies]
 sentry-core = { version = "0.47.0", features = ["test"] }
