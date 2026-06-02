@@ -14,8 +14,10 @@ use crate::Result;
 use prometheus::{Encoder, TextEncoder};
 use serde::Serialize;
 use std::any::TypeId;
+use std::fmt::Display;
 
 mod gauge;
+mod rewind;
 
 pub(super) mod init;
 
@@ -44,7 +46,21 @@ pub fn collect(settings: &MetricsSettings) -> Result<String> {
 
     buffer.extend_from_slice(b"# EOF\n");
 
-    Ok(String::from_utf8(buffer)?)
+    let metrics_str = String::from_utf8(buffer).unwrap_or_else(|err| {
+        report_nonfatal_collect_error(&format_args!("converting raw metrics to string: {err}"));
+        String::from_utf8_lossy(err.as_bytes()).into_owned()
+    });
+    Ok(metrics_str)
+}
+
+#[inline]
+#[track_caller]
+fn report_nonfatal_collect_error(err: &dyn Display) {
+    #[cfg(feature = "logging")]
+    crate::telemetry::log::warn!("non-fatal error while collecting metrics"; "error" => %err);
+
+    #[cfg(not(feature = "logging"))]
+    eprintln!("non-fatal error while collecting metrics: {err}");
 }
 
 /// A macro that allows to define Prometheus metrics.
