@@ -1,5 +1,5 @@
 use foundations::ServiceInfo;
-use foundations::telemetry::metrics::{self, Counter, metrics};
+use foundations::telemetry::metrics::{self, Counter, Family, metrics};
 use foundations::telemetry::settings::{MetricsSettings, ServiceNameFormat, TelemetrySettings};
 use foundations::telemetry::{TelemetryConfig, TelemetryContext};
 
@@ -18,6 +18,14 @@ mod library {
     pub fn calls() -> Counter;
     #[optional]
     pub fn optional() -> Counter;
+}
+
+#[metrics]
+mod encode_error {
+    pub fn valid() -> Counter;
+    // `String` is not a valid label for a metric family, but since
+    // we use serde to encode labels, this is only detected at runtime.
+    pub fn invalid_label() -> Family<String, Counter>;
 }
 
 #[test]
@@ -49,6 +57,43 @@ fn metrics_unprefixed() {
     assert!(!metrics.contains("\nundefined_regular_dynamic"));
     assert!(metrics.contains("\nlibrary_calls 1\n"));
     assert!(!metrics.contains("\nlibrary_optional"));
+}
+
+#[test]
+fn encode_error_is_skipped() {
+    encode_error::valid().inc();
+    encode_error::invalid_label()
+        .get_or_create(&"bad label".to_owned())
+        .inc();
+    encode_error::invalid_label()
+        .get_or_create(&"another label".to_owned())
+        .inc();
+
+    // Note the absence of values for the `error_invalid_label` family
+    let expected_output = "# HELP undefined_encode_error_valid .
+# TYPE undefined_encode_error_valid counter
+undefined_encode_error_valid 1
+# HELP undefined_encode_error_invalid_label .
+# TYPE undefined_encode_error_invalid_label counter
+";
+
+    let settings = MetricsSettings {
+        service_name_format: ServiceNameFormat::MetricPrefix,
+        report_optional: false,
+    };
+    let metrics = metrics::collect(&settings).expect("metrics should be collectable");
+    dbg!(&metrics);
+
+    // On some OSs, process metrics may be automatically registered.
+    // They will appear last in the output.
+    let metrics_suffix = metrics
+        .strip_prefix(expected_output)
+        .expect("collected metrics should start with expected output");
+    assert!(
+        !metrics_suffix.contains(" undefined_"),
+        "collected metrics contain unexpected output"
+    );
+    assert!(metrics.ends_with("# EOF\n"));
 }
 
 #[tokio::test]

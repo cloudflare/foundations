@@ -344,7 +344,7 @@ fn metric_init(foundations: &Path, fn_: &ItemFn) -> proc_macro2::TokenStream {
                 #registry,
                 ::std::stringify!(#field_name),
                 str::trim(#doc),
-                ::std::boxed::Box::new(::std::clone::Clone::clone(&metric))
+                #foundations::telemetry::metrics::internal::wrap_metric(::std::clone::Clone::clone(&metric)),
             );
 
             metric
@@ -519,7 +519,7 @@ mod tests {
                                     registry,
                                     ::std::stringify!(connections_total),
                                     str::trim(" Total number of connections"),
-                                    ::std::boxed::Box::new(::std::clone::Clone::clone(&metric))
+                                    tarmac::telemetry::metrics::internal::wrap_metric(::std::clone::Clone::clone(&metric)),
                                 );
 
                                 metric
@@ -576,7 +576,7 @@ mod tests {
                                     opt_registry,
                                     ::std::stringify!(connections_total),
                                     str::trim(" Total number of connections"),
-                                    ::std::boxed::Box::new(::std::clone::Clone::clone(&metric))
+                                    ::foundations::telemetry::metrics::internal::wrap_metric(::std::clone::Clone::clone(&metric)),
                                 );
 
                                 metric
@@ -638,7 +638,7 @@ mod tests {
                                     registry,
                                     ::std::stringify!(requests_total),
                                     str::trim(" Total number of requests"),
-                                    ::std::boxed::Box::new(::std::clone::Clone::clone(&metric))
+                                    ::foundations::telemetry::metrics::internal::wrap_metric(::std::clone::Clone::clone(&metric)),
                                 );
 
                                 metric
@@ -650,7 +650,7 @@ mod tests {
                                     opt_registry,
                                     ::std::stringify!(connections_total),
                                     str::trim(" Total number of connections"),
-                                    ::std::boxed::Box::new(::std::clone::Clone::clone(&metric))
+                                    ::foundations::telemetry::metrics::internal::wrap_metric(::std::clone::Clone::clone(&metric)),
                                 );
 
                                 metric
@@ -742,7 +742,7 @@ mod tests {
                                     registry,
                                     ::std::stringify!(connections_errors_total),
                                     str::trim(" Total number of connection errors"),
-                                    ::std::boxed::Box::new(::std::clone::Clone::clone(&metric))
+                                    ::foundations::telemetry::metrics::internal::wrap_metric(::std::clone::Clone::clone(&metric)),
                                 );
 
                                 metric
@@ -840,7 +840,7 @@ mod tests {
                                     registry,
                                     ::std::stringify!(connections_latency),
                                     str::trim(" Latency of connections"),
-                                    ::std::boxed::Box::new(::std::clone::Clone::clone(&metric))
+                                    ::foundations::telemetry::metrics::internal::wrap_metric(::std::clone::Clone::clone(&metric)),
                                 );
 
                                 metric
@@ -854,7 +854,7 @@ mod tests {
                                     registry,
                                     ::std::stringify!(requests_per_connection),
                                     str::trim(" Number of requests per connection"),
-                                    ::std::boxed::Box::new(::std::clone::Clone::clone(&metric))
+                                    ::foundations::telemetry::metrics::internal::wrap_metric(::std::clone::Clone::clone(&metric)),
                                 );
 
                                 metric
@@ -943,7 +943,7 @@ mod tests {
                                     registry,
                                     ::std::stringify!(requests_total),
                                     str::trim(" Total number of requests"),
-                                    ::std::boxed::Box::new(::std::clone::Clone::clone(&metric))
+                                    ::foundations::telemetry::metrics::internal::wrap_metric(::std::clone::Clone::clone(&metric)),
                                 );
 
                                 metric

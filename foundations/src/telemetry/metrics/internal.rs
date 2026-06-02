@@ -1,7 +1,9 @@
-use super::{ExtraProducer, InfoMetric, info_metric};
+use super::rewind::{RewindState, RewindTo};
+use super::{ExtraProducer, InfoMetric, info_metric, report_nonfatal_collect_error};
 use crate::telemetry::settings::{MetricsSettings, ServiceNameFormat};
 use crate::{Result, ServiceInfo};
-use prometheus_client::encoding::text::{EncodeMetric, encode};
+use prometheus_client::encoding::text::{EncodeMetric, Encoder, SendSyncEncodeMetric, encode};
+use prometheus_client::metrics::MetricType;
 use prometheus_client::registry::Registry;
 use prometools::serde::InfoGauge;
 use std::any::TypeId;
@@ -90,6 +92,7 @@ impl Registries {
 
         for info_metric in info_registry.values() {
             let info_gauge = InfoGauge::new(&**info_metric);
+            let info_gauge = RewindErrorEncode(info_gauge);
 
             registry.register(info_metric.name(), info_metric.help(), info_gauge)
         }
@@ -176,11 +179,50 @@ where
     }
 }
 
-pub(super) fn encode_registry(
-    buffer: &mut Vec<u8>,
-    registry: &Registry<impl EncodeMetric>,
-) -> Result<()> {
-    encode(buffer, registry)?;
+std::thread_local! {
+    static ENCODER_REWIND_STATE: RewindState = const { RewindState::new() };
+}
+
+struct RewindErrorEncode<M>(M);
+
+impl<M: EncodeMetric> EncodeMetric for RewindErrorEncode<M> {
+    fn encode(&self, encoder: Encoder) -> std::io::Result<()> {
+        let mut res = self.0.encode(encoder);
+
+        // If encoding the metric failed, and we are inside a rewindable encoder,
+        // discard the error and rewind the encoder to the last newline to avoid
+        // garbage output.
+        if res.is_err() {
+            let _ = ENCODER_REWIND_STATE.try_with(|s| {
+                if s.is_active() {
+                    s.rewind_to(RewindTo::LastNewline);
+                    let err = std::mem::replace(&mut res, Ok(())).unwrap_err();
+                    report_nonfatal_collect_error(&format_args!(
+                        "encoding metric or family: {err}"
+                    ));
+                }
+            });
+        }
+
+        res
+    }
+
+    #[inline]
+    fn metric_type(&self) -> MetricType {
+        self.0.metric_type()
+    }
+}
+
+/// Wraps a metric in our private error-handling type, without making the type public.
+pub fn wrap_metric(metric: impl SendSyncEncodeMetric + 'static) -> Box<dyn SendSyncEncodeMetric> {
+    Box::new(RewindErrorEncode(metric))
+}
+
+fn encode_registry(buffer: &mut Vec<u8>, registry: &Registry<impl EncodeMetric>) -> Result<()> {
+    ENCODER_REWIND_STATE.with(|s| {
+        let mut writer = s.activate(buffer);
+        encode(&mut writer, registry)
+    })?;
 
     truncate_eof(buffer);
 
@@ -188,7 +230,8 @@ pub(super) fn encode_registry(
 }
 
 fn truncate_eof(buffer: &mut Vec<u8>) {
-    if buffer.ends_with(b"# EOF\n") {
-        buffer.truncate(buffer.len() - b"# EOF\n".len());
+    const EOF_MARKER: &[u8] = b"# EOF\n";
+    if buffer.ends_with(EOF_MARKER) {
+        buffer.truncate(buffer.len() - EOF_MARKER.len());
     }
 }
