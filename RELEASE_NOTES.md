@@ -1,4 +1,9 @@
 
+5.7.2
+- 2026-06-05 fix: strip plain release commits from RELEASE_NOTES.md
+- 2026-06-02 Gracefully degrade on metrics encoding failures
+- 2026-05-29 Add NoFlushPanicIntegration for sentry
+
 5.7.1
 - 2026-05-19 chore: Exclude prefixed tags from git-cliff
 - 2026-05-18 feedback: -D clippy::clone_on_ref_ptr
@@ -10,10 +15,8 @@
 - 2026-05-13 ci(semgrep): pin token to contents: read
 
 5.7.0
-- 2026-05-11 chore: Release
 - 2026-05-11 fix: rustix 0.36 breaks under nightly
 - 2026-05-07 Allow pattern-based routes in TelemetryServer
-- 2026-04-27 chore: Release
 - 2026-04-27 Configure cargo-release for separately-versioned crates
 - 2026-04-27 Extract sentry hook into separate foundations-sentry crate
 - 2026-04-24 Update dependencies.

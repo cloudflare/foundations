@@ -1,5 +1,8 @@
 
-1.0.0
+1.1.0
+- 2026-05-29 Add NoFlushPanicIntegration for sentry
+
+foundations-sentry-v1.0.0
 - 2026-04-27 Configure cargo-release for separately-versioned crates
 - 2026-04-27 Extract sentry hook into separate foundations-sentry crate
 
