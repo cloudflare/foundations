@@ -1,0 +1,50 @@
+name: Publish to crates.io
+permissions:
+  contents: read
+  id-token: write
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+      - "foundations-*-v*.*.*"
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  publish:
+    name: Publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          submodules: "recursive"
+
+      - name: Verify tag is on main
+        run: |
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          if ! git merge-base --is-ancestor "${GITHUB_REF_NAME}" origin/main; then
+            echo "Tag ${GITHUB_REF_NAME} is not reachable from origin/main. Refusing to publish." >&2
+            exit 1
+          fi
+
+      - uses: rust-lang/crates-io-auth-action@v1
+        id: auth
+
+      - name: Publish crate
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+        run: |
+          semver='[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?'
+
+          if [[ "${GITHUB_REF_NAME}" =~ ^v${semver}$ ]]; then
+            cargo publish -p foundations -p foundations-macros
+          elif [[ "${GITHUB_REF_NAME}" =~ ^(foundations-.+)-v${semver}$ ]]; then
+            cargo publish -p "${BASH_REMATCH[1]}"
+          else
+            echo "Unsupported release tag: ${GITHUB_REF_NAME}" >&2
+            exit 1
+          fi
