@@ -29,6 +29,7 @@ level = "warn"
 check-cfg = [
     'cfg(foundations_unstable)',
     'cfg(tokio_unstable)',
+    'cfg(foundations_jemalloc_disable)',
     'cfg(foundations_generic_telemetry_wrapper)',
     # for docs.rs builds only
     'cfg(foundations_docsrs)',

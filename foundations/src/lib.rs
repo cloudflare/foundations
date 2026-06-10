@@ -39,6 +39,9 @@
 //! - **security**: Enables security features. Available only on Linux (x86_64, aarch64) with the `libclang-dev` package installed (for bindgen).
 //! - **jemalloc**: Enables [jemalloc] memory allocator which is known to perform much better than
 //!   system allocators for long living service.
+//!   - There is an opt-out available by passing `--cfg foundations_jemalloc_disable`
+//!     to rustc (e.g., via `RUSTFLAGS`). This can be used as a workaround for the additive
+//!     nature of features.
 //! - **memory-profiling**: Enables memory profiling functionality and telemetry. Implicity enables
 //!   **jemalloc** feature.
 //! - **cli**: Enables command line interface (CLI) functionality. Implicitly enabled **settings**
@@ -121,16 +124,20 @@ pub mod reexports_for_macros {
 
 /// Global memory allocator backed by [jemalloc].
 ///
-/// This static variable is exposed solely for the documentation purposes and don't need to be used
-/// directly. If **jemalloc** feature is enabled then the service will use jemalloc for all the
-/// memory allocations implicitly.
+/// This static variable is exposed solely for documentation purposes and doesn't need to be used
+/// directly. If the **jemalloc** feature is enabled then the service will use jemalloc for all
+/// memory allocations implicitly. This can be disabled again in final builds by passing
+/// `--cfg foundations_jemalloc_disable` to rustc (e.g., via `RUSTFLAGS`). Doing so is necessary
+/// when the _jemalloc_ feature was mistakenly enabled by a dependency or when debugging with
+/// [Address Sanitizer][asan].
 ///
 /// If no Foundations API is being used by your project, you will need to explicitly link foundations crate
 /// to your project by adding `extern crate foundations;` to your `main.rs` or `lib.rs`, for jemalloc to
 /// be embedded in your binary.
 ///
 /// [jemalloc]: https://github.com/jemalloc/jemalloc
-#[cfg(feature = "jemalloc")]
+/// [asan]: https://doc.rust-lang.org/beta/unstable-book/compiler-flags/sanitizer.html#addresssanitizer
+#[cfg(all(feature = "jemalloc", not(foundations_jemalloc_disable)))]
 #[global_allocator]
 pub static JEMALLOC_MEMORY_ALLOCATOR: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 
