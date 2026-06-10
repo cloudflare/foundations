@@ -46,7 +46,10 @@ pub fn get_active_traces() -> String {
 /// call lasts.
 ///
 /// The macro works both for sync and async methods and also for the [async_trait] method
-/// implementations.
+/// implementations. `async fn`s are boxed before wrapping by default, but this can be
+/// bypassed by specifying `generic = true` in the macro invocation. To make `generic` the
+/// default, you can pass `--cfg foundations_generic_telemetry_wrapper` to rustc (e.g., via
+/// `RUSTFLAGS`).
 ///
 /// # Example
 /// ```

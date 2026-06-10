@@ -27,9 +27,9 @@ debug = 1
 [workspace.lints.rust.unexpected_cfgs]
 level = "warn"
 check-cfg = [
-    'cfg(foundations_generic_telemetry_wrapper)',
     'cfg(foundations_unstable)',
     'cfg(tokio_unstable)',
+    'cfg(foundations_generic_telemetry_wrapper)',
     # for docs.rs builds only
     'cfg(foundations_docsrs)',
     # slog feature
