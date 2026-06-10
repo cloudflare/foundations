@@ -1,4 +1,9 @@
 
+5.7.3
+- 2026-06-10 Add cfg(foundations_jemalloc_disable) to opt out of global jemalloc allocator
+- 2026-06-10 Move cfg(foundations_generic_telemetry_wrapper) docs out of lib.rs
+- 2026-06-05 Add actions pipeline for trusted publishing to crates.io
+
 5.7.2
 - 2026-06-05 fix: strip plain release commits from RELEASE_NOTES.md
 - 2026-06-02 Gracefully degrade on metrics encoding failures
