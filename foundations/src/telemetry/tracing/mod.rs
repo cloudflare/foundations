@@ -19,7 +19,7 @@ mod rate_limit;
 mod output_otlp_grpc;
 
 use self::init::TracingHarness;
-use self::internal::{SharedSpan, create_span, current_span, span_trace_id};
+use self::internal::{SharedSpan, create_span, current_span, shared_span, span_trace_id};
 use super::TelemetryContext;
 use super::scope::Scope;
 use std::borrow::Cow;
@@ -413,7 +413,7 @@ pub fn start_trace(
     root_span_name: impl Into<Cow<'static, str>>,
     options: StartTraceOptions,
 ) -> SpanScope {
-    SpanScope::new(internal::start_trace(root_span_name, options).into())
+    SpanScope::new(shared_span(internal::start_trace(root_span_name, options)))
 }
 
 /// Returns the current span as a raw [rustracing] crate's `Span` that is used by Foundations internally.

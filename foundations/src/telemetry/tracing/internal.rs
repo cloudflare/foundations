@@ -60,14 +60,13 @@ pub(crate) struct SharedSpan {
     pub(crate) is_sampled: bool,
 }
 
-impl From<Span> for SharedSpan {
-    fn from(inner: Span) -> Self {
-        let is_sampled = inner.is_sampled();
+/// Wraps a span and registers it with the internal harness's `active_roots` for live tracking.
+pub(crate) fn shared_span(span: Span) -> SharedSpan {
+    let is_sampled = span.is_sampled();
 
-        Self {
-            inner: SharedSpanHandle::new(inner),
-            is_sampled,
-        }
+    SharedSpan {
+        inner: SharedSpanHandle::new(span),
+        is_sampled,
     }
 }
 
@@ -87,11 +86,10 @@ pub fn write_current_span(write_fn: impl FnOnce(&mut Span)) {
 }
 
 pub(crate) fn create_span(name: impl Into<Cow<'static, str>>) -> SharedSpan {
-    match current_span() {
+    shared_span(match current_span() {
         Some(parent) => parent.inner.with_read(|s| s.child(name, |o| o.start())),
         None => start_trace(name, Default::default()),
-    }
-    .into()
+    })
 }
 
 pub(crate) fn current_span() -> Option<SharedSpan> {
@@ -182,20 +180,19 @@ fn link_new_trace_with_current(
 pub(crate) fn fork_trace(fork_name: impl Into<Cow<'static, str>>) -> SharedSpan {
     match current_span() {
         Some(span) if span.is_sampled => span,
-        _ => return Span::inactive().into(),
+        _ => return shared_span(Span::inactive()),
     };
 
     let fork_name = fork_name.into();
 
-    start_trace(
+    shared_span(start_trace(
         fork_name,
         StartTraceOptions {
             // NOTE: If the current span is sampled, then forked trace is also forcibly sampled
             override_sampling_ratio: Some(1.0),
             ..Default::default()
         },
-    )
-    .into()
+    ))
 }
 
 fn create_fork_ref_span(fork_name: &str, current_span: &Span) -> Span {
