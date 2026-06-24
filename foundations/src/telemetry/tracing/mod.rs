@@ -21,9 +21,11 @@ mod output_otlp_grpc;
 use self::init::TracingHarness;
 use self::internal::{SharedSpan, create_span, current_span, shared_span, span_trace_id};
 #[cfg(feature = "user-tracing")]
-use self::internal::{create_user_span, user_shared_span};
+use self::internal::{create_user_span, current_user_span, user_shared_span};
 use super::TelemetryContext;
 use super::scope::Scope;
+#[cfg(feature = "user-tracing")]
+use cf_rustracing::span::InspectableSpan;
 use std::borrow::Cow;
 use std::sync::Arc;
 
@@ -177,6 +179,27 @@ impl SpanScope {
             #[cfg(feature = "user-tracing")]
             _user_inner: None,
         }
+    }
+
+    /// Opens a parallel user span (child of the current user span, named after this span) when a
+    /// user trace is active; otherwise a no-op. The user span shares this scope's lifetime.
+    #[cfg(feature = "user-tracing")]
+    pub fn with_user_span(mut self) -> Self {
+        if current_user_span().is_some() {
+            let name = self
+                .span
+                .inner
+                .with_read(|s| s.operation_name().to_string());
+            let user_span = create_user_span(name);
+
+            self._user_inner = Some(Scope::new(
+                &TracingHarness::get_user().span_scope_stack,
+                user_span.clone(),
+            ));
+            self.user_span = Some(user_span);
+        }
+
+        self
     }
 
     /// Converts the span scope to [`TelemetryContext`] that can be a applied to a future.
@@ -1117,6 +1140,25 @@ mod user_tracing_tests {
     }
 
     #[test]
+    fn with_user_span_is_parallel() {
+        let ctx = TelemetryContext::test();
+        let _scope = ctx.scope();
+
+        {
+            let _root = start_user_trace("request");
+            let _s = span("op").with_user_span();
+        }
+
+        // Internal pipeline: just the internal span.
+        assert_eq!(ctx.traces(Default::default()), vec![test_trace! { "op" }]);
+        // User pipeline: the parallel user span nested under the user root.
+        assert_eq!(
+            ctx.user_traces(Default::default()),
+            vec![test_trace! { "request" => { "op" } }]
+        );
+    }
+
+    #[test]
     fn no_op_without_activation() {
         let ctx = TelemetryContext::test();
         let _scope = ctx.scope();
@@ -1199,5 +1241,65 @@ mod user_tracing_tests {
             ctx.traces(Default::default()),
             vec![test_trace! { "internal" }]
         );
+    }
+
+    // Same property via the `#[span_fn]` macro path (a plain internal-traced async fn).
+    #[crate::telemetry::tracing::span_fn("internal_fn", crate_path = "crate")]
+    async fn internal_fn() {
+        let _user_child = user_span("user_child");
+    }
+
+    #[tokio::test]
+    async fn user_span_carried_by_span_fn() {
+        let ctx = TelemetryContext::test();
+        let _scope = ctx.scope();
+
+        {
+            let _root = start_user_trace("request");
+            internal_fn().await;
+        }
+
+        assert_eq!(
+            ctx.user_traces(Default::default()),
+            vec![test_trace! { "request" => { "user_child" } }]
+        );
+        assert_eq!(
+            ctx.traces(Default::default()),
+            vec![test_trace! { "internal_fn" }]
+        );
+    }
+
+    // `with_user_span()` is a no-op when no user trace is active: the internal span is still
+    // created, but no parallel user span is produced.
+    #[test]
+    fn with_user_span_no_op_when_inactive() {
+        let ctx = TelemetryContext::test();
+        let _scope = ctx.scope();
+
+        {
+            // No `start_user_trace` => user tracing not active for this scope.
+            let _s = span("op").with_user_span();
+        }
+
+        assert_eq!(ctx.traces(Default::default()), vec![test_trace! { "op" }]);
+        assert!(ctx.user_traces(Default::default()).is_empty());
+    }
+
+    #[crate::telemetry::tracing::span_fn("user_fn", user = true, crate_path = "crate")]
+    async fn user_fn() {}
+
+    // `#[span_fn(user = true)]` is likewise a no-op for the user pipeline when inactive.
+    #[tokio::test]
+    async fn span_fn_user_no_op_when_inactive() {
+        let ctx = TelemetryContext::test();
+        let _scope = ctx.scope();
+
+        user_fn().await;
+
+        assert_eq!(
+            ctx.traces(Default::default()),
+            vec![test_trace! { "user_fn" }]
+        );
+        assert!(ctx.user_traces(Default::default()).is_empty());
     }
 }
