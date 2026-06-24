@@ -120,3 +120,7 @@ tower = "0.5.3"
 # Only used in deprecated `foundations` code
 # TODO: remove before next major release
 sentry-core = { version = "0.36.0", default-features = false }
+
+# TEMPORARY
+[patch.crates-io]
+cf-rustracing = { git = "https://github.com/mar-cf/rustracing.git", branch = "user-tracing" }
