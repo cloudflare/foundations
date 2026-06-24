@@ -139,6 +139,9 @@ feature_use!(cfg(feature = "tracing"), {
     });
 });
 
+#[cfg(all(feature = "user-tracing", feature = "testing"))]
+use self::tracing::testing::UserTestTracerScope;
+
 #[cfg(feature = "logging")]
 use self::log::internal::LogScope;
 
@@ -265,6 +268,9 @@ pub struct TelemetryScope {
     // the harness.
     #[cfg(all(feature = "tracing", feature = "testing"))]
     _test_tracer_scope: Option<TestTracerScope>,
+
+    #[cfg(all(feature = "user-tracing", feature = "testing"))]
+    _user_test_tracer_scope: Option<UserTestTracerScope>,
 }
 
 /// Telemetry configuration that is passed to [`init`].

@@ -20,6 +20,8 @@ mod output_otlp_grpc;
 
 use self::init::TracingHarness;
 use self::internal::{SharedSpan, create_span, current_span, shared_span, span_trace_id};
+#[cfg(feature = "user-tracing")]
+use self::internal::{create_user_span, user_shared_span};
 use super::TelemetryContext;
 use super::scope::Scope;
 use std::borrow::Cow;
@@ -215,6 +217,25 @@ impl SpanScope {
         ctx.span = Some(self.span);
 
         ctx
+    }
+}
+
+/// A handle for the scope in which a user-tracing span is active.
+///
+/// Scope ends when the handle is dropped.
+#[cfg(feature = "user-tracing")]
+#[must_use]
+pub struct UserSpanScope {
+    _inner: Scope<SharedSpan>,
+}
+
+#[cfg(feature = "user-tracing")]
+impl UserSpanScope {
+    #[inline]
+    pub(crate) fn new(span: SharedSpan) -> Self {
+        Self {
+            _inner: Scope::new(&TracingHarness::get_user().span_scope_stack, span),
+        }
     }
 }
 
@@ -414,6 +435,21 @@ pub fn start_trace(
     options: StartTraceOptions,
 ) -> SpanScope {
     SpanScope::new(shared_span(internal::start_trace(root_span_name, options)))
+}
+
+/// Starts a root user span (per-request activation).
+///
+/// Without an active root, `user_span` / `add_user_span_tags!` are no-ops.
+#[cfg(feature = "user-tracing")]
+pub fn start_user_trace(name: impl Into<Cow<'static, str>>) -> UserSpanScope {
+    UserSpanScope::new(user_shared_span(internal::start_user_trace(name)))
+}
+
+/// Creates a user span as a child of the current user span, or inactive when no user trace is
+/// active. Never starts a root — roots come only from [`start_user_trace`].
+#[cfg(feature = "user-tracing")]
+pub fn user_span(name: impl Into<Cow<'static, str>>) -> UserSpanScope {
+    UserSpanScope::new(create_user_span(name))
 }
 
 /// Returns the current span as a raw [rustracing] crate's `Span` that is used by Foundations internally.
@@ -728,6 +764,68 @@ macro_rules! __set_span_finish_callback {
     }};
 }
 
+/// Adds tags to the current user span. No-op when no user trace is active.
+#[cfg(feature = "user-tracing")]
+#[macro_export]
+#[doc(hidden)]
+macro_rules! __add_user_span_tags {
+    ( $( $name:expr => $val:expr ),+ ) => {
+        $crate::telemetry::tracing::internal::write_current_user_span(|span| {
+            span.set_tags(|| {
+                vec![ $($crate::reexports_for_macros::cf_rustracing::tag::Tag::new($name, $val)),+ ]
+            });
+        });
+    };
+
+    ( $tags:expr ) => {
+        $crate::telemetry::tracing::internal::write_current_user_span(|span| {
+            span.set_tags(|| {
+                $tags
+                    .into_iter()
+                    .map(|(name, val)| {
+                        $crate::reexports_for_macros::cf_rustracing::tag::Tag::new(name, val)
+                    })
+            });
+        });
+    };
+}
+
+/// Adds log fields to the current user span. No-op when no user trace is active.
+#[cfg(feature = "user-tracing")]
+#[macro_export]
+#[doc(hidden)]
+macro_rules! __add_user_span_log_fields {
+    ( $( $field:expr => $val:expr ),+ ) => {
+        $crate::telemetry::tracing::internal::write_current_user_span(|span| {
+            span.log(|builder| {
+                $(
+                    builder.field(($field, $val));
+                )+
+            });
+        });
+    };
+}
+
+/// Sets (`$cb`) or clears (`None`) the finish callback on the current user span. No-op when no
+/// user trace is active. Routing is set at construction by `start_user_trace`, so this is a
+/// general escape hatch — not used for routing.
+#[cfg(feature = "user-tracing")]
+#[macro_export]
+#[doc(hidden)]
+macro_rules! __set_user_span_finish_callback {
+    ( None ) => {
+        $crate::telemetry::tracing::internal::write_current_user_span(|span| {
+            span.take_finish_callback();
+        })
+    };
+    ( $cb:expr ) => {{
+        let cb = $cb;
+        $crate::telemetry::tracing::internal::write_current_user_span(move |span| {
+            span.set_finish_callback(cb);
+        })
+    }};
+}
+
 /// A convenience macro to construct [`TestTrace`] for test assertions.
 ///
 /// Note that for span timings the macro always generates default
@@ -917,6 +1015,113 @@ pub use {
     __set_span_finish_time as set_span_finish_time, __set_span_start_time as set_span_start_time,
 };
 
+#[cfg(feature = "user-tracing")]
+#[doc(inline)]
+pub use {
+    __add_user_span_log_fields as add_user_span_log_fields,
+    __add_user_span_tags as add_user_span_tags,
+    __set_user_span_finish_callback as set_user_span_finish_callback,
+};
+
 #[cfg(feature = "testing")]
 #[doc(inline)]
 pub use __test_trace as test_trace;
+
+#[cfg(all(test, feature = "user-tracing", feature = "testing"))]
+mod user_tracing_tests {
+    use super::{
+        add_user_span_log_fields, add_user_span_tags, set_user_span_finish_callback,
+        start_user_trace, test_trace, user_span,
+    };
+    use crate::telemetry::TelemetryContext;
+    use crate::telemetry::tracing::{Span, TestTraceOptions};
+    use cf_rustracing::tag::{Tag, TagValue};
+
+    #[test]
+    fn creation_and_nesting() {
+        let ctx = TelemetryContext::test();
+        let _scope = ctx.scope();
+
+        {
+            let _root = start_user_trace("request");
+            let _child = user_span("child");
+            let _grandchild = user_span("grandchild");
+        }
+
+        assert_eq!(
+            ctx.user_traces(Default::default()),
+            vec![test_trace! {
+                "request" => {
+                    "child" => {
+                        "grandchild"
+                    }
+                }
+            }]
+        );
+        // User spans must not leak into the internal pipeline.
+        assert!(ctx.traces(Default::default()).is_empty());
+    }
+
+    #[test]
+    fn tags_and_logs() {
+        let ctx = TelemetryContext::test();
+        let _scope = ctx.scope();
+
+        {
+            let _root = start_user_trace("request");
+            add_user_span_tags!("cache.status" => "HIT");
+            add_user_span_log_fields!("event" => "lookup");
+        }
+
+        let opts = TestTraceOptions {
+            include_tags: true,
+            include_logs: true,
+            ..Default::default()
+        };
+        let traces = ctx.user_traces(opts);
+        let root = &traces[0].0;
+
+        assert!(
+            root.tags
+                .contains(&("cache.status".to_string(), TagValue::String("HIT".into())))
+        );
+        assert!(
+            root.logs
+                .contains(&("event".to_string(), "lookup".to_string()))
+        );
+    }
+
+    #[test]
+    fn no_op_without_activation() {
+        let ctx = TelemetryContext::test();
+        let _scope = ctx.scope();
+
+        {
+            // No `start_user_trace`, so user tracing isn't active for this scope.
+            let _child = user_span("child");
+            add_user_span_tags!("k" => "v");
+        }
+
+        assert!(ctx.user_traces(Default::default()).is_empty());
+    }
+
+    #[test]
+    fn finish_callback_runs() {
+        let ctx = TelemetryContext::test();
+        let _scope = ctx.scope();
+
+        {
+            let _root = start_user_trace("request");
+            set_user_span_finish_callback!(|span: &mut Span| {
+                span.set_tag(|| Tag::new("finished", true));
+            });
+        }
+
+        let opts = TestTraceOptions {
+            include_tags: true,
+            ..Default::default()
+        };
+        let traces = ctx.user_traces(opts);
+        assert!(traces[0].0.tags.iter().any(|(k, _)| k == "finished"));
+    }
+}

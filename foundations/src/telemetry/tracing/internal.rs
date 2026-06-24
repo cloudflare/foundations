@@ -70,6 +70,21 @@ pub(crate) fn shared_span(span: Span) -> SharedSpan {
     }
 }
 
+/// Wraps a user span as `Untracked`/`Inactive`, bypassing `active_roots` so user spans never
+/// enter the internal harness's live registry.
+#[cfg(feature = "user-tracing")]
+pub(crate) fn user_shared_span(span: Span) -> SharedSpan {
+    let is_sampled = span.is_sampled();
+
+    let inner = if is_sampled {
+        SharedSpanHandle::Untracked(Arc::new(RwLock::new(span)))
+    } else {
+        SharedSpanHandle::Inactive
+    };
+
+    SharedSpan { inner, is_sampled }
+}
+
 pub fn write_current_span(write_fn: impl FnOnce(&mut Span)) {
     let span = match current_span() {
         Some(span) if span.is_sampled => span,
@@ -133,6 +148,43 @@ pub(crate) fn start_trace(
     link_new_trace_with_current(&mut current_span, &root_span_name, &mut new_trace_root_span);
 
     new_trace_root_span
+}
+
+#[cfg(feature = "user-tracing")]
+pub(crate) fn current_user_span() -> Option<SharedSpan> {
+    TracingHarness::get_user().span_scope_stack.current()
+}
+
+/// Child of the current user span, or inactive when no user trace is active (never a root).
+#[cfg(feature = "user-tracing")]
+pub(crate) fn create_user_span(name: impl Into<Cow<'static, str>>) -> SharedSpan {
+    match current_user_span() {
+        Some(parent) => user_shared_span(parent.inner.with_read(|s| s.child(name, |o| o.start()))),
+        None => user_shared_span(Span::inactive()),
+    }
+}
+
+#[cfg(feature = "user-tracing")]
+pub fn write_current_user_span(write_fn: impl FnOnce(&mut Span)) {
+    let span = match current_user_span() {
+        Some(span) if span.is_sampled => span,
+        _ => return,
+    };
+
+    let mut span_guard = match &span.inner {
+        SharedSpanHandle::Tracked(handle) => handle.write(),
+        SharedSpanHandle::Untracked(rw_lock) => rw_lock.write(),
+        SharedSpanHandle::Inactive => unreachable!("inactive spans can't be sampled"),
+    };
+
+    write_fn(&mut span_guard);
+}
+
+/// Starts a root user span on the user harness.
+#[cfg(feature = "user-tracing")]
+pub(crate) fn start_user_trace(name: impl Into<Cow<'static, str>>) -> Span {
+    let tracer = TracingHarness::get_user().tracer();
+    tracer.span(name).start()
 }
 
 pub(super) fn reporter_error(err: impl Error) {

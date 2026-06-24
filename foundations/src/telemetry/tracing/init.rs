@@ -21,7 +21,26 @@ use std::borrow::Cow;
 // ensure initialization. Make sure nobody else invalidates our cache lines.
 static HARNESS: CachePadded<OnceLock<TracingHarness>> = CachePadded::new(OnceLock::new());
 
+#[cfg(feature = "user-tracing")]
+static USER_HARNESS: CachePadded<OnceLock<TracingHarness>> = CachePadded::new(OnceLock::new());
+
 static NOOP_HARNESS: CachePadded<LazyLock<TracingHarness>> =
+    CachePadded::new(LazyLock::new(|| {
+        let (noop_tracer, _) = Tracer::new(NullSampler.boxed());
+
+        TracingHarness {
+            tracer: noop_tracer,
+            span_scope_stack: Default::default(),
+
+            #[cfg(feature = "testing")]
+            test_tracer_scope_stack: Default::default(),
+
+            active_roots: Default::default(),
+        }
+    }));
+
+#[cfg(feature = "user-tracing")]
+static USER_NOOP_HARNESS: CachePadded<LazyLock<TracingHarness>> =
     CachePadded::new(LazyLock::new(|| {
         let (noop_tracer, _) = Tracer::new(NullSampler.boxed());
 
@@ -50,6 +69,12 @@ pub(crate) struct TracingHarness {
 impl TracingHarness {
     pub(crate) fn get() -> &'static Self {
         HARNESS.get().unwrap_or_else(|| &**NOOP_HARNESS)
+    }
+
+    /// User-tracing harness, or the user no-op harness when the user pipeline isn't initialized.
+    #[cfg(feature = "user-tracing")]
+    pub(crate) fn get_user() -> &'static Self {
+        USER_HARNESS.get().unwrap_or_else(|| &**USER_NOOP_HARNESS)
     }
 
     #[cfg(feature = "testing")]

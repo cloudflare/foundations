@@ -148,6 +148,9 @@ tracing = [
     "dep:crossbeam-utils",
 ]
 
+# Enables distributed user tracing functionality.
+user-tracing = ["tracing"]
+
 # Enables metrics functionality.
 metrics = [
     "dep:foundations-macros",
