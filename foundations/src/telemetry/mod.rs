@@ -139,6 +139,9 @@ feature_use!(cfg(feature = "tracing"), {
     });
 });
 
+#[cfg(feature = "user-tracing")]
+use self::tracing::UserSpanScope;
+
 #[cfg(all(feature = "user-tracing", feature = "testing"))]
 use self::tracing::testing::UserTestTracerScope;
 
@@ -262,6 +265,9 @@ pub struct TelemetryScope {
 
     #[cfg(feature = "tracing")]
     _span_scope: Option<SpanScope>,
+
+    #[cfg(feature = "user-tracing")]
+    _user_span_scope: Option<UserSpanScope>,
 
     // NOTE: certain tracing APIs start a new trace, so we need to scope the test tracer
     // for them to use the tracer from the test scope instead of production tracer in

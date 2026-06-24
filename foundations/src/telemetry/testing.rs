@@ -76,6 +76,9 @@ impl TestTelemetryContext {
                 #[cfg(feature = "tracing")]
                 span: None,
 
+                #[cfg(feature = "user-tracing")]
+                user_span: None,
+
                 #[cfg(feature = "tracing")]
                 test_tracer: Some(tracer),
 

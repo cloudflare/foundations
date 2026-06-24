@@ -158,6 +158,11 @@ pub use foundations_macros::span_fn;
 pub struct SpanScope {
     span: SharedSpan,
     _inner: Scope<SharedSpan>,
+
+    #[cfg(feature = "user-tracing")]
+    user_span: Option<SharedSpan>,
+    #[cfg(feature = "user-tracing")]
+    _user_inner: Option<Scope<SharedSpan>>,
 }
 
 impl SpanScope {
@@ -166,6 +171,11 @@ impl SpanScope {
         Self {
             span: span.clone(),
             _inner: Scope::new(&TracingHarness::get().span_scope_stack, span),
+
+            #[cfg(feature = "user-tracing")]
+            user_span: None,
+            #[cfg(feature = "user-tracing")]
+            _user_inner: None,
         }
     }
 
@@ -216,6 +226,11 @@ impl SpanScope {
 
         ctx.span = Some(self.span);
 
+        #[cfg(feature = "user-tracing")]
+        if let Some(user_span) = self.user_span {
+            ctx.user_span = Some(user_span);
+        }
+
         ctx
     }
 }
@@ -226,6 +241,7 @@ impl SpanScope {
 #[cfg(feature = "user-tracing")]
 #[must_use]
 pub struct UserSpanScope {
+    span: SharedSpan,
     _inner: Scope<SharedSpan>,
 }
 
@@ -234,8 +250,17 @@ impl UserSpanScope {
     #[inline]
     pub(crate) fn new(span: SharedSpan) -> Self {
         Self {
+            span: span.clone(),
             _inner: Scope::new(&TracingHarness::get_user().span_scope_stack, span),
         }
+    }
+
+    /// Converts the user span scope to a [`TelemetryContext`] that can be applied to a future.
+    pub fn into_context(self) -> TelemetryContext {
+        let mut ctx = TelemetryContext::current();
+        ctx.user_span = Some(self.span);
+
+        ctx
     }
 }
 
@@ -1030,7 +1055,7 @@ pub use __test_trace as test_trace;
 #[cfg(all(test, feature = "user-tracing", feature = "testing"))]
 mod user_tracing_tests {
     use super::{
-        add_user_span_log_fields, add_user_span_tags, set_user_span_finish_callback,
+        add_user_span_log_fields, add_user_span_tags, set_user_span_finish_callback, span,
         start_user_trace, test_trace, user_span,
     };
     use crate::telemetry::TelemetryContext;
@@ -1123,5 +1148,56 @@ mod user_tracing_tests {
         };
         let traces = ctx.user_traces(opts);
         assert!(traces[0].0.tags.iter().any(|(k, _)| k == "finished"));
+    }
+
+    #[tokio::test]
+    async fn propagates_across_await() {
+        let ctx = TelemetryContext::test();
+        let _scope = ctx.scope();
+
+        {
+            let root_ctx = start_user_trace("request").into_context();
+            root_ctx
+                .apply(async {
+                    let _child = user_span("child");
+                })
+                .await;
+        }
+
+        assert_eq!(
+            ctx.user_traces(Default::default()),
+            vec![test_trace! { "request" => { "child" } }]
+        );
+    }
+
+    // The user span rides along on the ambient `TelemetryContext` even when propagation goes
+    // through an *internal* span's `into_context()` — no explicit user-span threading needed.
+    #[tokio::test]
+    async fn user_span_carried_by_internal_context() {
+        let ctx = TelemetryContext::test();
+        let _scope = ctx.scope();
+
+        {
+            let _root = start_user_trace("request");
+
+            // Propagate via an internal span's context; never touch the user scope.
+            span("internal")
+                .into_context()
+                .apply(async {
+                    let _user_child = user_span("user_child");
+                })
+                .await;
+        }
+
+        // User pipeline: the user child nested under the user root (the user span was carried).
+        assert_eq!(
+            ctx.user_traces(Default::default()),
+            vec![test_trace! { "request" => { "user_child" } }]
+        );
+        // Internal pipeline: just the internal span.
+        assert_eq!(
+            ctx.traces(Default::default()),
+            vec![test_trace! { "internal" }]
+        );
     }
 }
