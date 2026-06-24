@@ -149,7 +149,16 @@ tracing = [
 ]
 
 # Enables distributed user tracing functionality.
-user-tracing = ["tracing"]
+user-tracing = [
+    "tracing",
+    "dep:hyper",
+    "hyper/client",
+    "dep:hyper-util",
+    "dep:http-body-util",
+    "dep:serde_json",
+    "dep:prost",
+    "tokio/net",
+]
 
 # Enables metrics functionality.
 metrics = [
@@ -240,6 +249,7 @@ percent-encoding = { workspace = true, optional = true }
 prometheus = { workspace = true, optional = true, features = ["process"] }
 prometheus-client = { workspace = true, optional = true }
 prometools = { workspace = true, optional = true, features = ["serde"] }
+prost = { workspace = true, optional = true }
 rand = { workspace = true, optional = true }
 serde = { workspace = true, optional = true, features = ["derive", "rc"] }
 serde_json = { workspace = true, optional = true }

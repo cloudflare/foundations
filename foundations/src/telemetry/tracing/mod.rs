@@ -18,6 +18,9 @@ mod rate_limit;
 #[cfg(feature = "telemetry-otlp-grpc")]
 mod output_otlp_grpc;
 
+#[cfg(feature = "user-tracing")]
+mod output_otlp_uds;
+
 use self::init::TracingHarness;
 use self::internal::{SharedSpan, create_span, current_span, shared_span, span_trace_id};
 #[cfg(feature = "user-tracing")]
@@ -34,6 +37,9 @@ pub use self::testing::{TestSpan, TestTrace, TestTraceIterator, TestTraceOptions
 
 pub use cf_rustracing::tag::TagValue;
 pub use cf_rustracing_jaeger::span::{Span, SpanContextState as SerializableTraceState, TraceId};
+
+#[cfg(feature = "user-tracing")]
+pub use cf_rustracing::span::RoutingMetadata;
 
 /// Returns active traces as a JSON dump.
 ///
@@ -485,12 +491,16 @@ pub fn start_trace(
     SpanScope::new(shared_span(internal::start_trace(root_span_name, options)))
 }
 
-/// Starts a root user span (per-request activation).
+/// Starts a root user span (per-request activation). `routing` is attached at construction and
+/// inherited by child spans.
 ///
-/// Without an active root, `user_span` / `add_user_span_tags!` are no-ops.
+/// Without an active root, `user_span` / `with_user_span` / `add_user_span_tags!` are no-ops.
 #[cfg(feature = "user-tracing")]
-pub fn start_user_trace(name: impl Into<Cow<'static, str>>) -> UserSpanScope {
-    UserSpanScope::new(user_shared_span(internal::start_user_trace(name)))
+pub fn start_user_trace(
+    name: impl Into<Cow<'static, str>>,
+    routing: RoutingMetadata,
+) -> UserSpanScope {
+    UserSpanScope::new(user_shared_span(internal::start_user_trace(name, routing)))
 }
 
 /// Creates a user span as a child of the current user span, or inactive when no user trace is
@@ -1078,12 +1088,22 @@ pub use __test_trace as test_trace;
 #[cfg(all(test, feature = "user-tracing", feature = "testing"))]
 mod user_tracing_tests {
     use super::{
-        add_user_span_log_fields, add_user_span_tags, set_user_span_finish_callback, span,
-        start_user_trace, test_trace, user_span,
+        RoutingMetadata, add_user_span_log_fields, add_user_span_tags,
+        set_user_span_finish_callback, span, start_user_trace, test_trace, user_span,
     };
     use crate::telemetry::TelemetryContext;
     use crate::telemetry::tracing::{Span, TestTraceOptions};
     use cf_rustracing::tag::{Tag, TagValue};
+
+    fn routing() -> RoutingMetadata {
+        RoutingMetadata {
+            zone_id: 1,
+            account_id: 2,
+            account_tag: "0123456789abcdef0123456789abcdef".to_string(),
+            destinations: vec![],
+            persist: false,
+        }
+    }
 
     #[test]
     fn creation_and_nesting() {
@@ -1091,7 +1111,7 @@ mod user_tracing_tests {
         let _scope = ctx.scope();
 
         {
-            let _root = start_user_trace("request");
+            let _root = start_user_trace("request", routing());
             let _child = user_span("child");
             let _grandchild = user_span("grandchild");
         }
@@ -1116,7 +1136,7 @@ mod user_tracing_tests {
         let _scope = ctx.scope();
 
         {
-            let _root = start_user_trace("request");
+            let _root = start_user_trace("request", routing());
             add_user_span_tags!("cache.status" => "HIT");
             add_user_span_log_fields!("event" => "lookup");
         }
@@ -1145,7 +1165,7 @@ mod user_tracing_tests {
         let _scope = ctx.scope();
 
         {
-            let _root = start_user_trace("request");
+            let _root = start_user_trace("request", routing());
             let _s = span("op").with_user_span();
         }
 
@@ -1178,7 +1198,7 @@ mod user_tracing_tests {
         let _scope = ctx.scope();
 
         {
-            let _root = start_user_trace("request");
+            let _root = start_user_trace("request", routing());
             set_user_span_finish_callback!(|span: &mut Span| {
                 span.set_tag(|| Tag::new("finished", true));
             });
@@ -1198,7 +1218,7 @@ mod user_tracing_tests {
         let _scope = ctx.scope();
 
         {
-            let root_ctx = start_user_trace("request").into_context();
+            let root_ctx = start_user_trace("request", routing()).into_context();
             root_ctx
                 .apply(async {
                     let _child = user_span("child");
@@ -1220,7 +1240,7 @@ mod user_tracing_tests {
         let _scope = ctx.scope();
 
         {
-            let _root = start_user_trace("request");
+            let _root = start_user_trace("request", routing());
 
             // Propagate via an internal span's context; never touch the user scope.
             span("internal")
@@ -1255,7 +1275,7 @@ mod user_tracing_tests {
         let _scope = ctx.scope();
 
         {
-            let _root = start_user_trace("request");
+            let _root = start_user_trace("request", routing());
             internal_fn().await;
         }
 

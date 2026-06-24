@@ -73,7 +73,10 @@ mod scope;
 
 mod telemetry_context;
 
-#[cfg(all(feature = "tracing", feature = "telemetry-otlp-grpc"))]
+#[cfg(all(
+    feature = "tracing",
+    any(feature = "telemetry-otlp-grpc", feature = "user-tracing")
+))]
 mod otlp_conversion;
 
 #[cfg(feature = "testing")]
@@ -356,6 +359,16 @@ pub fn init(config: TelemetryConfig) -> BootstrapResult<TelemetryDriver> {
         if let Some(fut) = self::tracing::init::init(config.service_info, &config.settings.tracing)?
         {
             tele_futures.push(fut);
+        }
+    }
+
+    #[cfg(feature = "user-tracing")]
+    {
+        if let Some(user_settings) = &config.settings.user_tracing {
+            let initializer = self::tracing::init::init_user(config.service_info, user_settings)?;
+            if let Some(fut) = initializer {
+                tele_futures.push(fut);
+            }
         }
     }
 

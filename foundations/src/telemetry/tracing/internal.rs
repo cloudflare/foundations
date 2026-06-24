@@ -3,6 +3,8 @@ use super::init::TracingHarness;
 
 use crate::telemetry::tracing::live::LiveReferenceHandle;
 use cf_rustracing::sampler::BoxSampler;
+#[cfg(feature = "user-tracing")]
+use cf_rustracing::span::RoutingMetadata;
 use cf_rustracing::tag::Tag;
 use cf_rustracing_jaeger::span::{Span, SpanContext, SpanContextState};
 use parking_lot::RwLock;
@@ -180,11 +182,15 @@ pub fn write_current_user_span(write_fn: impl FnOnce(&mut Span)) {
     write_fn(&mut span_guard);
 }
 
-/// Starts a root user span on the user harness.
+/// Starts a root user span on the user harness. `routing` is set at construction and inherited
+/// by child spans.
 #[cfg(feature = "user-tracing")]
-pub(crate) fn start_user_trace(name: impl Into<Cow<'static, str>>) -> Span {
+pub(crate) fn start_user_trace(
+    name: impl Into<Cow<'static, str>>,
+    routing: RoutingMetadata,
+) -> Span {
     let tracer = TracingHarness::get_user().tracer();
-    tracer.span(name).start()
+    tracer.span(name).routing(routing).start()
 }
 
 pub(super) fn reporter_error(err: impl Error) {
