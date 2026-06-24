@@ -151,6 +151,7 @@ tracing = [
 # Enables distributed user tracing functionality.
 user-tracing = [
     "tracing",
+    "dep:hex",
     "dep:hyper",
     "hyper/client",
     "dep:hyper-util",
@@ -235,6 +236,7 @@ crossbeam-utils = { workspace = true, optional = true }
 erased-serde = { workspace = true, optional = true }
 futures-util = { workspace = true, optional = true }
 governor = { workspace = true, optional = true }
+hex = { workspace = true, optional = true }
 http = { workspace = true, optional = true }
 http-body-util = { workspace = true, optional = true }
 hyper = { workspace = true, optional = true, features = ["http1", "server"] }

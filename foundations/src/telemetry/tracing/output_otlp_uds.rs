@@ -454,6 +454,7 @@ mod tests {
                     destinations: vec!["dest-a".to_string()],
                     persist: true,
                 },
+                None,
             );
 
             let _child = user_span("child");
@@ -509,6 +510,55 @@ mod tests {
         assert_eq!(child.parent_span_id, root.span_id);
     }
 
+    // Stitching: a root started with an inbound `traceparent` continues that trace on the wire
+    // (same 128-bit trace id, and its parent is the inbound parent span id).
+    #[tokio::test]
+    async fn user_pipeline_continues_inbound_trace() {
+        use crate::telemetry::settings::{UserTracesOutput, UserTracingSettings};
+        use crate::telemetry::tracing::{TraceparentContext, start_user_trace};
+        use prost::Message as _;
+
+        let (socket_path, _dir, mut rx) = spawn_receptor(StatusCode::OK);
+
+        let settings = UserTracingSettings {
+            enabled: true,
+            max_queue_size: None,
+            output: UserTracesOutput::OtlpUds(settings_for(&socket_path)),
+        };
+        crate::telemetry::tracing::init::init_user(&crate::service_info!(), &settings).unwrap();
+
+        let inbound =
+            TraceparentContext::parse(b"00-11223344556677889900aabbccddeeff-a1b2c3d4e5f60718-01")
+                .unwrap();
+
+        {
+            let _root = start_user_trace(
+                "request",
+                RoutingMetadata {
+                    zone_id: 12345,
+                    account_id: 42,
+                    account_tag: "0123456789abcdef0123456789abcdef".to_string(),
+                    destinations: vec!["dest-a".to_string()],
+                    persist: true,
+                },
+                Some(inbound),
+            );
+        }
+
+        let captured = rx.recv().await.unwrap();
+        let req = ExportTraceServiceRequest::decode(captured.body.as_slice()).unwrap();
+        let root = req
+            .resource_spans
+            .iter()
+            .flat_map(|rs| &rs.scope_spans)
+            .flat_map(|ss| &ss.spans)
+            .find(|s| s.name == "request")
+            .expect("root span exported");
+
+        assert_eq!(root.trace_id, inbound.trace_id);
+        assert_eq!(root.parent_span_id, inbound.parent_id);
+    }
+
     // Routing set on the root is inherited by all descendants, so a grandchild also exports
     // (the exporter drops spans without routing).
     #[tokio::test]
@@ -536,6 +586,7 @@ mod tests {
                     destinations: vec!["dest-a".to_string()],
                     persist: true,
                 },
+                None,
             );
             let _child = user_span("child");
             let _grandchild = user_span("grandchild");

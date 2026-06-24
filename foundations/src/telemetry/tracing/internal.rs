@@ -6,6 +6,8 @@ use cf_rustracing::sampler::BoxSampler;
 #[cfg(feature = "user-tracing")]
 use cf_rustracing::span::RoutingMetadata;
 use cf_rustracing::tag::Tag;
+#[cfg(feature = "user-tracing")]
+use cf_rustracing_jaeger::span::TraceId;
 use cf_rustracing_jaeger::span::{Span, SpanContext, SpanContextState};
 use parking_lot::RwLock;
 use rand::RngExt as _;
@@ -182,15 +184,32 @@ pub fn write_current_user_span(write_fn: impl FnOnce(&mut Span)) {
     write_fn(&mut span_guard);
 }
 
-/// Starts a root user span on the user harness. `routing` is set at construction and inherited
-/// by child spans.
+/// Starts a root user span on the user harness, optionally continuing the inbound W3C trace.
+/// `routing` is set at construction and inherited by child spans.
 #[cfg(feature = "user-tracing")]
 pub(crate) fn start_user_trace(
     name: impl Into<Cow<'static, str>>,
     routing: RoutingMetadata,
+    inbound: Option<super::TraceparentContext>,
 ) -> Span {
     let tracer = TracingHarness::get_user().tracer();
-    tracer.span(name).routing(routing).start()
+    let mut builder = tracer.span(name).routing(routing);
+
+    if let Some(tp) = inbound {
+        let trace_id = TraceId {
+            high: u64::from_be_bytes(tp.trace_id[..8].try_into().unwrap()),
+            low: u64::from_be_bytes(tp.trace_id[8..].try_into().unwrap()),
+        };
+        let state = SpanContextState::new(
+            trace_id,
+            u64::from_be_bytes(tp.parent_id),
+            tp.trace_flags,
+            String::new(),
+        );
+        builder = builder.child_of(&SpanContext::new(state, vec![]));
+    }
+
+    builder.start()
 }
 
 pub(super) fn reporter_error(err: impl Error) {
