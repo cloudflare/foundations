@@ -1,5 +1,6 @@
 //! Panic hook implementation for tracking panics.
 
+use std::io::Write;
 use std::panic::{self, PanicHookInfo};
 
 /// Install the panic hook.
@@ -57,7 +58,10 @@ fn log_panic(panic_info: &PanicHookInfo<'_>) {
         "payload": payload,
         "location": location_str
     });
-    eprintln!("{}", json_output);
+    // Grab stderr ourselves and ignore any write error to avoid double-panicking
+    // (e.g. if stderr is closed) within the panic hook.
+    let mut stderr = std::io::stderr().lock();
+    let _ = writeln!(stderr, "{}", json_output);
 }
 
 fn panic_payload_as_str<'a>(panic_info: &'a PanicHookInfo<'_>) -> &'a str {
