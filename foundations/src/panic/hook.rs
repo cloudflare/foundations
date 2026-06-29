@@ -75,3 +75,57 @@ fn panic_payload_as_str<'a>(panic_info: &'a PanicHookInfo<'_>) -> &'a str {
         "<non-string panic payload>"
     }
 }
+
+#[cfg(all(test, feature = "logging"))]
+mod logging_tests {
+    use crate::service_info;
+    use crate::telemetry::TelemetryConfig;
+    use crate::telemetry::log::init::{LogHarness, build_log_with_drain, wrap_root_drain};
+    use crate::telemetry::log::internal::LoggerWithKvNestingTracking;
+    use crate::telemetry::settings::LoggingSettings;
+    use slog::{Drain, OwnedKVList, Record};
+    use std::sync::Arc;
+
+    struct FailingDrain;
+    impl Drain for FailingDrain {
+        type Ok = ();
+        type Err = &'static str;
+
+        fn log(&self, _record: &Record, _values: &OwnedKVList) -> Result<Self::Ok, Self::Err> {
+            Err("drain failed")
+        }
+    }
+
+    #[tokio::test]
+    async fn hook_swallows_drain_error() {
+        let settings = LoggingSettings::default();
+        let root_drain = wrap_root_drain(&settings, FailingDrain.fuse());
+        let root_log = LoggerWithKvNestingTracking::new(build_log_with_drain(
+            settings.verbosity,
+            slog::o!(),
+            Arc::clone(&root_drain),
+        ));
+
+        LogHarness::override_for_testing(LogHarness {
+            root_log: Arc::new(parking_lot::RwLock::new(root_log)),
+            root_drain,
+            settings,
+            log_scope_stack: Default::default(),
+        })
+        .unwrap();
+
+        crate::telemetry::init(TelemetryConfig {
+            service_info: &service_info!(),
+            settings: &Default::default(),
+            custom_server_routes: Default::default(),
+        })
+        .expect("telemetry is already initialized");
+
+        super::install_hook();
+        let _ = std::panic::catch_unwind(|| panic!("oh no! 😱"));
+        // If we just used `log::error!(...)` in the hook above, the `Fuse` from
+        // `build_log_with_drain` would convert the error from `FailingDrain` into
+        // a panic inside the panic hook. That's a double panic and aborts the process,
+        // causing the test to fail.
+    }
+}
