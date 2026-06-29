@@ -150,7 +150,10 @@ async fn error_log_is_emitted(ctx: TestTelemetryContext) {
         settings: &Default::default(),
         custom_server_routes: Default::default(),
     })
-    .expect("telemetry is not already initialized");
+    .expect("telemetry is already initialized");
+
+    let _scope = ctx.scope();
+    foundations::telemetry::log::add_fields!("context_key" => "context_value");
 
     simulate_panic();
     assert_eq!(metrics::panics::total().get(), 1);
@@ -167,6 +170,12 @@ async fn error_log_is_emitted(ctx: TestTelemetryContext) {
         .iter()
         .any(|(key, value)| key == "payload" && value == "oh no! 😱");
     assert!(has_panic_payload);
+
+    let has_context_field = panic_log
+        .fields
+        .iter()
+        .any(|(key, value)| key == "context_key" && value == "context_value");
+    assert!(has_context_field);
 }
 
 #[tokio::test]
