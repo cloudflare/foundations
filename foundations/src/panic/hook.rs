@@ -39,11 +39,12 @@ fn log_panic(panic_info: &PanicHookInfo<'_>) {
     // Use foundations logging if telemetry is initialized
     #[cfg(feature = "logging")]
     if crate::telemetry::is_initialized() {
-        crate::telemetry::log::error!(
-            "panic occurred";
-            "payload" => payload,
-            "location" => ?location,
-        );
+        let _ = crate::telemetry::log::internal::log_to_drain(&slog::record!(
+            slog::Level::Error,
+            "", // tag
+            &format_args!("panic occurred"),
+            slog::b!("payload" => payload, "location" => ?location),
+        ));
         return;
     }
 
@@ -99,7 +100,7 @@ mod logging_tests {
     #[tokio::test]
     async fn hook_swallows_drain_error() {
         let settings = LoggingSettings::default();
-        let root_drain = wrap_root_drain(&settings, FailingDrain.fuse());
+        let root_drain = wrap_root_drain(&settings, FailingDrain);
         let root_log = LoggerWithKvNestingTracking::new(build_log_with_drain(
             settings.verbosity,
             slog::o!(),

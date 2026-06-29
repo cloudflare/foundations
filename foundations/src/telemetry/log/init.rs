@@ -13,27 +13,28 @@ use crate::telemetry::settings::{LogFormat, LogOutput, LogVerbosity, LoggingSett
 use crate::{BootstrapResult, ServiceInfo};
 use crossbeam_utils::CachePadded;
 use slog::{
-    Discard, Drain, FnValue, Fuse, Logger, Never, OwnedKV, SendSyncRefUnwindSafeDrain,
+    Discard, Drain, FnValue, Fuse, Logger, OwnedKV, SendSyncRefUnwindSafeDrain,
     SendSyncRefUnwindSafeKV,
 };
 use slog_async::{Async as AsyncDrain, AsyncGuard};
 use slog_json::{Json as JsonDrain, Json};
 use slog_term::{FullFormat as TextDrain, PlainDecorator, TermDecorator};
+use std::fmt::Debug;
 use std::fs::File;
 use std::io;
 use std::io::BufWriter;
 use std::sync::{Arc, LazyLock, OnceLock};
 
-type SharedDrain = Arc<dyn SendSyncRefUnwindSafeDrain<Ok = (), Err = Never>>;
+type BoxedDebug = Box<dyn Debug>;
+type SharedDrain = Arc<dyn SendSyncRefUnwindSafeDrain<Ok = (), Err = BoxedDebug>>;
 
 // These singletons are accessed _very often_, and each access requires an atomic load to
 // ensure initialization. Make sure nobody else invalidates our cache lines.
 static HARNESS: CachePadded<OnceLock<LogHarness>> = CachePadded::new(OnceLock::new());
 
 static NOOP_HARNESS: CachePadded<LazyLock<LogHarness>> = CachePadded::new(LazyLock::new(|| {
-    let root_drain = Arc::new(Discard) as Arc<_>;
-    let noop_log =
-        LoggerWithKvNestingTracking::new(Logger::root_typed(Arc::clone(&root_drain), slog::o!()));
+    let root_drain = Discard.shared();
+    let noop_log = LoggerWithKvNestingTracking::new(Logger::root(Discard, slog::o!()));
 
     LogHarness {
         root_drain,
@@ -126,7 +127,7 @@ pub(crate) fn init(
             .build_with_guard(),
     };
 
-    let root_drain = wrap_root_drain(settings, async_drain.fuse());
+    let root_drain = wrap_root_drain(settings, async_drain);
     let root_kv = slog::o!(
         "module" => FnValue(|record| {
             format!("{}:{}", record.module(), record.line())
@@ -196,7 +197,8 @@ fn stderr_writer_without_line_buffering() -> BufWriter<File> {
 
 pub(crate) fn wrap_root_drain<D>(settings: &LoggingSettings, drain: D) -> SharedDrain
 where
-    D: SendSyncRefUnwindSafeDrain<Ok = (), Err = Never> + 'static,
+    D: SendSyncRefUnwindSafeDrain<Ok = ()> + 'static,
+    D::Err: Debug + 'static,
 {
     let drain = drain
         .field_filter(FieldDedupFilterFactory)
@@ -218,7 +220,7 @@ pub(crate) fn build_log_with_drain<K>(
 where
     K: SendSyncRefUnwindSafeKV + 'static,
 {
-    let drain = drain.filter_level(verbosity.into()).ignore_res();
+    let drain = drain.filter_level(verbosity.into()).fuse();
     Logger::root(drain, kv)
 }
 
@@ -252,13 +254,15 @@ trait DrainExt: Drain + Sized {
         RateLimitingDrain::new(self, &settings.rate_limit)
     }
 
-    /// Converts the current drain into an `Arc<dyn _>` for sharing between
+    /// Converts the current drain into a [`SharedDrain`] for sharing between
     /// multiple loggers.
-    fn shared(self) -> Arc<dyn SendSyncRefUnwindSafeDrain<Ok = Self::Ok, Err = Self::Err>>
+    fn shared(self) -> SharedDrain
     where
-        Self: SendSyncRefUnwindSafeDrain + 'static,
+        Self: SendSyncRefUnwindSafeDrain<Ok = ()> + 'static,
+        Self::Err: Debug + 'static,
     {
-        Arc::new(self)
+        let boxed_err = self.map_err(|e| Box::new(e) as BoxedDebug);
+        Arc::new(boxed_err)
     }
 }
 
