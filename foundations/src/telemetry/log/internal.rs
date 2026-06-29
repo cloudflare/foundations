@@ -1,6 +1,7 @@
 use super::init::LogHarness;
 use crate::telemetry::scope::Scope;
-use slog::{Logger, OwnedKV, SendSyncRefUnwindSafeKV};
+use slog::{Logger, OwnedKV, Record, SendSyncRefUnwindSafeKV};
+use std::fmt::Debug;
 use std::ops::Deref;
 use std::sync::Arc;
 
@@ -168,6 +169,18 @@ pub(crate) fn fork_log() -> SharedLog {
     log.frozen = false;
 
     Arc::new(parking_lot::RwLock::new(log))
+}
+
+/// Logs a [`Record`] directly to the root drain. Unlike our regular logger, this function
+/// does not filter by level and does not panic on errors (it returns them instead.)
+#[allow(dead_code, reason = "only used by some features")]
+pub(crate) fn log_to_drain(record: &Record) -> Result<(), Box<dyn Debug>> {
+    let harness = LogHarness::get();
+    let root_drain = &harness.root_drain;
+    let shared_logger = current_log();
+
+    let logger = shared_logger.read();
+    root_drain.log(record, logger.list())
 }
 
 /// Freezes the current logger. Any subsequent call to [`add_log_fields`] or `set_verbosity`
