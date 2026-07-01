@@ -1,4 +1,12 @@
 
+5.7.4
+- 2026-06-29 Fix potential double panic when logging inside panic hook
+- 2026-06-29 Add regression tests for panic hook logging
+- 2026-06-26 Fix double-panic in panic hook stderr
+- 2026-06-22 Use a dash instead of a dot in bonk model name
+- 2026-06-22 Fix bonk workflow by downgrading opencode
+- 2026-06-19 Setup bonk workflow
+
 5.7.3
 - 2026-06-10 Add cfg(foundations_jemalloc_disable) to opt out of global jemalloc allocator
 - 2026-06-10 Move cfg(foundations_generic_telemetry_wrapper) docs out of lib.rs
