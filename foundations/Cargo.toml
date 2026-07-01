@@ -148,6 +148,19 @@ tracing = [
     "dep:crossbeam-utils",
 ]
 
+# Enables distributed user tracing functionality.
+user-tracing = [
+    "tracing",
+    "dep:hex",
+    "dep:hyper",
+    "hyper/client",
+    "dep:hyper-util",
+    "dep:http-body-util",
+    "dep:serde_json",
+    "dep:prost",
+    "tokio/net",
+]
+
 # Enables metrics functionality.
 metrics = [
     "dep:foundations-macros",
@@ -223,6 +236,7 @@ crossbeam-utils = { workspace = true, optional = true }
 erased-serde = { workspace = true, optional = true }
 futures-util = { workspace = true, optional = true }
 governor = { workspace = true, optional = true }
+hex = { workspace = true, optional = true }
 http = { workspace = true, optional = true }
 http-body-util = { workspace = true, optional = true }
 hyper = { workspace = true, optional = true, features = ["http1", "server"] }
@@ -237,6 +251,7 @@ percent-encoding = { workspace = true, optional = true }
 prometheus = { workspace = true, optional = true, features = ["process"] }
 prometheus-client = { workspace = true, optional = true }
 prometools = { workspace = true, optional = true, features = ["serde"] }
+prost = { workspace = true, optional = true }
 rand = { workspace = true, optional = true }
 serde = { workspace = true, optional = true, features = ["derive", "rc"] }
 serde_json = { workspace = true, optional = true }

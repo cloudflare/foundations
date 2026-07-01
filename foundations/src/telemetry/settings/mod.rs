@@ -6,6 +6,9 @@ mod otlp_grpc_output;
 #[cfg(feature = "tracing")]
 mod tracing;
 
+#[cfg(feature = "user-tracing")]
+mod user_tracing;
+
 #[cfg(feature = "logging")]
 mod logging;
 
@@ -26,6 +29,9 @@ pub use self::otlp_grpc_output::*;
 
 #[cfg(feature = "tracing")]
 pub use self::tracing::*;
+
+#[cfg(feature = "user-tracing")]
+pub use self::user_tracing::*;
 
 #[cfg(feature = "logging")]
 pub use self::logging::*;
@@ -52,6 +58,10 @@ pub struct TelemetrySettings {
     /// Distributed tracing settings
     #[cfg(feature = "tracing")]
     pub tracing: TracingSettings,
+
+    /// Distributed user tracing settings
+    #[cfg(feature = "user-tracing")]
+    pub user_tracing: Option<UserTracingSettings>,
 
     /// Logging settings.
     #[cfg(feature = "logging")]

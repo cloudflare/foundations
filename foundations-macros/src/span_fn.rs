@@ -47,6 +47,9 @@ struct Options {
 
     #[darling(default = "Options::default_generic")]
     generic: bool,
+
+    #[darling(default = "Options::default_user")]
+    user: bool,
 }
 
 impl Options {
@@ -60,6 +63,10 @@ impl Options {
 
     fn default_generic() -> bool {
         cfg!(foundations_generic_telemetry_wrapper)
+    }
+
+    fn default_user() -> bool {
+        false
     }
 }
 
@@ -119,9 +126,10 @@ fn expand_from_parsed(args: Args, item_fn: ItemFn) -> TokenStream2 {
         None => try_async_trait_fn_rewrite(&args, &block).unwrap_or_else(|| {
             let span_name = args.span_name.as_tokens();
             let crate_path = &args.options.crate_path;
+            let user_span = with_user_span_call(&args.options);
 
             quote!(
-                let __span = #crate_path::telemetry::tracing::span(#span_name);
+                let __span = #crate_path::telemetry::tracing::span(#span_name)#user_span;
                 #block
             )
         }),
@@ -191,13 +199,24 @@ fn wrap_with_span(args: &Args, block: TokenStream2) -> TokenStream2 {
 
     let span_name = args.span_name.as_tokens();
     let crate_path = &args.options.crate_path;
+    let user_span = with_user_span_call(&args.options);
 
     quote!(
         #crate_path::telemetry::tracing::span(#span_name)
+            #user_span
             .into_context()
             .#apply_fn(#block)
             .await
     )
+}
+
+/// Emits `.with_user_span()` when `user = true`, otherwise nothing.
+fn with_user_span_call(options: &Options) -> TokenStream2 {
+    if options.user {
+        quote!(.with_user_span())
+    } else {
+        quote!()
+    }
 }
 
 #[cfg(test)]
@@ -225,6 +244,36 @@ mod tests {
         let expected = code_str! {
             fn do_sync<>() -> io::Result<String> {
                 let __span = ::foundations::telemetry::tracing::span("sync_span");
+                {
+                    do_something_else();
+
+                    Ok("foo".into())
+                }
+            }
+        };
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn expand_sync_fn_user() {
+        let args = parse_attr! {
+            #[span_fn("sync_span", user = true)]
+        };
+
+        let item_fn = parse_quote! {
+            fn do_sync() -> io::Result<String> {
+                do_something_else();
+
+                Ok("foo".into())
+            }
+        };
+
+        let actual = expand_from_parsed(args, item_fn).to_string();
+
+        let expected = code_str! {
+            fn do_sync<>() -> io::Result<String> {
+                let __span = ::foundations::telemetry::tracing::span("sync_span").with_user_span();
                 {
                     do_something_else();
 
@@ -285,6 +334,39 @@ mod tests {
         let expected = code_str! {
             async fn do_async<>() -> io::Result<String> {
                 ::foundations::telemetry::tracing::span("async_span")
+                    .into_context()
+                    .apply(async move {{
+                        do_something_else().await;
+
+                        Ok("foo".into())
+                    }})
+                    .await
+            }
+        };
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn expand_async_fn_user() {
+        let args = parse_attr! {
+            #[span_fn("async_span", user = true)]
+        };
+
+        let item_fn = parse_quote! {
+            async fn do_async() -> io::Result<String> {
+                do_something_else().await;
+
+                Ok("foo".into())
+            }
+        };
+
+        let actual = expand_from_parsed(args, item_fn).to_string();
+
+        let expected = code_str! {
+            async fn do_async<>() -> io::Result<String> {
+                ::foundations::telemetry::tracing::span("async_span")
+                    .with_user_span()
                     .into_context()
                     .apply(async move {{
                         do_something_else().await;

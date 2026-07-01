@@ -73,7 +73,10 @@ mod scope;
 
 mod telemetry_context;
 
-#[cfg(all(feature = "tracing", feature = "telemetry-otlp-grpc"))]
+#[cfg(all(
+    feature = "tracing",
+    any(feature = "telemetry-otlp-grpc", feature = "user-tracing")
+))]
 mod otlp_conversion;
 
 #[cfg(feature = "testing")]
@@ -138,6 +141,12 @@ feature_use!(cfg(feature = "tracing"), {
         use self::tracing::testing::TestTracerScope;
     });
 });
+
+#[cfg(feature = "user-tracing")]
+use self::tracing::UserSpanScope;
+
+#[cfg(all(feature = "user-tracing", feature = "testing"))]
+use self::tracing::testing::UserTestTracerScope;
 
 #[cfg(feature = "logging")]
 use self::log::internal::LogScope;
@@ -260,11 +269,17 @@ pub struct TelemetryScope {
     #[cfg(feature = "tracing")]
     _span_scope: Option<SpanScope>,
 
+    #[cfg(feature = "user-tracing")]
+    _user_span_scope: Option<UserSpanScope>,
+
     // NOTE: certain tracing APIs start a new trace, so we need to scope the test tracer
     // for them to use the tracer from the test scope instead of production tracer in
     // the harness.
     #[cfg(all(feature = "tracing", feature = "testing"))]
     _test_tracer_scope: Option<TestTracerScope>,
+
+    #[cfg(all(feature = "user-tracing", feature = "testing"))]
+    _user_test_tracer_scope: Option<UserTestTracerScope>,
 }
 
 /// Telemetry configuration that is passed to [`init`].
@@ -344,6 +359,16 @@ pub fn init(config: TelemetryConfig) -> BootstrapResult<TelemetryDriver> {
         if let Some(fut) = self::tracing::init::init(config.service_info, &config.settings.tracing)?
         {
             tele_futures.push(fut);
+        }
+    }
+
+    #[cfg(feature = "user-tracing")]
+    {
+        if let Some(user_settings) = &config.settings.user_tracing {
+            let initializer = self::tracing::init::init_user(config.service_info, user_settings)?;
+            if let Some(fut) = initializer {
+                tele_futures.push(fut);
+            }
         }
     }
 

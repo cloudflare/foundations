@@ -160,6 +160,22 @@ impl TestTracerScope {
     }
 }
 
+#[cfg(feature = "user-tracing")]
+#[must_use]
+pub(crate) struct UserTestTracerScope {
+    _inner: Scope<Tracer>,
+}
+
+#[cfg(feature = "user-tracing")]
+impl UserTestTracerScope {
+    #[inline]
+    pub(crate) fn new(tracer: Tracer) -> Self {
+        Self {
+            _inner: Scope::new(&TracingHarness::get_user().test_tracer_scope_stack, tracer),
+        }
+    }
+}
+
 pub(crate) struct TestTracesSink {
     span_rx: SharedSpanReceiver,
     raw_spans: HashMap<ParentId, Vec<FinishedSpan>>,
@@ -252,6 +268,11 @@ fn span_tags(raw_span: &FinishedSpan) -> Vec<(String, TagValue)> {
 
 pub(crate) fn current_test_tracer() -> Option<Tracer> {
     TracingHarness::get().test_tracer_scope_stack.current()
+}
+
+#[cfg(feature = "user-tracing")]
+pub(crate) fn current_user_test_tracer() -> Option<Tracer> {
+    TracingHarness::get_user().test_tracer_scope_stack.current()
 }
 
 pub(crate) fn create_test_tracer(settings: &TracingSettings) -> (Tracer, TestTracesSink) {
