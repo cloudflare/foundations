@@ -1,8 +1,8 @@
 //! The Prometheus protobuf data model (package `io.prometheus.client`).
 //!
 //! These types mirror [`prometheus/client_model`] and are the canonical wire
-//! format for the protobuf `/metrics` endpoint. They are generated from the vendored
-//! `proto/metrics.proto` (via `protox`/`prost`.)
+//! format for the protobuf `/metrics` endpoint. The generated Rust model is
+//! checked in and verified against the vendored `proto/metrics.proto`.
 //!
 //! [`prometheus/client_model`]: https://github.com/prometheus/client_model
 
