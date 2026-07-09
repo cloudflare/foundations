@@ -19,7 +19,9 @@ fn generated_proto_matches_vendored_proto() {
     }
 
     if std::env::var_os("CI").is_some() {
-        panic!("{GENERATED_PATH} is out of date; run `cargo test -p foundations-metrics-registry generated_proto_matches_vendored_proto` locally and commit the updated file.");
+        panic!(
+            "{GENERATED_PATH} is out of date; run `cargo test -p foundations-metrics-registry generated_proto_matches_vendored_proto` locally and commit the updated file."
+        );
     }
 
     fs::write(&checked_in_path, generated)

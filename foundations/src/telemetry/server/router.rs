@@ -213,7 +213,7 @@ impl Routes {
                 // Exact matches were allowed and ignored historically. Any other errors
                 // should be reported up.
                 Err(matchit::InsertError::Conflict { with }) if with == route.path => {}
-                Err(e) => anyhow::bail!("tried to insert route `{}`, but {}", &route.path, e),
+                Err(e) => anyhow::bail!("tried to insert route `{}`, but {}", route.path, e),
             }
         }
 
