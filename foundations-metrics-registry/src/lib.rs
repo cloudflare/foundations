@@ -19,4 +19,15 @@
 //! [`prometheus/client_model`]: https://github.com/prometheus/client_model
 #![warn(missing_docs)]
 
+mod encode_metric;
+mod iter;
+mod metadata;
+mod registry;
+
 pub mod proto;
+
+pub use encode_metric::EncodeMetric;
+pub use iter::{MetricRegistration, MetricsIter};
+pub use metadata::RegistrationMetadata;
+pub use proto::MetricFamily;
+pub use registry::{IntoMetrics, iter, register};
