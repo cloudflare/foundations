@@ -10,6 +10,7 @@ license = { workspace = true }
 workspace = true
 
 [dependencies]
+parking_lot = { workspace = true }
 prost = { workspace = true }
 prost-types = { workspace = true }
 
