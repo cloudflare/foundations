@@ -1,4 +1,4 @@
-use super::channel::SharedSpanReceiver;
+use super::channel::{PipelineType, SharedSpanReceiver};
 use super::internal::{SharedSpan, Tracer};
 use super::live::ActiveRoots;
 use super::output_jaeger_thrift_udp;
@@ -77,11 +77,11 @@ pub(super) fn create_tracer_and_span_rx(
     };
 
     if let Some(cap) = settings.max_queue_size {
-        let (consumer, span_rx) = super::channel::channel(cap);
+        let (consumer, span_rx) = super::channel::channel(cap, PipelineType::System);
         let tracer = Tracer::with_consumer(sampler, consumer);
         Ok((tracer, span_rx))
     } else {
-        let (consumer, span_rx) = super::channel::unbounded_channel();
+        let (consumer, span_rx) = super::channel::unbounded_channel(PipelineType::System);
         let tracer = Tracer::with_consumer(sampler, consumer);
         Ok((tracer, span_rx))
     }
@@ -122,7 +122,8 @@ pub(crate) fn init(
                 .max_queue_size
                 .map(std::num::NonZeroUsize::get)
                 .unwrap_or(usize::MAX);
-            super::metrics::tracing::max_queue_size().set(max_queue_size as u64);
+            super::metrics::tracing::max_queue_size(PipelineType::System)
+                .set(max_queue_size as u64);
         }
 
         res = Ok(futs.initializer);
