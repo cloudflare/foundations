@@ -1,19 +1,21 @@
+use std::sync::OnceLock;
+
 use parking_lot::RwLock;
-use std::sync::{Arc, OnceLock};
 
 use crate::EncodeMetric;
 use crate::RegistrationMetadata;
 use crate::iter::MetricsIter;
 
 /// A registered metric paired with its registration metadata
+#[derive(Clone)]
 pub(crate) struct Entry {
     pub(crate) metadata: RegistrationMetadata,
-    pub(crate) metric: Box<dyn EncodeMetric>,
+    pub(crate) metric: &'static dyn EncodeMetric,
 }
 
-static REGISTRY: OnceLock<RwLock<Vec<Arc<Entry>>>> = OnceLock::new();
+static REGISTRY: OnceLock<RwLock<Vec<Entry>>> = OnceLock::new();
 
-fn registry() -> &'static RwLock<Vec<Arc<Entry>>> {
+fn registry() -> &'static RwLock<Vec<Entry>> {
     REGISTRY.get_or_init(|| RwLock::new(Vec::new()))
 }
 
@@ -25,17 +27,20 @@ fn registry() -> &'static RwLock<Vec<Arc<Entry>>> {
 pub fn register(metrics: impl IntoMetrics, metadata: RegistrationMetadata) {
     let mut guard = registry().write();
     for metric in metrics.into_metrics() {
-        let entry: Arc<Entry> = Arc::new(Entry {
+        // The registry is append-only, so registered metrics live for the
+        // process lifetime and can be shared without reference counting.
+        let metric: &'static dyn EncodeMetric = Box::leak(metric);
+        let entry = Entry {
             metadata: metadata.clone(),
             metric,
-        });
+        };
         guard.push(entry);
     }
 }
 
 /// Returns a snapshot iterator over the registered metrics and their metadata.
 pub fn iter() -> MetricsIter {
-    let entries: Vec<Arc<Entry>> = registry().read().clone();
+    let entries = registry().read().clone();
     MetricsIter::new(entries)
 }
 
