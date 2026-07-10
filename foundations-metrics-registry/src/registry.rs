@@ -44,6 +44,8 @@ mod private {
 }
 
 /// Converts a value into the metrics it contributes to the registry.
+///
+/// This allows passing both `Box<dyn EncodeMetric>` and `Vec<Box<dyn EncodeMetric>>` to [`register`].
 pub trait IntoMetrics: private::Sealed {
     /// Consumes `self`, yielding the metrics to be registered.
     fn into_metrics(self) -> Vec<Box<dyn EncodeMetric>>;
