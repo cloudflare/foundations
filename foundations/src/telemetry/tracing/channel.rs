@@ -47,6 +47,17 @@ impl<T> Receiver<T> {
     }
 }
 
+/// Identifies the tracing pipeline that a span channel belongs to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize)]
+pub(super) enum PipelineType {
+    /// Regular (system) tracing pipeline.
+    ///
+    /// Encodes to an empty string for backwards compatibility with existing
+    /// metrics. Prometheus treats this the same as an absent label.
+    #[serde(rename = "")]
+    System,
+}
+
 /// An instrumented, multi-consumer span receiver layered on top of
 /// [`tokio::sync::mpsc`].
 ///
@@ -59,18 +70,26 @@ impl<T> Receiver<T> {
 #[derive(Clone)]
 pub(super) struct SharedSpanReceiver {
     rx: Arc<Mutex<Receiver<FinishedSpan>>>,
+
+    #[allow(dead_code, reason = "only used if `metrics` feature is enabled")]
+    metrics_label: PipelineType,
 }
 
 impl SharedSpanReceiver {
-    fn new_bounded(receiver: mpsc::Receiver<FinishedSpan>) -> Self {
+    fn new_bounded(receiver: mpsc::Receiver<FinishedSpan>, metrics_label: PipelineType) -> Self {
         Self {
             rx: Arc::new(Mutex::new(Receiver::Bounded(receiver))),
+            metrics_label,
         }
     }
 
-    fn new_unbounded(receiver: mpsc::UnboundedReceiver<FinishedSpan>) -> Self {
+    fn new_unbounded(
+        receiver: mpsc::UnboundedReceiver<FinishedSpan>,
+        metrics_label: PipelineType,
+    ) -> Self {
         Self {
             rx: Arc::new(Mutex::new(Receiver::Unbounded(receiver))),
+            metrics_label,
         }
     }
 
@@ -83,7 +102,7 @@ impl SharedSpanReceiver {
         let res = rx.try_recv();
 
         #[cfg(feature = "metrics")]
-        super::metrics::tracing::queue_size().set(rx.len() as u64);
+        super::metrics::tracing::queue_size(self.metrics_label).set(rx.len() as u64);
 
         res.ok()
     }
@@ -94,7 +113,7 @@ impl SharedSpanReceiver {
         let rx = &mut *self.rx.lock().await;
 
         #[cfg(feature = "metrics")]
-        let queue_size = super::metrics::tracing::queue_size();
+        let queue_size = super::metrics::tracing::queue_size(self.metrics_label);
 
         // Execute the recv_many operation. This means we are the active consumer and
         // are woken up if the channel length changes.
@@ -133,17 +152,22 @@ impl<T> Sender<T> for mpsc::UnboundedSender<T> {
 
 /// An instrumented sender for [`cf_rustracing_jaeger`] spans.
 #[derive(Clone)]
-pub(super) struct SpanSender<S>(S);
+pub(super) struct SpanSender<S> {
+    inner: S,
+
+    #[allow(dead_code, reason = "only used if `metrics` feature is enabled")]
+    metrics_label: PipelineType,
+}
 
 impl<S: Sender<FinishedSpan> + Send + Sync> SpanConsumer<JaegerContext> for SpanSender<S> {
     fn consume_span(&self, span: FinishedSpan) {
-        let _res = self.0.try_send(span);
+        let _res = self.inner.try_send(span);
 
         #[cfg(feature = "metrics")]
         {
-            super::metrics::tracing::spans_total().inc();
+            super::metrics::tracing::spans_total(self.metrics_label).inc();
             if _res.is_err() {
-                super::metrics::tracing::spans_dropped().inc();
+                super::metrics::tracing::spans_dropped(self.metrics_label).inc();
             }
         }
     }
@@ -153,15 +177,32 @@ pub(super) type BoundedSpanSender = SpanSender<mpsc::Sender<FinishedSpan>>;
 pub(super) type UnboundedSpanSender = SpanSender<mpsc::UnboundedSender<FinishedSpan>>;
 
 /// Creates a bounded MPMC channel for [`cf_rustracing_jaeger`] spans.
-pub(super) fn channel(buffer: NonZeroUsize) -> (BoundedSpanSender, SharedSpanReceiver) {
+pub(super) fn channel(
+    buffer: NonZeroUsize,
+    metrics_label: PipelineType,
+) -> (BoundedSpanSender, SharedSpanReceiver) {
     let (send, recv) = mpsc::channel(buffer.get());
-    (SpanSender(send), SharedSpanReceiver::new_bounded(recv))
+    (
+        SpanSender {
+            inner: send,
+            metrics_label,
+        },
+        SharedSpanReceiver::new_bounded(recv, metrics_label),
+    )
 }
 
 /// Creates an unbounded MPMC channel for [`cf_rustracing_jaeger`] spans.
-pub(super) fn unbounded_channel() -> (UnboundedSpanSender, SharedSpanReceiver) {
+pub(super) fn unbounded_channel(
+    metrics_label: PipelineType,
+) -> (UnboundedSpanSender, SharedSpanReceiver) {
     let (send, recv) = mpsc::unbounded_channel();
-    (SpanSender(send), SharedSpanReceiver::new_unbounded(recv))
+    (
+        SpanSender {
+            inner: send,
+            metrics_label,
+        },
+        SharedSpanReceiver::new_unbounded(recv, metrics_label),
+    )
 }
 
 #[cfg(test)]
@@ -174,25 +215,28 @@ mod tests {
 
     #[tokio::test]
     async fn test_span_metrics() {
-        let (send, recv) = channel(NonZeroUsize::new(3).unwrap());
+        let (send, recv) = channel(NonZeroUsize::new(3).unwrap(), PipelineType::System);
         let tracer = Tracer::with_consumer(AllSampler, send);
 
         for _ in 0..5 {
             let _span = tracer.span("my span").start();
         }
 
-        assert_eq!(tracing_metrics::spans_total().get(), 5);
-        assert_eq!(tracing_metrics::spans_dropped().get(), 2);
+        assert_eq!(tracing_metrics::spans_total(PipelineType::System).get(), 5);
+        assert_eq!(
+            tracing_metrics::spans_dropped(PipelineType::System).get(),
+            2,
+        );
 
         let mut spans = Vec::new();
         let got = recv.recv_many(&mut spans, 1).await;
         assert_eq!(got, 1);
         assert_eq!(spans.len(), 1);
-        assert_eq!(tracing_metrics::queue_size().get(), 2);
+        assert_eq!(tracing_metrics::queue_size(PipelineType::System).get(), 2);
 
         let got = recv.recv_many(&mut spans, 100).await;
         assert_eq!(got, 2);
         assert_eq!(spans.len(), 3);
-        assert_eq!(tracing_metrics::queue_size().get(), 0);
+        assert_eq!(tracing_metrics::queue_size(PipelineType::System).get(), 0);
     }
 }
