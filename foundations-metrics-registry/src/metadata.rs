@@ -10,9 +10,6 @@ pub struct RegistrationMetadata {
     pub optional: bool,
 
     /// Whether to suppress the service-name prefix for this metric.
-    ///
-    /// The subsystem prefix stays; only the service-name prefix is skipped, and
-    /// only when the service name is applied as a prefix rather than a label.
     pub unprefixed: bool,
 }
 
