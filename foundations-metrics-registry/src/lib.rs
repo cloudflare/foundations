@@ -27,7 +27,7 @@ mod registry;
 pub mod proto;
 
 pub use encode_metric::EncodeMetric;
-pub use iter::{MetricRegistration, MetricsIter};
+pub use iter::{MetricsIter, RegisteredMetric};
 pub use metadata::RegistrationMetadata;
 pub use proto::MetricFamily;
 pub use registry::{IntoMetrics, iter, register};
