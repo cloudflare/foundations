@@ -10,5 +10,5 @@ pub mod metrics;
 mod registered;
 mod value;
 
-pub use metrics::{Counter, Gauge, GaugeGuard, RangeGauge};
+pub use metrics::{Counter, CounterAtomic, Gauge, GaugeAtomic, GaugeGuard, RangeGauge};
 pub use registered::NamedMetric;

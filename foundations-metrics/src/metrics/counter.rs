@@ -42,7 +42,7 @@ pub struct Counter<N = u64, A = AtomicU64> {
 /// Implemented for the numeric types a counter can hold. Foundations provides
 /// implementations for `u64` and `f64` over [`AtomicU64`]; downstream code may
 /// implement it for custom storage.
-pub trait Atomic<N> {
+pub trait CounterAtomic<N> {
     /// Increments the value by one, returning the previous value.
     fn inc(&self) -> N;
 
@@ -53,7 +53,7 @@ pub trait Atomic<N> {
     fn get(&self) -> N;
 }
 
-impl Atomic<u64> for AtomicU64 {
+impl CounterAtomic<u64> for AtomicU64 {
     #[inline]
     fn inc(&self) -> u64 {
         self.inc_by(1)
@@ -70,7 +70,7 @@ impl Atomic<u64> for AtomicU64 {
     }
 }
 
-impl Atomic<f64> for AtomicU64 {
+impl CounterAtomic<f64> for AtomicU64 {
     #[inline]
     fn inc(&self) -> f64 {
         self.inc_by(1.0)
@@ -78,22 +78,7 @@ impl Atomic<f64> for AtomicU64 {
 
     #[inline]
     fn inc_by(&self, v: f64) -> f64 {
-        let mut old_bits = self.load(Ordering::Relaxed);
-
-        loop {
-            let old = f64::from_bits(old_bits);
-            let new_bits = (old + v).to_bits();
-
-            match self.compare_exchange_weak(
-                old_bits,
-                new_bits,
-                Ordering::Relaxed,
-                Ordering::Relaxed,
-            ) {
-                Ok(_) => return old,
-                Err(actual) => old_bits = actual,
-            }
-        }
+        super::update_f64(self, |old| old + v)
     }
 
     #[inline]
@@ -102,7 +87,7 @@ impl Atomic<f64> for AtomicU64 {
     }
 }
 
-impl<N, A: Atomic<N>> Counter<N, A> {
+impl<N, A: CounterAtomic<N>> Counter<N, A> {
     /// Increments the counter by one, returning the previous value.
     #[inline]
     pub fn inc(&self) -> N {
@@ -169,7 +154,7 @@ fn encode_counter(value: f64) -> Vec<MetricFamily> {
 impl<N, A> EncodeMetricValue for Counter<N, A>
 where
     N: IntoF64,
-    A: Atomic<N> + Send + Sync + 'static,
+    A: CounterAtomic<N> + Send + Sync + 'static,
 {
     fn encode_metric_value(&self) -> Vec<MetricFamily> {
         encode_counter(self.get().into_f64())
@@ -183,7 +168,7 @@ mod tests {
     fn encoded_value<N, A>(counter: Counter<N, A>) -> f64
     where
         N: IntoF64,
-        A: Atomic<N> + Send + Sync + 'static,
+        A: CounterAtomic<N> + Send + Sync + 'static,
     {
         let families = counter.encode_metric_value();
         let family = &families[0];

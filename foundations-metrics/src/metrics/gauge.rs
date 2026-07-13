@@ -1,10 +1,8 @@
-//! Gauge metrics and their lifecycle helpers.
-
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::marker::PhantomData;
+use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use foundations_metrics_registry::proto::{self, MetricFamily, MetricType};
-use prometheus_client::metrics::gauge::{Atomic as GaugeAtomic, Gauge as PrometheusGauge};
 
 use crate::value::EncodeMetricValue;
 
@@ -12,24 +10,154 @@ use super::IntoF64;
 
 /// A metric whose value may increase, decrease, or be set directly.
 ///
-/// This implementation delegates atomic storage and operations to
-/// `prometheus-client`, while exposing only the explicit Foundations API.
-/// Clones share the same underlying storage.
+/// This implementation owns shared atomic storage and exposes only the explicit
+/// Foundations API. Clones share the same underlying storage.
 ///
 /// The `u64`/`AtomicU64` defaults preserve the existing Foundations API.
 #[derive(Debug)]
-#[repr(transparent)]
-pub struct Gauge<N = u64, A = AtomicU64>(PrometheusGauge<N, A>);
+pub struct Gauge<N = u64, A = AtomicU64> {
+    val: Arc<A>,
+    marker: PhantomData<N>,
+}
 
 impl<N, A> Clone for Gauge<N, A> {
     fn clone(&self) -> Self {
-        Self(self.0.clone())
+        Self {
+            val: Arc::clone(&self.val),
+            marker: PhantomData,
+        }
     }
 }
 
 impl<N, A: Default> Default for Gauge<N, A> {
     fn default() -> Self {
-        Self(PrometheusGauge::default())
+        Self {
+            val: Arc::new(A::default()),
+            marker: PhantomData,
+        }
+    }
+}
+
+/// Atomic storage backing a [`Gauge`].
+///
+/// Implemented for the numeric types a gauge can hold. Foundations provides
+/// implementations over the standard library's 64-bit atomics (`i64`, `u64`,
+/// and `f64`); downstream code may implement it for custom storage.
+///
+/// Every method returns the value held *before* the operation was applied.
+pub trait GaugeAtomic<N> {
+    /// Increases the value by one, returning the previous value.
+    fn inc(&self) -> N;
+
+    /// Increases the value by `v`, returning the previous value.
+    fn inc_by(&self, v: N) -> N;
+
+    /// Decreases the value by one, returning the previous value.
+    fn dec(&self) -> N;
+
+    /// Decreases the value by `v`, returning the previous value.
+    fn dec_by(&self, v: N) -> N;
+
+    /// Sets the value to `v`, returning the previous value.
+    fn set(&self, v: N) -> N;
+
+    /// Loads the current value.
+    fn get(&self) -> N;
+}
+
+impl GaugeAtomic<i64> for AtomicI64 {
+    #[inline]
+    fn inc(&self) -> i64 {
+        self.inc_by(1)
+    }
+
+    #[inline]
+    fn inc_by(&self, v: i64) -> i64 {
+        self.fetch_add(v, Ordering::Relaxed)
+    }
+
+    #[inline]
+    fn dec(&self) -> i64 {
+        self.dec_by(1)
+    }
+
+    #[inline]
+    fn dec_by(&self, v: i64) -> i64 {
+        self.fetch_sub(v, Ordering::Relaxed)
+    }
+
+    #[inline]
+    fn set(&self, v: i64) -> i64 {
+        self.swap(v, Ordering::Relaxed)
+    }
+
+    #[inline]
+    fn get(&self) -> i64 {
+        self.load(Ordering::Relaxed)
+    }
+}
+
+impl GaugeAtomic<u64> for AtomicU64 {
+    #[inline]
+    fn inc(&self) -> u64 {
+        self.inc_by(1)
+    }
+
+    #[inline]
+    fn inc_by(&self, v: u64) -> u64 {
+        self.fetch_add(v, Ordering::Relaxed)
+    }
+
+    #[inline]
+    fn dec(&self) -> u64 {
+        self.dec_by(1)
+    }
+
+    #[inline]
+    fn dec_by(&self, v: u64) -> u64 {
+        self.fetch_sub(v, Ordering::Relaxed)
+    }
+
+    #[inline]
+    fn set(&self, v: u64) -> u64 {
+        self.swap(v, Ordering::Relaxed)
+    }
+
+    #[inline]
+    fn get(&self) -> u64 {
+        self.load(Ordering::Relaxed)
+    }
+}
+
+impl GaugeAtomic<f64> for AtomicU64 {
+    #[inline]
+    fn inc(&self) -> f64 {
+        self.inc_by(1.0)
+    }
+
+    #[inline]
+    fn inc_by(&self, v: f64) -> f64 {
+        super::update_f64(self, |old| old + v)
+    }
+
+    #[inline]
+    fn dec(&self) -> f64 {
+        self.dec_by(1.0)
+    }
+
+    #[inline]
+    fn dec_by(&self, v: f64) -> f64 {
+        super::update_f64(self, |old| old - v)
+    }
+
+    #[inline]
+    fn set(&self, v: f64) -> f64 {
+        f64::from_bits(self.swap(v.to_bits(), Ordering::Relaxed))
+    }
+
+    #[inline]
+    fn get(&self) -> f64 {
+        f64::from_bits(self.load(Ordering::Relaxed))
     }
 }
 
@@ -37,43 +165,43 @@ impl<N, A: GaugeAtomic<N>> Gauge<N, A> {
     /// Increases the gauge by one, returning the previous value.
     #[inline]
     pub fn inc(&self) -> N {
-        self.0.inc()
+        self.val.inc()
     }
 
     /// Increases the gauge by `v`, returning the previous value.
     #[inline]
     pub fn inc_by(&self, v: N) -> N {
-        self.0.inc_by(v)
+        self.val.inc_by(v)
     }
 
     /// Decreases the gauge by one, returning the previous value.
     #[inline]
     pub fn dec(&self) -> N {
-        self.0.dec()
+        self.val.dec()
     }
 
     /// Decreases the gauge by `v`, returning the previous value.
     #[inline]
     pub fn dec_by(&self, v: N) -> N {
-        self.0.dec_by(v)
+        self.val.dec_by(v)
     }
 
     /// Sets the gauge to `v`, returning the previous value.
     #[inline]
     pub fn set(&self, v: N) -> N {
-        self.0.set(v)
+        self.val.set(v)
     }
 
     /// Returns the current value.
     #[inline]
     pub fn get(&self) -> N {
-        self.0.get()
+        self.val.get()
     }
 
     /// Returns a reference to the underlying atomic storage.
     #[inline]
     pub fn inner(&self) -> &A {
-        self.0.inner()
+        self.val.as_ref()
     }
 }
 
@@ -288,7 +416,7 @@ impl GenericGauge for RangeGauge {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::atomic::{AtomicI32, AtomicI64, AtomicU32, AtomicU64};
+    use std::sync::atomic::{AtomicI64, AtomicU64};
 
     use super::*;
 
@@ -322,21 +450,6 @@ mod tests {
         assert_eq!(alias.dec(), 8);
         assert_eq!(gauge.dec_by(2), 7);
         assert_eq!(alias.get(), 5);
-    }
-
-    #[test]
-    fn encodes_32_bit_gauge_values() {
-        let signed = Gauge::<i32, AtomicI32>::default();
-        signed.set(-3);
-        assert_eq!(encoded_value(signed), -3.0);
-
-        let unsigned = Gauge::<u32, AtomicU32>::default();
-        unsigned.set(7);
-        assert_eq!(encoded_value(unsigned), 7.0);
-
-        let float = Gauge::<f32, AtomicU32>::default();
-        float.set(1.5);
-        assert_eq!(encoded_value(float), 1.5);
     }
 
     #[test]
