@@ -1,11 +1,11 @@
 use foundations_metrics_registry::MetricFamily;
 
-/// Encodes metric storage independently of its registered identity.
+/// Encodes metric values before registration metadata is applied.
 ///
-/// Each returned family must set `name` to a relative suffix. The primary
-/// family uses `Some("")`; additional series use suffixes such as `Some("_min")`
-/// or `Some("_max")`. [`NamedMetric`](crate::NamedMetric) prepends the registered
-/// base name and supplies help text when it is absent.
+/// Each returned [`MetricFamily`] must set `name` to a relative suffix. The
+/// primary series uses `Some("")`; additional series use names such as
+/// `Some("_min")` and `Some("_max")`. [`NamedMetric`](crate::NamedMetric)
+/// prepends the registered metric name and fills in missing help text.
 pub(crate) trait EncodeMetricValue: Send + Sync + 'static {
     /// Encodes the current value into one or more relatively named families.
     fn encode_metric_value(&self) -> Vec<MetricFamily>;

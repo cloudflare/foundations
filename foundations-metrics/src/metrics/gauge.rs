@@ -71,9 +71,6 @@ impl<N, A: GaugeAtomic<N>> Gauge<N, A> {
     }
 
     /// Returns a reference to the underlying atomic storage.
-    ///
-    /// This should only be used for advanced use-cases not directly supported by
-    /// the library.
     #[inline]
     pub fn inner(&self) -> &A {
         self.0.inner()
@@ -265,10 +262,7 @@ impl<G: GenericGauge> Drop for GaugeGuard<G> {
 
 /// Helper trait for values supported by [`GaugeGuard`].
 pub trait GenericGauge {
-    /// Increments the gauge by one.
     fn inc(&self);
-
-    /// Decrements the gauge by one.
     fn dec(&self);
 }
 
