@@ -120,6 +120,12 @@ impl<N, A: Atomic<N>> Counter<N, A> {
     pub fn get(&self) -> N {
         self.val.get()
     }
+
+    /// Returns a reference to the underlying atomic storage.
+    #[inline]
+    pub fn inner(&self) -> &A {
+        self.val.as_ref()
+    }
 }
 
 impl<N, A> Clone for Counter<N, A> {
