@@ -48,7 +48,7 @@ mod tests {
     use foundations_metrics_registry::proto::MetricType;
 
     use super::*;
-    use crate::Counter;
+    use crate::{Counter, RangeGauge};
 
     #[test]
     fn rewrites_relative_name_and_fills_help() {
@@ -72,5 +72,40 @@ mod tests {
             family.metric[0].counter.as_ref().and_then(|c| c.value),
             Some(5.0)
         );
+    }
+
+    #[test]
+    fn prefixes_each_range_gauge_series() {
+        let gauge = RangeGauge::default();
+        gauge.inc_by(3);
+        gauge.dec_by(2);
+
+        let named = NamedMetric::new(
+            "inflight_requests",
+            "Number of requests awaiting a response.",
+            gauge,
+        );
+
+        let families = named.encode();
+        let expected = [
+            ("inflight_requests", 1.0),
+            ("inflight_requests_min", 0.0),
+            ("inflight_requests_max", 3.0),
+        ];
+
+        assert_eq!(families.len(), expected.len());
+
+        for (family, (name, value)) in families.iter().zip(expected) {
+            assert_eq!(family.name.as_deref(), Some(name));
+            assert_eq!(
+                family.help.as_deref(),
+                Some("Number of requests awaiting a response.")
+            );
+            assert_eq!(family.r#type, Some(MetricType::Gauge as i32));
+            assert_eq!(
+                family.metric[0].gauge.as_ref().and_then(|g| g.value),
+                Some(value)
+            );
+        }
     }
 }
