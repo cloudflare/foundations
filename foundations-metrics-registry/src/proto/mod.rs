@@ -9,7 +9,7 @@
 #[allow(missing_docs, unreachable_pub, clippy::all)]
 mod model;
 
-pub use model::{BucketSpan, Histogram, Metric, MetricFamily, MetricType};
+pub use model::{BucketSpan, Counter, Histogram, Metric, MetricFamily, MetricType};
 
 #[cfg(test)]
 mod tests {

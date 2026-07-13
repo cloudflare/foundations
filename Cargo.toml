@@ -2,8 +2,9 @@
 members = [
     "foundations",
     "foundations-macros",
-    "foundations-sentry",
+    "foundations-metrics",
     "foundations-metrics-registry",
+    "foundations-sentry",
     "examples",
     "tools/gen-syscall-enum",
 ]
@@ -43,6 +44,7 @@ anyhow = "1.0.102"
 backtrace = "0.3.76"
 foundations = { version = "5.8.0", path = "./foundations", default-features = false }
 foundations-macros = { version = "=5.8.0", path = "./foundations-macros", default-features = false }
+foundations-metrics-registry = { version = "0.1.0", path = "./foundations-metrics-registry" }
 bindgen = { version = "0.72.1", default-features = false }
 cc = "1.2.61"
 cf-rustracing = "1.4.0"
