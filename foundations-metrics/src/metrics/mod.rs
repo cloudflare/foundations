@@ -1,8 +1,10 @@
 //! The metrics module that contains scalar metrics (like Counter, Gauge, ...) and non-scalars, like Family.
 
 mod counter;
+mod gauge;
 
 pub use counter::{Atomic, Counter};
+pub use gauge::{Gauge, GaugeGuard, RangeGauge};
 
 trait IntoF64: Send + Sync + 'static {
     fn into_f64(self) -> f64;
