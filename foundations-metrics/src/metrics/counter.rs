@@ -2,11 +2,11 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use foundations_metrics_registry::proto::{self, MetricFamily, MetricType};
+use foundations_metrics_registry::proto::{self, MetricType};
 
 use super::IntoF64;
 
-use crate::value::EncodeMetricValue;
+use crate::{MetricFamily, value::EncodeMetricValue};
 
 /// A monotonically increasing value, such as a request count or bytes served.
 ///

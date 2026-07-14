@@ -1,4 +1,4 @@
-use foundations_metrics_registry::MetricFamily;
+use crate::MetricFamily;
 
 /// Encodes metric values before registration metadata is applied.
 ///

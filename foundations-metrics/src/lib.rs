@@ -10,5 +10,8 @@ pub mod metrics;
 mod registered;
 mod value;
 
+pub use foundations_metrics_registry::{
+    EncodeMetric, IntoMetrics, MetricFamily, RegistrationMetadata, register,
+};
 pub use metrics::{Counter, CounterAtomic, Gauge, GaugeAtomic, GaugeGuard, RangeGauge};
 pub use registered::NamedMetric;
