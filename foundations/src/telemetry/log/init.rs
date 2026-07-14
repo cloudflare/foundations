@@ -13,8 +13,7 @@ use crate::telemetry::settings::{LogFormat, LogOutput, LogVerbosity, LoggingSett
 use crate::{BootstrapResult, ServiceInfo};
 use crossbeam_utils::CachePadded;
 use slog::{
-    Discard, Drain, FnValue, Fuse, Logger, OwnedKV, SendSyncRefUnwindSafeDrain,
-    SendSyncRefUnwindSafeKV,
+    Discard, Drain, FnValue, Logger, OwnedKV, SendSyncRefUnwindSafeDrain, SendSyncRefUnwindSafeKV,
 };
 use slog_async::{Async as AsyncDrain, AsyncGuard};
 use slog_json::{Json as JsonDrain, Json};
@@ -87,10 +86,8 @@ pub(crate) fn init(
                 TermDecorator::new().stderr().build()
             };
 
-            let drain = TextDrain::new(decorator).build().fuse();
-            AsyncDrain::new(drain)
-                .chan_size(CHANNEL_SIZE)
-                .build_with_guard()
+            let drain = TextDrain::new(decorator).build();
+            build_async_drain(drain, settings, CHANNEL_SIZE)
         }
         (output @ (LogOutput::Terminal | LogOutput::Stderr), LogFormat::Json) => {
             let writer = if matches!(output, LogOutput::Terminal) {
@@ -99,24 +96,18 @@ pub(crate) fn init(
                 stderr_writer_without_line_buffering()
             };
             let drain = build_json_log_drain(writer);
-            AsyncDrain::new(drain)
-                .chan_size(CHANNEL_SIZE)
-                .build_with_guard()
+            build_async_drain(drain, settings, CHANNEL_SIZE)
         }
         (LogOutput::File(file_path), LogFormat::Text) => {
             let file = RetryPipeWriter::new(file_path.into())?;
-            let drain = TextDrain::new(PlainDecorator::new(file)).build().fuse();
-            AsyncDrain::new(drain)
-                .chan_size(CHANNEL_SIZE)
-                .build_with_guard()
+            let drain = TextDrain::new(PlainDecorator::new(file)).build();
+            build_async_drain(drain, settings, CHANNEL_SIZE)
         }
         (LogOutput::File(file_path), LogFormat::Json) => {
             let file = RetryPipeWriter::new(file_path.into())?;
             let buf = BufWriter::with_capacity(BUF_SIZE, file);
             let drain = build_json_log_drain(buf);
-            AsyncDrain::new(drain)
-                .chan_size(CHANNEL_SIZE)
-                .build_with_guard()
+            build_async_drain(drain, settings, CHANNEL_SIZE)
         }
         #[cfg(feature = "tracing-rs-compat")]
         (LogOutput::TracingRsCompat, _) => AsyncDrain::new(tracing_slog::TracingSlogDrain {})
@@ -224,7 +215,27 @@ where
     Logger::root(drain, kv)
 }
 
-fn build_json_log_drain<O>(output: O) -> Fuse<Json<O>>
+fn build_async_drain<D>(
+    drain: D,
+    settings: &LoggingSettings,
+    channel_size: usize,
+) -> (AsyncDrain, AsyncGuard)
+where
+    D: Drain<Ok = ()> + Send + 'static,
+    D::Err: Debug,
+{
+    if settings.ignore_io_errors {
+        AsyncDrain::new(drain.ignore_res())
+            .chan_size(channel_size)
+            .build_with_guard()
+    } else {
+        AsyncDrain::new(drain.fuse())
+            .chan_size(channel_size)
+            .build_with_guard()
+    }
+}
+
+fn build_json_log_drain<O>(output: O) -> Json<O>
 where
     O: io::Write + Send + 'static,
 {
@@ -233,7 +244,6 @@ where
         .set_pretty(false)
         .set_flush(true)
         .build()
-        .fuse()
 }
 
 /// [`Drain`] extension trait for easier layering.
@@ -267,3 +277,62 @@ trait DrainExt: Drain + Sized {
 }
 
 impl<D: Drain + Sized> DrainExt for D {}
+
+#[cfg(all(test, feature = "logging"))]
+mod tests {
+    use super::*;
+    use slog::{OwnedKVList, Record};
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    struct CountingFailingDrain {
+        calls: Arc<AtomicUsize>,
+    }
+
+    impl Drain for CountingFailingDrain {
+        type Ok = ();
+        type Err = &'static str;
+
+        fn log(&self, _record: &Record, _values: &OwnedKVList) -> Result<Self::Ok, Self::Err> {
+            self.calls.fetch_add(1, Ordering::Relaxed);
+            Err("drain failed")
+        }
+    }
+
+    #[test]
+    fn async_drain_keeps_worker_alive_after_output_errors_when_configured() {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let drain = CountingFailingDrain {
+            calls: Arc::clone(&calls),
+        };
+        let settings = LoggingSettings {
+            ignore_io_errors: true,
+            ..Default::default()
+        };
+        let (drain, guard) = build_async_drain(drain, &settings, 1024);
+        let log = Logger::root(drain.fuse(), slog::o!());
+
+        slog::error!(log, "first failing write");
+        slog::error!(log, "second failing write");
+        drop(guard);
+
+        assert_eq!(calls.load(Ordering::Relaxed), 2);
+    }
+
+    #[test]
+    fn async_drain_stops_after_output_errors_by_default() {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let drain = CountingFailingDrain {
+            calls: Arc::clone(&calls),
+        };
+        let settings = LoggingSettings::default();
+        let (drain, guard) = build_async_drain(drain, &settings, 1024);
+        let log = Logger::root(drain.ignore_res(), slog::o!());
+
+        slog::error!(log, "first failing write");
+        slog::error!(log, "second failing write");
+        drop(guard);
+
+        assert_eq!(calls.load(Ordering::Relaxed), 1);
+    }
+}

@@ -39,6 +39,13 @@ pub struct LoggingSettings {
     /// contain sensitive information, but allow them in testing environment.
     pub redact_keys: Vec<String>,
 
+    /// Whether to ignore I/O errors from built-in log outputs.
+    ///
+    /// By default, I/O errors from terminal, stderr, and file outputs are treated
+    /// as fatal logging failures. Enabling this setting allows services to keep
+    /// running if a log sink returns an error such as [`std::io::ErrorKind::BrokenPipe`].
+    pub ignore_io_errors: bool,
+
     /// Settings for rate limiting emission of log events
     pub rate_limit: RateLimitingSettings,
 
