@@ -2,9 +2,9 @@ use std::marker::PhantomData;
 use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
-use foundations_metrics_registry::proto::{self, MetricFamily, MetricType};
+use foundations_metrics_registry::proto::{self, MetricType};
 
-use crate::value::EncodeMetricValue;
+use crate::{MetricFamily, value::EncodeMetricValue};
 
 use super::IntoF64;
 

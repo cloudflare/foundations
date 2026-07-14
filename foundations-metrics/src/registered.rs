@@ -1,7 +1,4 @@
-use foundations_metrics_registry::EncodeMetric;
-use foundations_metrics_registry::MetricFamily;
-
-use crate::value::EncodeMetricValue;
+use crate::{EncodeMetric, MetricFamily, value::EncodeMetricValue};
 
 /// A metric paired with the name and help text it is exported under.
 ///
@@ -9,7 +6,7 @@ use crate::value::EncodeMetricValue;
 /// themselves with relative names (a suffix such as `""`, `_min`, or `_max`).
 /// `NamedMetric` supplies the registered base name and help text, bridging the
 /// internal `EncodeMetricValue` storage trait to the public
-/// [`EncodeMetric`](foundations_metrics_registry::EncodeMetric) registry trait.
+/// [`EncodeMetric`] registry trait.
 pub struct NamedMetric<M> {
     name: &'static str,
     help: &'static str,
