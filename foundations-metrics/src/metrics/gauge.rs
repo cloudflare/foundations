@@ -10,10 +10,28 @@ use super::IntoF64;
 
 /// A metric whose value may increase, decrease, or be set directly.
 ///
-/// This implementation owns shared atomic storage and exposes only the explicit
-/// Foundations API. Clones share the same underlying storage.
+/// It is a cheap handle over shared atomic storage: [`Clone`] hands out another
+/// reference to the *same* series, so the gauge can be updated from many places
+/// and read back as a single current value.
 ///
 /// The `u64`/`AtomicU64` defaults preserve the existing Foundations API.
+///
+/// # Examples
+///
+/// ```
+/// use foundations_metrics::Gauge;
+///
+/// let connections: Gauge = Gauge::default();
+/// connections.inc();
+/// connections.inc_by(4);
+/// connections.dec_by(2);
+/// assert_eq!(connections.get(), 3);
+///
+/// // Clones share storage.
+/// let alias = connections.clone();
+/// alias.set(10);
+/// assert_eq!(connections.get(), 10);
+/// ```
 #[derive(Debug)]
 pub struct Gauge<N = u64, A = AtomicU64> {
     val: Arc<A>,
@@ -236,17 +254,28 @@ where
 ///
 /// # Examples
 ///
-/// ```
-/// use foundations_metrics::RangeGauge;
+/// ```ignore
+/// use foundations_metrics::{metrics, RangeGauge};
 ///
-/// let inflight = RangeGauge::default();
-/// for _ in 0..10 {
-///     inflight.inc();
+/// #[metrics]
+/// pub mod my_app_metrics {
+///     /// Number of requests awaiting a response.
+///     pub fn inflight_requests() -> RangeGauge;
 /// }
-/// for _ in 0..8 {
-///     inflight.dec();
+///
+/// fn usage() {
+///     for _ in 0..10 {
+///         my_app_metrics::inflight_requests().inc();
+///     }
+///     for _ in 0..8 {
+///         my_app_metrics::inflight_requests().dec();
+///     }
+///
+///     // If scraped now, the metric exports these three series:
+///     // inflight_requests     2
+///     // inflight_requests_min 0
+///     // inflight_requests_max 10
 /// }
-/// assert_eq!(inflight.get(), 2);
 /// ```
 #[derive(Debug, Clone, Default)]
 pub struct RangeGauge {
@@ -313,15 +342,29 @@ impl RangeGauge {
     /// Returns `(min, current, max)`, guaranteeing `min <= current <= max`, and
     /// resets the tracked minimum and maximum to the current value.
     fn get_values(&self) -> (u64, u64, u64) {
+        // Avoid data races by ensuring only one thread can perform the reset operation.
         let _reset_guard = self.reset_cs.lock().unwrap();
+
+        // First, get the current metric.
         let current = self.get();
 
+        // Obtain min and max by swapping their contents with the current value.
+        // It is possible that current == min and another thread decremented current before we
+        // read its value, but has not yet decremented min. Enforce min <= current to account for
+        // that race. The same caveat applies to max.
         let min = std::cmp::min(current, self.min.swap(current, Ordering::AcqRel));
         let max = std::cmp::max(current, self.max.swap(current, Ordering::AcqRel));
 
+        // The current value may have changed between reading it and resetting min/max. Read it
+        // once more and ensure subsequent scrapes retain the invariant min <= current <= max.
         let current_fixup = self.get();
         self.min.fetch_min(current_fixup, Ordering::AcqRel);
         self.max.fetch_max(current_fixup, Ordering::AcqRel);
+
+        //                     | min | c | max |
+        // T1: read current    | 1   | 1 | 1   |
+        // T2: increment by 1  | 1   | 2 | 2   |
+        // T3: decrement by 2  | 0   | 0 | 2   |
 
         (min, current, max)
     }
@@ -362,15 +405,26 @@ impl EncodeMetricValue for RangeGauge {
 ///
 /// # Examples
 ///
-/// ```
-/// use foundations_metrics::{Gauge, GaugeGuard};
+/// ```ignore
+/// use foundations_metrics::{metrics, Gauge, GaugeGuard};
 ///
-/// let connections: Gauge = Gauge::default();
-/// {
-///     let _guard = GaugeGuard::new(connections.clone());
-///     assert_eq!(connections.get(), 1);
+/// #[metrics]
+/// pub mod my_app_metrics {
+///     /// Number of currently connected clients.
+///     pub fn client_connections_active() -> Gauge;
 /// }
-/// assert_eq!(connections.get(), 0);
+///
+/// fn usage() {
+///     let client_metric = GaugeGuard::new(my_app_metrics::client_connections_active());
+///     // Do work where you want the metric to remain incremented.
+///     // When it leaves scope, the metric will be decremented.
+///     // Alternatively, move ownership to another scope to change the lifetime.
+///     tokio::spawn(async move {
+///         // Do work with arbitrary lifetime on another task.
+///         // Manually drop to force `client_metric` ownership to this task.
+///         drop(client_metric);
+///     });
+/// }
 /// ```
 pub struct GaugeGuard<G: GenericGauge>(G);
 
@@ -390,7 +444,10 @@ impl<G: GenericGauge> Drop for GaugeGuard<G> {
 
 /// Helper trait for values supported by [`GaugeGuard`].
 pub trait GenericGauge {
+    /// Increases the wrapped gauge by one.
     fn inc(&self);
+
+    /// Decreases the wrapped gauge by one.
     fn dec(&self);
 }
 
