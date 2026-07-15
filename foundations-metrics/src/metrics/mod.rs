@@ -37,10 +37,12 @@ use std::sync::atomic::{AtomicU64, Ordering};
 mod counter;
 mod family;
 mod gauge;
+mod histogram;
 
 pub use counter::{Counter, CounterAtomic};
 pub use family::{Family, FamilyMetricGuard, MetricConstructor};
 pub use gauge::{Gauge, GaugeAtomic, GaugeGuard, RangeGauge};
+pub use histogram::{Histogram, HistogramBuilder};
 
 fn update_f64(atomic: &AtomicU64, f: impl Fn(f64) -> f64) -> f64 {
     let mut old_bits = atomic.load(Ordering::Relaxed);
