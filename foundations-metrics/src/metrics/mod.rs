@@ -35,9 +35,11 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 
 mod counter;
+mod family;
 mod gauge;
 
 pub use counter::{Counter, CounterAtomic};
+pub use family::{Family, MetricConstructor};
 pub use gauge::{Gauge, GaugeAtomic, GaugeGuard, RangeGauge};
 
 fn update_f64(atomic: &AtomicU64, f: impl Fn(f64) -> f64) -> f64 {
