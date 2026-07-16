@@ -1,7 +1,10 @@
+use parking_lot::Mutex;
+use std::iter::once;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{Duration, Instant};
 
 use foundations_metrics_registry::proto::{self, Bucket, MetricType};
-use parking_lot::Mutex;
 
 use crate::{MetricFamily, value::EncodeMetricValue};
 
@@ -24,11 +27,11 @@ use super::MetricConstructor;
 /// ```
 #[derive(Clone, Debug)]
 pub struct Histogram {
-    state: Arc<Mutex<State>>,
+    state: Arc<Mutex<HistogramState>>,
 }
 
 #[derive(Debug)]
-struct State {
+struct HistogramState {
     sum: f64,
     count: u64,
     buckets: Vec<(f64, u64)>,
@@ -36,7 +39,7 @@ struct State {
 }
 
 #[derive(Debug, PartialEq)]
-struct Snapshot {
+pub struct HistogramSnapshot {
     sum: f64,
     count: u64,
     buckets: Vec<(f64, u64)>,
@@ -54,7 +57,7 @@ impl Histogram {
         let sorted = buckets.windows(2).all(|window| window[0].0 <= window[1].0);
 
         Self {
-            state: Arc::new(Mutex::new(State {
+            state: Arc::new(Mutex::new(HistogramState {
                 sum: 0.0,
                 count: 0,
                 buckets,
@@ -88,9 +91,9 @@ impl Histogram {
         }
     }
 
-    fn snapshot(&self) -> Snapshot {
+    fn snapshot(&self) -> HistogramSnapshot {
         let state = self.state.lock();
-        Snapshot {
+        HistogramSnapshot {
             sum: state.sum,
             count: state.count,
             buckets: state.buckets.clone(),
@@ -100,40 +103,43 @@ impl Histogram {
 
 impl EncodeMetricValue for Histogram {
     fn encode_metric_value(&self) -> Vec<MetricFamily> {
-        let snapshot = self.snapshot();
-        let mut cumulative_count = 0_u64;
-        let buckets = snapshot
-            .buckets
-            .into_iter()
-            .map(|(upper_bound, count)| {
-                cumulative_count = cumulative_count.wrapping_add(count);
-                Bucket {
-                    cumulative_count: Some(cumulative_count),
-                    upper_bound: Some(upper_bound),
-                    ..Default::default()
-                }
-            })
-            .collect();
-
-        vec![MetricFamily {
-            name: Some(String::new()),
-            help: None,
-            r#type: Some(MetricType::Histogram as i32),
-            metric: vec![proto::Metric {
-                histogram: Some(proto::Histogram {
-                    sample_count: Some(snapshot.count),
-                    sample_sum: Some(snapshot.sum),
-                    bucket: buckets,
-                    ..Default::default()
-                }),
-                ..Default::default()
-            }],
-            unit: None,
-        }]
+        encode_snapshot(self.snapshot())
     }
 }
 
-/// Constructs classic histograms with a fixed set of buckets.
+fn encode_snapshot(snapshot: HistogramSnapshot) -> Vec<MetricFamily> {
+    let mut cumulative_count = 0_u64;
+    let buckets = snapshot
+        .buckets
+        .into_iter()
+        .map(|(upper_bound, count)| {
+            cumulative_count = cumulative_count.wrapping_add(count);
+            Bucket {
+                cumulative_count: Some(cumulative_count),
+                upper_bound: Some(upper_bound),
+                ..Default::default()
+            }
+        })
+        .collect();
+
+    vec![MetricFamily {
+        name: Some(String::new()),
+        help: None,
+        r#type: Some(MetricType::Histogram as i32),
+        metric: vec![proto::Metric {
+            histogram: Some(proto::Histogram {
+                sample_count: Some(snapshot.count),
+                sample_sum: Some(snapshot.sum),
+                bucket: buckets,
+                ..Default::default()
+            }),
+            ..Default::default()
+        }],
+        unit: None,
+    }]
+}
+
+/// Constructs classic and time histograms with a fixed set of buckets.
 #[derive(Clone, Debug)]
 pub struct HistogramBuilder {
     /// Inclusive upper bounds for the histogram buckets.
@@ -143,6 +149,193 @@ pub struct HistogramBuilder {
 impl MetricConstructor<Histogram> for HistogramBuilder {
     fn new_metric(&self) -> Histogram {
         Histogram::new(self.buckets.iter().copied())
+    }
+}
+
+impl MetricConstructor<TimeHistogram> for HistogramBuilder {
+    fn new_metric(&self) -> TimeHistogram {
+        TimeHistogram::new(self.buckets.iter().copied())
+    }
+}
+
+/// A faster, lock-free histogram for tracking time.
+#[derive(Debug)]
+pub struct TimeHistogram {
+    state: Arc<TimeHistogramState>,
+}
+
+/// Timer to measure and record the duration of an event.
+///
+/// This timer can be stopped and observed at most once, either automatically
+/// (when it goes out of scope) or manually. Alternatively, it can be manually
+/// stopped and discarded in order to not record its value.
+#[must_use = "HistogramTimer measures on Drop so should assigned to named variable"]
+pub struct HistogramTimer {
+    histogram: TimeHistogram,
+    observed: bool,
+    start: Option<Instant>,
+    accumulated: Duration,
+}
+
+#[derive(Debug)]
+struct TimeHistogramState {
+    sum: AtomicU64,
+    count: AtomicU64,
+    buckets: Vec<(f64, AtomicU64)>,
+}
+
+impl HistogramTimer {
+    /// Pauses elapsed-time tracking.
+    ///
+    /// Calling this while the timer is already paused has no effect.
+    pub fn pause(&mut self) {
+        self.accumulated += self.start.map_or(Duration::ZERO, |value| {
+            Instant::now().saturating_duration_since(value)
+        });
+        self.start = None
+    }
+
+    /// Resumes elapsed-time tracking.
+    ///
+    /// Calling this while the timer is already running has no effect.
+    pub fn resume(&mut self) {
+        if self.start.is_none() {
+            self.start = Some(Instant::now());
+        }
+    }
+
+    /// Stops the timer, records its duration, and returns the duration.
+    pub fn stop_and_record(self) -> Duration {
+        let mut timer = self;
+        timer.observe(true)
+    }
+
+    /// Stops the timer without recording and returns its duration.
+    pub fn stop_and_discard(self) -> Duration {
+        let mut timer = self;
+        timer.observe(false)
+    }
+
+    fn observe(&mut self, record: bool) -> Duration {
+        let elapsed_since_start: Duration = self.start.map_or(Duration::ZERO, |value| {
+            Instant::now().saturating_duration_since(value)
+        });
+        let elapsed = elapsed_since_start + self.accumulated;
+
+        self.observed = true;
+        if record {
+            self.histogram.observe(elapsed.as_nanos() as u64);
+        }
+
+        elapsed
+    }
+}
+
+impl Drop for HistogramTimer {
+    fn drop(&mut self) {
+        if !self.observed {
+            self.observe(true);
+        }
+    }
+}
+
+impl Clone for TimeHistogram {
+    fn clone(&self) -> Self {
+        TimeHistogram {
+            state: Arc::clone(&self.state),
+        }
+    }
+}
+
+impl TimeHistogram {
+    /// Creates a time histogram with inclusive bucket bounds in seconds.
+    ///
+    /// A terminal `f64::MAX` bucket is appended automatically.
+    pub fn new(buckets: impl Iterator<Item = f64>) -> Self {
+        Self {
+            state: Arc::new(TimeHistogramState {
+                sum: Default::default(),
+                count: Default::default(),
+                buckets: buckets
+                    .into_iter()
+                    .chain(once(f64::MAX))
+                    .map(|upper_bound| (upper_bound, AtomicU64::new(0)))
+                    .collect(),
+            }),
+        }
+    }
+
+    /// Starts a timer that records its duration when stopped or dropped.
+    pub fn start_timer(&self) -> HistogramTimer {
+        HistogramTimer {
+            histogram: self.clone(),
+            observed: false,
+            start: Some(Instant::now()),
+            accumulated: Duration::new(0, 0),
+        }
+    }
+
+    /// Records an observed duration in nanoseconds.
+    pub fn observe(&self, nanos: u64) {
+        self.observe_and_bucket(nanos);
+    }
+
+    fn observe_and_bucket(&self, v: u64) -> Option<usize> {
+        self.state.sum.fetch_add(v, Ordering::Relaxed);
+        self.state.count.fetch_add(1, Ordering::Relaxed);
+
+        let first_bucket = self
+            .state
+            .buckets
+            .iter()
+            .enumerate()
+            .find(|(_i, (upper_bound, _value))| upper_bound >= &(v as f64 * 1E-9));
+
+        match first_bucket {
+            Some((i, (_upper_bound, value))) => {
+                value.fetch_add(1, Ordering::Relaxed);
+                Some(i)
+            }
+            None => None,
+        }
+    }
+
+    /// Returns a snapshot whose sum and bucket bounds are expressed in seconds.
+    pub fn snapshot(&self) -> HistogramSnapshot {
+        let sum = (self.state.sum.load(Ordering::Relaxed) as f64) * 1E-9;
+        let count = self.state.count.load(Ordering::Relaxed);
+        let buckets = self
+            .state
+            .buckets
+            .iter()
+            .map(|(k, v)| (*k, v.load(Ordering::Relaxed)))
+            .collect();
+
+        HistogramSnapshot {
+            sum,
+            count,
+            buckets,
+        }
+    }
+}
+
+impl HistogramSnapshot {
+    pub fn sum(&self) -> f64 {
+        self.sum
+    }
+
+    pub fn count(&self) -> u64 {
+        self.count
+    }
+
+    pub fn buckets(&self) -> &[(f64, u64)] {
+        &self.buckets
+    }
+}
+
+impl EncodeMetricValue for TimeHistogram {
+    fn encode_metric_value(&self) -> Vec<MetricFamily> {
+        encode_snapshot(self.snapshot())
     }
 }
 
@@ -165,7 +358,7 @@ mod tests {
 
         assert_eq!(
             histogram.snapshot(),
-            Snapshot {
+            HistogramSnapshot {
                 sum: 6.0,
                 count: 4,
                 buckets: vec![(1.0, 2), (2.0, 1), (f64::MAX, 1)],
@@ -246,6 +439,143 @@ mod tests {
                     .label
                     .iter()
                     .any(|label| label.name.as_deref() == Some("method"))
+        }));
+    }
+
+    #[test]
+    fn time_histogram_encodes_seconds_and_cumulative_buckets() {
+        let histogram = TimeHistogram::new([1.0, 2.0].into_iter());
+        histogram.observe(500_000_000);
+        histogram.observe(1_500_000_000);
+        histogram.observe(3_000_000_000);
+
+        let families = histogram.encode_metric_value();
+        assert_eq!(families.len(), 1);
+        assert_eq!(families[0].name.as_deref(), Some(""));
+        assert_eq!(families[0].r#type, Some(MetricType::Histogram as i32));
+
+        let encoded = families[0].metric[0]
+            .histogram
+            .as_ref()
+            .expect("encoded time histogram is present");
+        assert_eq!(encoded.sample_count, Some(3));
+        assert_eq!(encoded.sample_sum, Some(5.0));
+        assert_eq!(
+            encoded
+                .bucket
+                .iter()
+                .map(|bucket| bucket.cumulative_count)
+                .collect::<Vec<_>>(),
+            vec![Some(1), Some(2), Some(3)]
+        );
+    }
+
+    #[test]
+    fn time_histogram_tracks_seconds_and_clones_share_storage() {
+        let histogram = TimeHistogram::new([1.0, 2.0, 4.0, 8.0, 16.0].into_iter());
+        let clone = histogram.clone();
+
+        for nanos in [
+            1_000_000_000,
+            1_500_000_000,
+            2_500_000_000,
+            8_500_000_000,
+            500_000_000,
+        ] {
+            clone.observe(nanos);
+        }
+
+        let snapshot = histogram.snapshot();
+        assert_eq!(snapshot.sum(), 14.0);
+        assert_eq!(snapshot.count(), 5);
+        assert_eq!(
+            snapshot.buckets(),
+            &[
+                (1.0, 2),
+                (2.0, 1),
+                (4.0, 1),
+                (8.0, 0),
+                (16.0, 1),
+                (f64::MAX, 0),
+            ]
+        );
+    }
+
+    #[test]
+    fn histogram_builder_constructs_time_histograms() {
+        let histogram: TimeHistogram = HistogramBuilder {
+            buckets: &[0.5, 1.0],
+        }
+        .new_metric();
+
+        histogram.observe(750_000_000);
+        assert_eq!(histogram.snapshot().buckets()[1], (1.0, 1));
+    }
+
+    #[test]
+    fn timer_records_once_or_discards() {
+        let recorded = TimeHistogram::new([1.0].into_iter());
+        let _duration = recorded.start_timer().stop_and_record();
+        assert_eq!(recorded.snapshot().count(), 1);
+
+        let discarded = TimeHistogram::new([1.0].into_iter());
+        discarded.start_timer().stop_and_discard();
+        assert_eq!(discarded.snapshot().count(), 0);
+
+        let dropped = TimeHistogram::new([1.0].into_iter());
+        drop(dropped.start_timer());
+        assert_eq!(dropped.snapshot().count(), 1);
+    }
+
+    #[test]
+    fn timer_pause_and_resume_are_idempotent() {
+        let histogram = TimeHistogram::new([1.0].into_iter());
+        let mut timer = histogram.start_timer();
+
+        timer.pause();
+        let paused_duration = timer.accumulated;
+        assert!(timer.start.is_none());
+        timer.pause();
+        assert_eq!(timer.accumulated, paused_duration);
+
+        timer.resume();
+        let resumed_at = timer.start;
+        assert!(resumed_at.is_some());
+        timer.resume();
+        assert_eq!(timer.start, resumed_at);
+
+        timer.stop_and_discard();
+        assert_eq!(histogram.snapshot().count(), 0);
+    }
+
+    #[test]
+    fn family_adds_labels_to_time_histogram_rows() {
+        #[derive(Clone, Eq, Hash, PartialEq, Serialize)]
+        struct Labels {
+            operation: &'static str,
+        }
+
+        let family = Family::<Labels, TimeHistogram, HistogramBuilder>::new_with_constructor(
+            HistogramBuilder {
+                buckets: &[0.1, 1.0],
+            },
+        );
+        family
+            .get_or_create(&Labels { operation: "read" })
+            .observe(500_000_000);
+        family
+            .get_or_create(&Labels { operation: "write" })
+            .observe(1_500_000_000);
+
+        let families = family.encode_metric_value();
+        assert_eq!(families.len(), 1);
+        assert_eq!(families[0].metric.len(), 2);
+        assert!(families[0].metric.iter().all(|metric| {
+            metric.histogram.is_some()
+                && metric
+                    .label
+                    .iter()
+                    .any(|label| label.name.as_deref() == Some("operation"))
         }));
     }
 }
