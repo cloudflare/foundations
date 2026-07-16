@@ -45,7 +45,7 @@ foundations = { version = "5.7.4", path = "./foundations", default-features = fa
 foundations-macros = { version = "=5.7.4", path = "./foundations-macros", default-features = false }
 bindgen = { version = "0.72.1", default-features = false }
 cc = "1.2.61"
-cf-rustracing = "1.3.0"
+cf-rustracing = "1.4.0"
 cf-rustracing-jaeger = "1.3.0"
 clap = "4.6.1"
 crossbeam-utils = { version = "0.8.21", default-features = false }
@@ -53,6 +53,7 @@ darling = "0.23.0"
 erased-serde = "0.4.10"
 futures-util = "0.3.32"
 governor = "0.10.4"
+hex = "0.4.3"
 http = "1.4.0"
 http-body-util = "0.1.3"
 hyper = { version = "1.9.0", default-features = false }

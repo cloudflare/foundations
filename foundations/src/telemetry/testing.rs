@@ -42,6 +42,9 @@ pub struct TestTelemetryContext {
     #[cfg(feature = "tracing")]
     traces_sink: parking_lot::Mutex<TestTracesSink>,
 
+    #[cfg(feature = "user-tracing")]
+    user_traces_sink: parking_lot::Mutex<TestTracesSink>,
+
     #[cfg(feature = "logging")]
     log_records: TestLogRecords,
 }
@@ -62,6 +65,9 @@ impl TestTelemetryContext {
         #[cfg(feature = "tracing")]
         let (tracer, traces_sink) = create_test_tracer(&Default::default());
 
+        #[cfg(feature = "user-tracing")]
+        let (user_tracer, user_traces_sink) = create_test_tracer(&Default::default());
+
         TestTelemetryContext {
             inner: TelemetryContext {
                 #[cfg(feature = "logging")]
@@ -70,12 +76,21 @@ impl TestTelemetryContext {
                 #[cfg(feature = "tracing")]
                 span: None,
 
+                #[cfg(feature = "user-tracing")]
+                user_span: None,
+
                 #[cfg(feature = "tracing")]
                 test_tracer: Some(tracer),
+
+                #[cfg(feature = "user-tracing")]
+                user_test_tracer: Some(user_tracer),
             },
 
             #[cfg(feature = "tracing")]
             traces_sink: parking_lot::Mutex::new(traces_sink),
+
+            #[cfg(feature = "user-tracing")]
+            user_traces_sink: parking_lot::Mutex::new(user_traces_sink),
 
             #[cfg(feature = "logging")]
             log_records,
@@ -137,6 +152,12 @@ impl TestTelemetryContext {
     #[cfg(feature = "tracing")]
     pub fn traces(&self, options: TestTraceOptions) -> Vec<TestTrace> {
         self.traces_sink.lock().traces(options)
+    }
+
+    /// Returns all the user-tracing traces produced in the test context.
+    #[cfg(feature = "user-tracing")]
+    pub fn user_traces(&self, options: TestTraceOptions) -> Vec<TestTrace> {
+        self.user_traces_sink.lock().traces(options)
     }
 }
 
