@@ -14,8 +14,6 @@ use super::IntoF64;
 /// reference to the *same* series, so the gauge can be updated from many places
 /// and read back as a single current value.
 ///
-/// The `u64`/`AtomicU64` defaults preserve the existing Foundations API.
-///
 /// # Examples
 ///
 /// ```
