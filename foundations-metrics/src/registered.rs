@@ -28,8 +28,8 @@ where
         let mut families = self.metric.encode_metric_value();
 
         for family in &mut families {
-            let suffix = family.name.take().unwrap_or_default();
-            family.name = Some(format!("{}{}", self.name, suffix));
+            let name = family.name.get_or_insert_default();
+            name.insert_str(0, self.name);
 
             if family.help.is_none() {
                 family.help = Some(self.help.to_owned());
