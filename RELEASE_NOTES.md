@@ -1,4 +1,17 @@
 
+5.8.0
+- 2026-06-17 Bump tikv-jemallocator to 0.7.0
+- 2026-07-16 Add user-facing tracing pipeline
+- 2026-07-14 Make log output I/O errors optionally fail-soft
+- 2026-07-10 Split tracing metrics to allow multiple pipelines
+- 2026-07-10 chore(metrics-registry): remove subsystem comment
+- 2026-07-10 refactor(metrics-registry): simplify snapshots with static metric references
+- 2026-07-10 Apply suggestions from code review
+- 2026-07-09 feat(metrics-registry): add core registration API
+- 2026-07-09 fix(cargo): fix fmt & clippy
+- 2026-07-08 feat(metrics-registry): vendor generated Prometheus protobuf model
+- 2026-07-08 feat(metrics-registry): add crate with Prometheus protobuf data model
+
 5.7.4
 - 2026-06-29 Fix potential double panic when logging inside panic hook
 - 2026-06-29 Add regression tests for panic hook logging
