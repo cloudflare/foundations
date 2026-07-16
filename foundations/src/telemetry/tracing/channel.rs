@@ -56,6 +56,11 @@ pub(super) enum PipelineType {
     /// metrics. Prometheus treats this the same as an absent label.
     #[serde(rename = "")]
     System,
+
+    /// User tracing pipeline.
+    #[cfg(feature = "user-tracing")]
+    #[serde(rename = "user")]
+    User,
 }
 
 /// An instrumented, multi-consumer span receiver layered on top of

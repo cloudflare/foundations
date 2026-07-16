@@ -14,6 +14,13 @@ use std::sync::{LazyLock, OnceLock};
 #[cfg(feature = "telemetry-otlp-grpc")]
 use super::output_otlp_grpc;
 
+#[cfg(feature = "user-tracing")]
+use super::output_otlp_uds;
+#[cfg(feature = "user-tracing")]
+use crate::telemetry::settings::{UserTracesOutput, UserTracingSettings};
+#[cfg(feature = "user-tracing")]
+use cf_rustracing::sampler::AllSampler;
+
 #[cfg(feature = "testing")]
 use std::borrow::Cow;
 
@@ -21,7 +28,26 @@ use std::borrow::Cow;
 // ensure initialization. Make sure nobody else invalidates our cache lines.
 static HARNESS: CachePadded<OnceLock<TracingHarness>> = CachePadded::new(OnceLock::new());
 
+#[cfg(feature = "user-tracing")]
+static USER_HARNESS: CachePadded<OnceLock<TracingHarness>> = CachePadded::new(OnceLock::new());
+
 static NOOP_HARNESS: CachePadded<LazyLock<TracingHarness>> =
+    CachePadded::new(LazyLock::new(|| {
+        let (noop_tracer, _) = Tracer::new(NullSampler.boxed());
+
+        TracingHarness {
+            tracer: noop_tracer,
+            span_scope_stack: Default::default(),
+
+            #[cfg(feature = "testing")]
+            test_tracer_scope_stack: Default::default(),
+
+            active_roots: Default::default(),
+        }
+    }));
+
+#[cfg(feature = "user-tracing")]
+static USER_NOOP_HARNESS: CachePadded<LazyLock<TracingHarness>> =
     CachePadded::new(LazyLock::new(|| {
         let (noop_tracer, _) = Tracer::new(NullSampler.boxed());
 
@@ -50,6 +76,12 @@ pub(crate) struct TracingHarness {
 impl TracingHarness {
     pub(crate) fn get() -> &'static Self {
         HARNESS.get().unwrap_or_else(|| &**NOOP_HARNESS)
+    }
+
+    /// User-tracing harness, or the user no-op harness when the user pipeline isn't initialized.
+    #[cfg(feature = "user-tracing")]
+    pub(crate) fn get_user() -> &'static Self {
+        USER_HARNESS.get().unwrap_or_else(|| &**USER_NOOP_HARNESS)
     }
 
     #[cfg(feature = "testing")]
@@ -139,6 +171,62 @@ pub(crate) fn init(
             test_tracer_scope_stack: Default::default(),
 
             active_roots: ActiveRoots::new(settings.liveness_tracking.clone()),
+        }
+    });
+    res
+}
+
+#[cfg(feature = "user-tracing")]
+fn create_tracer_and_span_rx_for_user(
+    settings: &UserTracingSettings,
+) -> BootstrapResult<(Tracer, SharedSpanReceiver)> {
+    // The user pipeline samples everything it receives — the sampling decision
+    // is made upstream at activation time, outside foundations.
+    let sampler = AllSampler.boxed();
+
+    if let Some(cap) = settings.max_queue_size {
+        let (consumer, span_rx) = super::channel::channel(cap, PipelineType::User);
+        Ok((Tracer::with_consumer(sampler, consumer), span_rx))
+    } else {
+        let (consumer, span_rx) = super::channel::unbounded_channel(PipelineType::User);
+        Ok((Tracer::with_consumer(sampler, consumer), span_rx))
+    }
+}
+
+// NOTE: does nothing if user tracing has already been initialized in this process.
+#[cfg(feature = "user-tracing")]
+pub(crate) fn init_user(
+    service_info: &ServiceInfo,
+    settings: &UserTracingSettings,
+) -> BootstrapResult<Option<BoxFuture<'static, BootstrapResult<()>>>> {
+    if !settings.enabled || USER_HARNESS.get().is_some() {
+        return Ok(None);
+    }
+
+    let (tracer, span_rx) = create_tracer_and_span_rx_for_user(settings)?;
+
+    let futs = match &settings.output {
+        UserTracesOutput::OtlpUds(output_settings) => {
+            output_otlp_uds::start(service_info, output_settings, span_rx)?
+        }
+    };
+
+    // Only spawn the futures if we are actually initializing the harness.
+    let mut res = Ok(None);
+    USER_HARNESS.get_or_init(|| {
+        res = Ok(futs.initializer);
+        for f in futs.workers {
+            tokio::spawn(f);
+        }
+
+        TracingHarness {
+            tracer,
+            span_scope_stack: Default::default(),
+
+            #[cfg(feature = "testing")]
+            test_tracer_scope_stack: Default::default(),
+
+            active_roots: Default::default(),
         }
     });
     res
