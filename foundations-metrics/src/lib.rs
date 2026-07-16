@@ -6,11 +6,13 @@
 //! shared process-global registry and the stable wire format.
 #![warn(missing_docs)]
 
+mod diagnostics;
 pub mod labels;
 pub mod metrics;
 mod registered;
 mod value;
 
+pub use diagnostics::{CollectErrorHookAlreadySet, set_collect_error_hook};
 pub use foundations_metrics_registry::{
     EncodeMetric, IntoMetrics, MetricFamily, RegistrationMetadata, register,
 };

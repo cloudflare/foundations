@@ -1,12 +1,12 @@
 use std::collections::HashMap;
 use std::fmt;
 use std::hash::Hash;
-use std::io::{self, Write};
 use std::sync::Arc;
 
 use parking_lot::{MappedRwLockReadGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use serde::Serialize;
 
+use crate::diagnostics::report_collect_error;
 use crate::{MetricFamily, labels::to_label_pairs, value::EncodeMetricValue};
 
 // Adapted from prometools' `serde::Family`
@@ -219,17 +219,15 @@ where
         drop(metrics);
 
         if let Some(error) = first_label_error {
-            let _ = writeln!(
-                io::stderr().lock(),
+            report_collect_error(format_args!(
                 "non-fatal error while collecting metrics: skipped {label_error_count} label set(s); first serialization error: {error}"
-            );
+            ));
         }
 
         if let Some(name) = first_metadata_error {
-            let _ = writeln!(
-                io::stderr().lock(),
+            report_collect_error(format_args!(
                 "non-fatal error while collecting metrics: skipped {metadata_error_count} metric group(s) with inconsistent metadata; first relative name: {name:?}"
-            );
+            ));
         }
 
         grouped
