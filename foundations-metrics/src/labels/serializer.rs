@@ -6,6 +6,8 @@ use serde::ser::{Impossible, SerializeStruct, Serializer};
 
 use super::LabelError;
 
+// Adapted from prometools' `serde::top::TopSerializer`
+// (https://github.com/nox/prometools, licensed MIT OR Apache-2.0).
 pub(super) struct LabelSetSerializer;
 
 impl Serializer for LabelSetSerializer {
@@ -190,6 +192,8 @@ impl Serializer for LabelSetSerializer {
     }
 }
 
+// Adapted from prometools' `serde::top::StructSerializer`
+// (https://github.com/nox/prometools, licensed MIT OR Apache-2.0).
 pub(super) struct LabelPairSerializer {
     labels: Vec<LabelPair>,
 }
@@ -215,6 +219,8 @@ impl SerializeStruct for LabelPairSerializer {
     }
 }
 
+// Adapted from prometools' `serde::value::ValueSerializer`
+// (https://github.com/nox/prometools, licensed MIT OR Apache-2.0).
 struct LabelValueSerializer;
 
 macro_rules! serialize_integer {
@@ -387,6 +393,8 @@ impl Serializer for LabelValueSerializer {
     }
 }
 
+// Adapted from prometools' `serde::top::check_key`
+// (https://github.com/nox/prometools, licensed MIT OR Apache-2.0).
 fn validate_label_name(name: &str) -> Result<(), LabelError> {
     let mut chars = name.chars();
     let valid = chars

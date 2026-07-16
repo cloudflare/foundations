@@ -1,6 +1,8 @@
 use std::error::Error;
 use std::fmt;
 
+// Adapted from prometools' `serde::error::Error`
+// (https://github.com/nox/prometools, licensed MIT OR Apache-2.0).
 /// An error produced while serializing a metric label set.
 #[derive(Debug)]
 pub struct LabelError {

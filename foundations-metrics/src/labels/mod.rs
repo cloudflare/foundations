@@ -8,6 +8,8 @@ pub use error::LabelError;
 use foundations_metrics_registry::proto::LabelPair;
 use serde::Serialize;
 
+// Adapted from prometools' `serde` label serializer
+// (https://github.com/nox/prometools, licensed MIT OR Apache-2.0).
 /// Serializes a label set into protobuf label pairs.
 ///
 /// Label values are stored as raw strings. OpenMetrics escaping is deliberately

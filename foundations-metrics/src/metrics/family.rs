@@ -9,6 +9,8 @@ use serde::Serialize;
 
 use crate::{MetricFamily, labels::to_label_pairs, value::EncodeMetricValue};
 
+// Adapted from prometools' `serde::Family`
+// (https://github.com/nox/prometools, licensed MIT OR Apache-2.0).
 /// A set of metrics differentiated by their label values.
 ///
 /// Clones share the same metrics. Calling [`Family::get_or_create`] creates a
