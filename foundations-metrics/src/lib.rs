@@ -18,6 +18,7 @@ pub use foundations_metrics_registry::{
 };
 pub use labels::{LabelError, to_label_pairs};
 pub use metrics::{
-    Counter, CounterAtomic, Family, Gauge, GaugeAtomic, GaugeGuard, MetricConstructor, RangeGauge,
+    Counter, CounterAtomic, Family, FamilyMetricGuard, Gauge, GaugeAtomic, GaugeGuard,
+    MetricConstructor, RangeGauge,
 };
 pub use registered::NamedMetric;

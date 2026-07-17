@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::fmt;
 use std::hash::Hash;
+use std::ops::Deref;
 use std::sync::Arc;
 
 use parking_lot::{MappedRwLockReadGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
@@ -46,6 +47,40 @@ use crate::{MetricFamily, labels::to_label_pairs, value::EncodeMetricValue};
 pub struct Family<S, M, C = fn() -> M> {
     metrics: Arc<RwLock<HashMap<S, M>>>,
     constructor: C,
+}
+
+/// Read-only access to a metric stored in a [`Family`].
+///
+/// The family remains read-locked until this guard is dropped.
+#[must_use = "if unused the family read lock will immediately unlock"]
+pub struct FamilyMetricGuard<'a, M: ?Sized> {
+    guard: MappedRwLockReadGuard<'a, M>,
+}
+
+impl<'a, M: ?Sized> FamilyMetricGuard<'a, M> {
+    fn new(guard: MappedRwLockReadGuard<'a, M>) -> Self {
+        Self { guard }
+    }
+}
+
+impl<M: ?Sized> Deref for FamilyMetricGuard<'_, M> {
+    type Target = M;
+
+    fn deref(&self) -> &Self::Target {
+        &self.guard
+    }
+}
+
+impl<M: fmt::Debug + ?Sized> fmt::Debug for FamilyMetricGuard<'_, M> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Debug::fmt(&**self, formatter)
+    }
+}
+
+impl<M: fmt::Display + ?Sized> fmt::Display for FamilyMetricGuard<'_, M> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&**self, formatter)
+    }
 }
 
 /// Constructs metrics for a [`Family`].
@@ -107,11 +142,11 @@ where
     /// The returned guard keeps the family read-locked. Holding it while
     /// accessing another label set in the same family can deadlock if that
     /// second label set needs to be created.
-    pub fn get_or_create(&self, label_set: &S) -> MappedRwLockReadGuard<'_, M> {
+    pub fn get_or_create(&self, label_set: &S) -> FamilyMetricGuard<'_, M> {
         if let Ok(metric) =
             RwLockReadGuard::try_map(self.metrics.read(), |metrics| metrics.get(label_set))
         {
-            return metric;
+            return FamilyMetricGuard::new(metric);
         }
 
         let mut metrics = self.metrics.write();
@@ -120,11 +155,11 @@ where
             .or_insert_with(|| self.constructor.new_metric());
 
         let metrics = RwLockWriteGuard::downgrade(metrics);
-        RwLockReadGuard::map(metrics, |metrics| {
+        FamilyMetricGuard::new(RwLockReadGuard::map(metrics, |metrics| {
             metrics
                 .get(label_set)
                 .expect("metric exists after it was inserted")
-        })
+        }))
     }
 
     /// Removes a label set, returning whether it was present.
