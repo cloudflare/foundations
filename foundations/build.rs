@@ -190,16 +190,24 @@ mod security {
     }
 
     fn have_linux_seccomp_h(out_dir: &Path) -> bool {
-        let src = out_dir.join("check_have_linux_seccomp_h.c");
+        // Compile the probe in a scratch directory that we remove afterwards, so its object and
+        // archive files don't linger in OUT_DIR. Only the compile result matters here.
+        let probe_dir = out_dir.join("seccomp_probe");
+        fs::create_dir_all(&probe_dir).unwrap();
 
+        let src = probe_dir.join("check_have_linux_seccomp_h.c");
         fs::write(&src, "#include <linux/seccomp.h>").unwrap();
 
-        cc::Build::new()
+        let have_header = cc::Build::new()
             .cargo_metadata(false)
             .warnings(false)
+            .out_dir(&probe_dir)
             .file(&src)
             .try_compile("check_have_linux_seccomp_h")
-            .is_ok()
+            .is_ok();
+
+        let _ = fs::remove_dir_all(&probe_dir);
+        have_header
     }
 
     /// Customized version of bindgen::CargoCallbacks that ignores files under out_dir.
