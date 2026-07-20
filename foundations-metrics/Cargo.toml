@@ -8,7 +8,10 @@ license.workspace = true
 
 [dependencies]
 foundations-metrics-registry = { workspace = true }
-prometheus-client = "0.25.0"
+prometheus-client = { version = "0.25.0", features = [
+    "prometheus_protobuf",
+    "protobuf-protox",
+] }
 serde = { workspace = true, features = ["derive"] }
 ryu = "1.0.23"
 parking_lot = { workspace = true }
