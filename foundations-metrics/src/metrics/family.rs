@@ -206,6 +206,9 @@ where
 {
     fn encode_metric_value(&self) -> Vec<MetricFamily> {
         let metrics = self.metrics.read();
+        // Each label set contributes one row per group, so a freshly created
+        // group will grow to roughly this many rows.
+        let metric_count = metrics.len();
         let mut grouped: Vec<MetricFamily> = Vec::new();
         let mut first_label_error = None;
         let mut label_error_count = 0;
@@ -262,6 +265,9 @@ where
 
                     existing.metric.append(&mut family.metric);
                 } else {
+                    family
+                        .metric
+                        .reserve(metric_count.saturating_sub(family.metric.len()));
                     grouped.push(family);
                 }
             }
