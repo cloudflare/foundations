@@ -7,7 +7,7 @@
 #![warn(missing_docs)]
 
 mod diagnostics;
-pub mod labels;
+mod labels;
 pub mod metrics;
 mod registered;
 mod value;

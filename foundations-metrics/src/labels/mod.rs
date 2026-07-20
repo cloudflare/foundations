@@ -14,6 +14,11 @@ use serde::Serialize;
 ///
 /// Label values are stored as raw strings. OpenMetrics escaping is deliberately
 /// deferred until text encoding.
+///
+/// Unit structs and fieldless enum variants serialize to their Rust type or
+/// variant *name* (after any `serde` rename), so renaming the type silently
+/// changes the emitted label value. Use `#[serde(rename = "...")]` to pin a
+/// stable value that is independent of the Rust name.
 pub fn to_label_pairs<S>(labels: &S) -> Result<Vec<LabelPair>, LabelError>
 where
     S: Serialize + ?Sized,
