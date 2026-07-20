@@ -162,6 +162,42 @@ where
         }))
     }
 
+    /// Returns an owned handle to the metric for `label_set`, creating it when
+    /// absent.
+    ///
+    /// The returned handle is a cheap clone that shares storage with the metric
+    /// in the family, so updates through it are reflected in collection. Unlike
+    /// [`get_or_create`](Self::get_or_create), it does not keep the family
+    /// locked, so it is safe to hold and reuse (and avoids that method's
+    /// deadlock hazard).
+    ///
+    /// For a stable label set, prefer resolving the handle once and reusing it
+    /// rather than calling the family on every update.
+    ///
+    /// ```
+    /// use foundations_metrics::{Counter, Family};
+    /// use serde::Serialize;
+    ///
+    /// #[derive(Clone, Eq, Hash, PartialEq, Serialize)]
+    /// struct Labels {
+    ///     method: &'static str,
+    /// }
+    ///
+    /// let requests = Family::<Labels, Counter>::default();
+    ///
+    /// // Resolve the handle once, then reuse it on the hot path.
+    /// let gets = requests.get_or_create_owned(&Labels { method: "GET" });
+    /// gets.inc();
+    /// gets.inc();
+    /// assert_eq!(gets.get(), 2);
+    /// ```
+    pub fn get_or_create_owned(&self, label_set: &S) -> M
+    where
+        M: Clone,
+    {
+        M::clone(&self.get_or_create(label_set))
+    }
+
     /// Removes a label set, returning whether it was present.
     pub fn remove(&self, label_set: &S) -> bool {
         self.metrics.write().remove(label_set).is_some()
