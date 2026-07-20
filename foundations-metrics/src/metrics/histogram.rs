@@ -1,10 +1,10 @@
-use parking_lot::Mutex;
 use std::iter::once;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use foundations_metrics_registry::proto::{self, Bucket, MetricType};
+use parking_lot::Mutex;
 
 use crate::{MetricFamily, value::EncodeMetricValue};
 
@@ -39,6 +39,7 @@ struct HistogramState {
 }
 
 #[derive(Debug, PartialEq)]
+/// A point-in-time view of a histogram's sum, count, and buckets.
 pub struct HistogramSnapshot {
     sum: f64,
     count: u64,
@@ -169,7 +170,7 @@ pub struct TimeHistogram {
 /// This timer can be stopped and observed at most once, either automatically
 /// (when it goes out of scope) or manually. Alternatively, it can be manually
 /// stopped and discarded in order to not record its value.
-#[must_use = "HistogramTimer measures on Drop so should assigned to named variable"]
+#[must_use = "HistogramTimer measures on Drop so should be assigned to named variable"]
 pub struct HistogramTimer {
     histogram: TimeHistogram,
     observed: bool,
@@ -320,14 +321,17 @@ impl TimeHistogram {
 }
 
 impl HistogramSnapshot {
+    /// Returns the sum of all observations.
     pub fn sum(&self) -> f64 {
         self.sum
     }
 
+    /// Returns the number of observations.
     pub fn count(&self) -> u64 {
         self.count
     }
 
+    /// Returns each inclusive upper bound and its non-cumulative count.
     pub fn buckets(&self) -> &[(f64, u64)] {
         &self.buckets
     }

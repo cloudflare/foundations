@@ -42,7 +42,9 @@ mod histogram;
 pub use counter::{Counter, CounterAtomic};
 pub use family::{Family, FamilyMetricGuard, MetricConstructor};
 pub use gauge::{Gauge, GaugeAtomic, GaugeGuard, RangeGauge};
-pub use histogram::{Histogram, HistogramBuilder, HistogramTimer, TimeHistogram};
+pub use histogram::{
+    Histogram, HistogramBuilder, HistogramSnapshot, HistogramTimer, TimeHistogram,
+};
 
 fn update_f64(atomic: &AtomicU64, f: impl Fn(f64) -> f64) -> f64 {
     let mut old_bits = atomic.load(Ordering::Relaxed);
