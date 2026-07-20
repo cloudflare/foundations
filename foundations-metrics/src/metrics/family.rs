@@ -213,7 +213,7 @@ where
         let mut metadata_error_count = 0;
 
         for (label_set, metric) in metrics.iter() {
-            let labels = match to_label_pairs(label_set) {
+            let mut labels = match to_label_pairs(label_set) {
                 Ok(labels) => labels,
                 Err(error) => {
                     label_error_count += 1;
@@ -222,13 +222,29 @@ where
                 }
             };
 
-            for mut family in metric.encode_metric_value() {
+            let encoded = metric.encode_metric_value();
+            let mut remaining_rows: usize = encoded
+                .iter()
+                .filter(|family| !family.metric.is_empty())
+                .map(|family| family.metric.len())
+                .sum();
+
+            for mut family in encoded {
                 if family.metric.is_empty() {
                     continue;
                 }
 
                 for row in &mut family.metric {
-                    row.label.splice(0..0, labels.iter().cloned());
+                    remaining_rows -= 1;
+
+                    // Prepend so family labels stay before any metric-specific
+                    // labels (e.g. a histogram's `le`). Move into the final
+                    // consumer; clone for the rest.
+                    if remaining_rows == 0 {
+                        row.label.splice(0..0, labels.drain(..));
+                    } else {
+                        row.label.splice(0..0, labels.iter().cloned());
+                    }
                 }
 
                 if let Some(existing) = grouped
