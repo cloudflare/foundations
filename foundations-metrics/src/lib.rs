@@ -6,12 +6,19 @@
 //! shared process-global registry and the stable wire format.
 #![warn(missing_docs)]
 
+mod diagnostics;
+mod labels;
 pub mod metrics;
 mod registered;
 mod value;
 
+pub use diagnostics::{CollectErrorHookAlreadySet, set_collect_error_hook};
 pub use foundations_metrics_registry::{
     EncodeMetric, IntoMetrics, MetricFamily, RegistrationMetadata, register,
 };
-pub use metrics::{Counter, CounterAtomic, Gauge, GaugeAtomic, GaugeGuard, RangeGauge};
+pub use labels::{LabelError, to_label_pairs};
+pub use metrics::{
+    Counter, CounterAtomic, Family, FamilyMetricGuard, Gauge, GaugeAtomic, GaugeGuard,
+    MetricConstructor, RangeGauge,
+};
 pub use registered::NamedMetric;

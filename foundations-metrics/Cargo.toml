@@ -9,6 +9,9 @@ license.workspace = true
 [dependencies]
 foundations-metrics-registry = { workspace = true }
 prometheus-client = "0.25.0"
+serde = { workspace = true, features = ["derive"] }
+ryu = "1.0.23"
+parking_lot = { workspace = true }
 
 [lints]
 workspace = true
