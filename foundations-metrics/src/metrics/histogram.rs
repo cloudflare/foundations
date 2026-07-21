@@ -35,7 +35,6 @@ struct HistogramState {
     sum: f64,
     count: u64,
     buckets: Vec<(f64, u64)>,
-    sorted: bool,
 }
 
 #[derive(Debug, PartialEq)]
@@ -49,20 +48,18 @@ pub struct HistogramSnapshot {
 impl Histogram {
     /// Creates a histogram with the provided inclusive upper bounds.
     ///
-    /// Bounds should be ordered from smallest to largest. A terminal
+    /// Bounds may be given in any order; they are sorted ascending. A terminal
     /// `f64::MAX` bucket is appended automatically.
     pub fn new(bounds: impl IntoIterator<Item = f64>) -> Self {
         let mut buckets: Vec<_> = bounds.into_iter().map(|bound| (bound, 0)).collect();
         buckets.push((f64::MAX, 0));
-
-        let sorted = buckets.windows(2).all(|window| window[0].0 <= window[1].0);
+        buckets.sort_by(|(a, _), (b, _)| a.total_cmp(b));
 
         Self {
             state: Arc::new(Mutex::new(HistogramState {
                 sum: 0.0,
                 count: 0,
                 buckets,
-                sorted,
             })),
         }
     }
@@ -75,16 +72,11 @@ impl Histogram {
 
         let bucket = if value.is_nan() {
             None
-        } else if state.sorted {
+        } else {
             let index = state
                 .buckets
                 .partition_point(|(upper_bound, _)| *upper_bound < value);
             state.buckets.get_mut(index)
-        } else {
-            state
-                .buckets
-                .iter_mut()
-                .find(|(upper_bound, _)| *upper_bound >= value)
         };
 
         if let Some((_, count)) = bucket {
@@ -376,7 +368,7 @@ mod tests {
     }
 
     #[test]
-    fn preserves_legacy_behavior_for_nan_and_unsorted_bounds() {
+    fn excludes_nan_and_sorts_unsorted_bounds() {
         let nan = Histogram::new([1.0]);
         nan.observe(f64::NAN);
         let snapshot = nan.snapshot();
@@ -384,9 +376,12 @@ mod tests {
         assert_eq!(snapshot.count, 1);
         assert!(snapshot.buckets.iter().all(|(_, count)| *count == 0));
 
+        // Bounds are sorted ascending regardless of the order they were given in,
+        // so `0.5` lands in the `1.0` bucket rather than the leading `10.0` one.
         let unsorted = Histogram::new([10.0, 1.0]);
         unsorted.observe(0.5);
-        assert_eq!(unsorted.snapshot().buckets[0], (10.0, 1));
+        let snapshot = unsorted.snapshot();
+        assert_eq!(snapshot.buckets, vec![(1.0, 1), (10.0, 0), (f64::MAX, 0)],);
     }
 
     #[test]
@@ -481,7 +476,7 @@ mod tests {
 
     #[test]
     fn time_histogram_tracks_seconds_and_clones_share_storage() {
-        let histogram = TimeHistogram::new([1.0, 2.0, 4.0, 8.0, 16.0].into_iter());
+        let histogram = TimeHistogram::new([1.0, 2.0, 4.0, 8.0, 16.0]);
         let clone = histogram.clone();
 
         for nanos in [
@@ -523,22 +518,22 @@ mod tests {
 
     #[test]
     fn timer_records_once_or_discards() {
-        let recorded = TimeHistogram::new([1.0].into_iter());
+        let recorded = TimeHistogram::new([1.0]);
         let _duration = recorded.start_timer().stop_and_record();
         assert_eq!(recorded.snapshot().count(), 1);
 
-        let discarded = TimeHistogram::new([1.0].into_iter());
+        let discarded = TimeHistogram::new([1.0]);
         discarded.start_timer().stop_and_discard();
         assert_eq!(discarded.snapshot().count(), 0);
 
-        let dropped = TimeHistogram::new([1.0].into_iter());
+        let dropped = TimeHistogram::new([1.0]);
         drop(dropped.start_timer());
         assert_eq!(dropped.snapshot().count(), 1);
     }
 
     #[test]
     fn timer_pause_and_resume_are_idempotent() {
-        let histogram = TimeHistogram::new([1.0].into_iter());
+        let histogram = TimeHistogram::new([1.0]);
         let mut timer = histogram.start_timer();
 
         timer.pause();
