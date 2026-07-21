@@ -15,6 +15,7 @@ prometheus-client = { version = "0.25.0", features = [
 serde = { workspace = true, features = ["derive"] }
 ryu = "1.0.23"
 parking_lot = { workspace = true }
+prost = { workspace = true }
 
 [lints]
 workspace = true
