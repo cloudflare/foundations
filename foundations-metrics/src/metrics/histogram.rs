@@ -290,7 +290,7 @@ impl TimeHistogram {
             .buckets
             .iter()
             .enumerate()
-            .find(|(_i, (upper_bound, _value))| upper_bound >= &(v as f64 * 1E-9));
+            .find(|(_i, (upper_bound, _value))| upper_bound >= &(seconds(v)));
 
         match first_bucket {
             Some((i, (_upper_bound, value))) => {
@@ -303,7 +303,7 @@ impl TimeHistogram {
 
     /// Returns a snapshot whose sum and bucket bounds are expressed in seconds.
     pub fn snapshot(&self) -> HistogramSnapshot {
-        let sum = (self.state.sum.load(Ordering::Relaxed) as f64) * 1E-9;
+        let sum = seconds(self.state.sum.load(Ordering::Relaxed));
         let count = self.state.count.load(Ordering::Relaxed);
         let buckets = self
             .state
@@ -335,6 +335,11 @@ impl HistogramSnapshot {
     pub fn buckets(&self) -> &[(f64, u64)] {
         &self.buckets
     }
+}
+
+#[inline(always)]
+fn seconds(val: u64) -> f64 {
+    (val as f64) * 1E-9
 }
 
 impl EncodeMetricValue for TimeHistogram {
