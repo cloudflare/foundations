@@ -1,6 +1,10 @@
 use foundations_metrics_registry::{iter, proto::LabelPair};
 
 use crate::MetricFamily;
+use crate::diagnostics::report_collect_error;
+use crate::validation::{
+    LABEL_NAME_GRAMMAR, ValidationContext, is_valid_label_name, sanitize_metric_family,
+};
 
 /// Options that control which registered metrics are collected and how the
 /// service name is represented.
@@ -28,6 +32,16 @@ pub enum ServiceNameFormat<'a> {
 
 /// Collects the currently registered metrics into the canonical protobuf model.
 pub fn collect(options: CollectionOptions) -> Vec<MetricFamily> {
+    if options.service_name.is_some()
+        && let ServiceNameFormat::LabelWithName(label_name) = options.service_name_format
+        && !is_valid_label_name(label_name)
+    {
+        report_collect_error(format_args!(
+            "non-fatal error while collecting metrics: invalid configured service label name {label_name:?}; expected {LABEL_NAME_GRAMMAR}; skipped all metric families"
+        ));
+        return Vec::new();
+    }
+
     let mut collected = Vec::new();
 
     for registered in iter() {
@@ -56,15 +70,35 @@ pub fn collect(options: CollectionOptions) -> Vec<MetricFamily> {
                     };
 
                     for family in &mut families {
-                        for metric in &mut family.metric {
-                            metric.label.insert(0, service_label.clone());
-                        }
+                        let family_name = family.name.as_deref().unwrap_or_default();
+                        family.metric.retain_mut(|metric| {
+                            let mut has_same_value = false;
+                            for label in &metric.label {
+                                if label.name.as_deref() != Some(label_name) {
+                                    continue;
+                                }
+
+                                if label.value.as_deref() != Some(service_name) {
+                                    report_collect_error(format_args!(
+                                        "non-fatal error while collecting metrics: skipped row in metric family {family_name:?}; service label {label_name:?} already has a different value"
+                                    ));
+                                    return false;
+                                }
+                                has_same_value = true;
+                            }
+
+                            if !has_same_value {
+                                metric.label.insert(0, service_label.clone());
+                            }
+                            true
+                        });
                     }
                 }
                 ServiceNameFormat::MetricPrefix => {}
             }
         }
 
+        families.retain_mut(|family| sanitize_metric_family(family, ValidationContext::Collection));
         collected.extend(families);
     }
 
@@ -73,12 +107,16 @@ pub fn collect(options: CollectionOptions) -> Vec<MetricFamily> {
 
 #[cfg(test)]
 mod tests {
-    use foundations_metrics_registry::proto::{Metric, MetricType};
+    use foundations_metrics_registry::proto::{
+        Bucket, Counter, Exemplar, Gauge, Histogram, LabelPair, Metric, MetricType,
+    };
 
     use super::*;
     use crate::{EncodeMetric, RegistrationMetadata, register};
 
     struct TestMetric(&'static str);
+
+    struct TestFamilyMetric(MetricFamily);
 
     impl EncodeMetric for TestMetric {
         fn encode(&self) -> Vec<MetricFamily> {
@@ -92,11 +130,31 @@ mod tests {
         }
     }
 
+    impl EncodeMetric for TestFamilyMetric {
+        fn encode(&self) -> Vec<MetricFamily> {
+            vec![self.0.clone()]
+        }
+    }
+
     fn register_test_metric(name: &'static str, metadata: RegistrationMetadata) {
         register(
             Box::new(TestMetric(name)) as Box<dyn EncodeMetric>,
             metadata,
         );
+    }
+
+    fn register_test_family(family: MetricFamily) {
+        register(
+            Box::new(TestFamilyMetric(family)) as Box<dyn EncodeMetric>,
+            RegistrationMetadata::default(),
+        );
+    }
+
+    fn label(name: &str, value: &str) -> LabelPair {
+        LabelPair {
+            name: Some(name.to_owned()),
+            value: Some(value.to_owned()),
+        }
     }
 
     #[test]
@@ -160,5 +218,249 @@ mod tests {
             assert_eq!(label.name.as_deref(), Some("service"));
             assert_eq!(label.value.as_deref(), Some("test_service"));
         }
+    }
+
+    #[test]
+    fn rejects_invalid_final_service_prefixed_family_names() {
+        register_test_metric(
+            "collect_invalid_prefix_metric",
+            RegistrationMetadata::default(),
+        );
+
+        let families = collect(CollectionOptions {
+            include_optional: false,
+            service_name: Some("invalid-service"),
+            service_name_format: ServiceNameFormat::MetricPrefix,
+        });
+
+        assert!(!families.iter().any(|family| {
+            family.name.as_deref() == Some("invalid-service_collect_invalid_prefix_metric")
+        }));
+    }
+
+    #[test]
+    fn invalid_service_label_name_rejects_the_whole_collection() {
+        register_test_metric(
+            "collect_invalid_service_label_metric",
+            RegistrationMetadata::default(),
+        );
+
+        let families = collect(CollectionOptions {
+            include_optional: false,
+            service_name: Some("test_service"),
+            service_name_format: ServiceNameFormat::LabelWithName("service:name"),
+        });
+
+        assert!(families.is_empty());
+    }
+
+    #[test]
+    fn service_label_insertion_is_idempotent_and_drops_different_values() {
+        let service_label_name = "collect_service_collision_label";
+        register_test_family(MetricFamily {
+            name: Some("collect_service_collision_metric".to_owned()),
+            help: None,
+            r#type: Some(MetricType::Gauge as i32),
+            metric: vec![
+                Metric {
+                    label: vec![label("id", "same"), label(service_label_name, "wanted")],
+                    gauge: Some(Gauge { value: Some(1.0) }),
+                    ..Default::default()
+                },
+                Metric {
+                    label: vec![label("id", "different"), label(service_label_name, "other")],
+                    gauge: Some(Gauge { value: Some(2.0) }),
+                    ..Default::default()
+                },
+                Metric {
+                    label: vec![label("id", "absent")],
+                    gauge: Some(Gauge { value: Some(3.0) }),
+                    ..Default::default()
+                },
+            ],
+            unit: None,
+        });
+
+        let families = collect(CollectionOptions {
+            include_optional: false,
+            service_name: Some("wanted"),
+            service_name_format: ServiceNameFormat::LabelWithName(service_label_name),
+        });
+        let family = families
+            .iter()
+            .find(|family| family.name.as_deref() == Some("collect_service_collision_metric"))
+            .expect("test family should be collected");
+
+        assert_eq!(family.metric.len(), 2);
+        let same = family
+            .metric
+            .iter()
+            .find(|metric| metric.label[0].value.as_deref() == Some("same"))
+            .expect("same-value row should remain");
+        assert_eq!(
+            same.label
+                .iter()
+                .filter(|label| label.name.as_deref() == Some(service_label_name))
+                .count(),
+            1
+        );
+        assert_eq!(same.label[0].name.as_deref(), Some("id"));
+
+        let absent = family
+            .metric
+            .iter()
+            .find(|metric| {
+                metric
+                    .label
+                    .iter()
+                    .any(|label| label.value.as_deref() == Some("absent"))
+            })
+            .expect("row without a service label should remain");
+        assert_eq!(
+            absent.label[0],
+            label(service_label_name, "wanted"),
+            "new service labels remain prepended"
+        );
+    }
+
+    #[test]
+    fn collection_skips_invalid_duplicate_and_reserved_row_labels() {
+        register_test_family(MetricFamily {
+            name: Some("collect_row_validation_gauge".to_owned()),
+            help: None,
+            r#type: Some(MetricType::Gauge as i32),
+            metric: vec![
+                Metric {
+                    label: vec![label("id", "valid")],
+                    gauge: Some(Gauge { value: Some(1.0) }),
+                    ..Default::default()
+                },
+                Metric {
+                    label: vec![label("bad\nname", "invalid")],
+                    gauge: Some(Gauge { value: Some(2.0) }),
+                    ..Default::default()
+                },
+                Metric {
+                    label: vec![label("dup", "a"), label("dup", "b")],
+                    gauge: Some(Gauge { value: Some(3.0) }),
+                    ..Default::default()
+                },
+            ],
+            unit: None,
+        });
+        register_test_family(MetricFamily {
+            name: Some("collect_row_validation_histogram".to_owned()),
+            help: None,
+            r#type: Some(MetricType::Histogram as i32),
+            metric: vec![
+                Metric {
+                    histogram: Some(Histogram::default()),
+                    ..Default::default()
+                },
+                Metric {
+                    label: vec![label("le", "1")],
+                    histogram: Some(Histogram::default()),
+                    ..Default::default()
+                },
+            ],
+            unit: None,
+        });
+        let families = collect(CollectionOptions {
+            include_optional: false,
+            service_name: None,
+            service_name_format: ServiceNameFormat::MetricPrefix,
+        });
+
+        for name in [
+            "collect_row_validation_gauge",
+            "collect_row_validation_histogram",
+        ] {
+            let family = families
+                .iter()
+                .find(|family| family.name.as_deref() == Some(name))
+                .expect("valid family should remain");
+            assert_eq!(family.metric.len(), 1, "family {name}");
+        }
+    }
+
+    #[test]
+    fn collection_drops_only_invalid_exemplars() {
+        register_test_family(MetricFamily {
+            name: Some("collect_counter_exemplar_validation".to_owned()),
+            help: None,
+            r#type: Some(MetricType::Counter as i32),
+            metric: vec![Metric {
+                counter: Some(Counter {
+                    value: Some(1.0),
+                    exemplar: Some(Exemplar {
+                        label: vec![label("trace:id", "bad")],
+                        value: Some(2.0),
+                        timestamp: None,
+                    }),
+                    created_timestamp: None,
+                }),
+                ..Default::default()
+            }],
+            unit: None,
+        });
+        register_test_family(MetricFamily {
+            name: Some("collect_histogram_exemplar_validation".to_owned()),
+            help: None,
+            r#type: Some(MetricType::Histogram as i32),
+            metric: vec![Metric {
+                histogram: Some(Histogram {
+                    bucket: vec![Bucket {
+                        exemplar: Some(Exemplar {
+                            label: vec![label("dup", "a"), label("dup", "b")],
+                            ..Default::default()
+                        }),
+                        ..Default::default()
+                    }],
+                    exemplars: vec![
+                        Exemplar {
+                            label: vec![label("bad name", "bad")],
+                            ..Default::default()
+                        },
+                        Exemplar {
+                            label: vec![label("trace_id", "good")],
+                            ..Default::default()
+                        },
+                    ],
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            unit: None,
+        });
+
+        let families = collect(CollectionOptions {
+            include_optional: false,
+            service_name: None,
+            service_name_format: ServiceNameFormat::MetricPrefix,
+        });
+        let counter = families
+            .iter()
+            .find(|family| family.name.as_deref() == Some("collect_counter_exemplar_validation"))
+            .expect("counter family should remain");
+        assert!(
+            counter.metric[0]
+                .counter
+                .as_ref()
+                .unwrap()
+                .exemplar
+                .is_none()
+        );
+
+        let histogram = families
+            .iter()
+            .find(|family| family.name.as_deref() == Some("collect_histogram_exemplar_validation"))
+            .expect("histogram family should remain");
+        let histogram = histogram.metric[0].histogram.as_ref().unwrap();
+        assert!(histogram.bucket[0].exemplar.is_none());
+        assert_eq!(histogram.exemplars.len(), 1);
+        assert_eq!(
+            histogram.exemplars[0].label[0].name.as_deref(),
+            Some("trace_id")
+        );
     }
 }

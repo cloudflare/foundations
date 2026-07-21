@@ -12,6 +12,7 @@ mod encoding;
 mod labels;
 pub mod metrics;
 mod registered;
+mod validation;
 mod value;
 
 pub use collect::{CollectionOptions, ServiceNameFormat, collect};
