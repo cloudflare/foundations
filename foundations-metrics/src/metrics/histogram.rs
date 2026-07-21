@@ -37,8 +37,8 @@ struct HistogramState {
     buckets: Vec<(f64, u64)>,
 }
 
-#[derive(Debug, PartialEq)]
 /// A point-in-time view of a histogram's sum, count, and buckets.
+#[derive(Debug, PartialEq)]
 pub struct HistogramSnapshot {
     sum: f64,
     count: u64,
@@ -152,6 +152,8 @@ impl MetricConstructor<TimeHistogram> for HistogramBuilder {
 }
 
 /// A faster, lock-free histogram for tracking time.
+// Adapted from prometools' `histogram::TimeHistogram`
+// (https://github.com/nox/prometools, licensed MIT OR Apache-2.0).
 #[derive(Debug)]
 pub struct TimeHistogram {
     state: Arc<TimeHistogramState>,
@@ -162,6 +164,8 @@ pub struct TimeHistogram {
 /// This timer can be stopped and observed at most once, either automatically
 /// (when it goes out of scope) or manually. Alternatively, it can be manually
 /// stopped and discarded in order to not record its value.
+// Adapted from prometools' `histogram::HistogramTimer`
+// (https://github.com/nox/prometools, licensed MIT OR Apache-2.0).
 #[must_use = "HistogramTimer measures on Drop so should be assigned to named variable"]
 pub struct HistogramTimer {
     histogram: TimeHistogram,
@@ -329,6 +333,8 @@ impl HistogramSnapshot {
     }
 }
 
+// Adapted from prometools' private `histogram::seconds`
+// (https://github.com/nox/prometools, licensed MIT OR Apache-2.0).
 #[inline(always)]
 fn seconds(val: u64) -> f64 {
     (val as f64) * 1E-9
