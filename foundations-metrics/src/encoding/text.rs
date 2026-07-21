@@ -5,13 +5,16 @@ use foundations_metrics_registry::proto::{
 };
 
 use crate::diagnostics::report_collect_error;
+use crate::validation::{ValidationContext, sanitized_metric_family};
 
 /// Encodes metric families as OpenMetrics text.
 pub fn encode_to_text(families: &[MetricFamily]) -> String {
     let mut output = String::new();
 
     for family in families {
-        encode_family(&mut output, family);
+        if let Some(family) = sanitized_metric_family(family, ValidationContext::TextEncoding) {
+            encode_family(&mut output, &family);
+        }
     }
 
     output.push_str("# EOF\n");
@@ -19,12 +22,10 @@ pub fn encode_to_text(families: &[MetricFamily]) -> String {
 }
 
 fn encode_family(output: &mut String, family: &MetricFamily) {
-    let Some(name) = family.name.as_deref().filter(|name| !name.is_empty()) else {
-        report_collect_error(format_args!(
-            "non-fatal error while encoding OpenMetrics text: skipped a metric family without a name"
-        ));
-        return;
-    };
+    let name = family
+        .name
+        .as_deref()
+        .expect("metric family names are validated before text encoding");
     let Some(metric_type) = family
         .r#type
         .and_then(|value| MetricType::try_from(value).ok())
@@ -375,11 +376,18 @@ fn report_missing_value(name: &str, expected: &str) {
 #[cfg(test)]
 mod tests {
     use foundations_metrics_registry::proto::{
-        Bucket, Counter, Gauge, Histogram, LabelPair, Metric, MetricFamily, MetricType, Quantile,
-        Summary,
+        Bucket, Counter, Exemplar, Gauge, Histogram, LabelPair, Metric, MetricFamily, MetricType,
+        Quantile, Summary,
     };
 
     use super::*;
+
+    fn label(name: &str, value: &str) -> LabelPair {
+        LabelPair {
+            name: Some(name.to_owned()),
+            value: Some(value.to_owned()),
+        }
+    }
 
     #[test]
     fn encodes_counter_metadata_labels_timestamps_and_exemplars() {
@@ -598,5 +606,186 @@ temperature -Inf\n\
 build_info{version=\"1.2.3\"} 1.0\n\
 # EOF\n"
         );
+    }
+
+    #[test]
+    fn invalid_family_names_cannot_inject_metadata_and_valid_siblings_remain() {
+        let families = [
+            MetricFamily {
+                name: Some("bad\n# HELP injected metadata".to_owned()),
+                help: Some("should not be written".to_owned()),
+                r#type: Some(MetricType::Gauge as i32),
+                metric: vec![Metric {
+                    gauge: Some(Gauge { value: Some(99.0) }),
+                    ..Default::default()
+                }],
+                unit: None,
+            },
+            MetricFamily {
+                name: Some("valid:metric".to_owned()),
+                help: None,
+                r#type: Some(MetricType::Gauge as i32),
+                metric: vec![Metric {
+                    gauge: Some(Gauge { value: Some(1.0) }),
+                    ..Default::default()
+                }],
+                unit: None,
+            },
+        ];
+
+        assert_eq!(
+            encode_to_text(&families),
+            "# TYPE valid:metric gauge\nvalid:metric 1.0\n# EOF\n"
+        );
+    }
+
+    #[test]
+    fn invalid_duplicate_and_reserved_row_labels_skip_only_their_rows() {
+        let families = [
+            MetricFamily {
+                name: Some("row_gauge".to_owned()),
+                help: None,
+                r#type: Some(MetricType::Gauge as i32),
+                metric: vec![
+                    Metric {
+                        label: vec![label("id", "valid")],
+                        gauge: Some(Gauge { value: Some(1.0) }),
+                        ..Default::default()
+                    },
+                    Metric {
+                        label: vec![label("bad name", "invalid")],
+                        gauge: Some(Gauge { value: Some(99.0) }),
+                        ..Default::default()
+                    },
+                    Metric {
+                        label: vec![label("dup", "a"), label("dup", "b")],
+                        gauge: Some(Gauge { value: Some(98.0) }),
+                        ..Default::default()
+                    },
+                ],
+                unit: None,
+            },
+            MetricFamily {
+                name: Some("row_histogram".to_owned()),
+                help: None,
+                r#type: Some(MetricType::Histogram as i32),
+                metric: vec![
+                    Metric {
+                        histogram: Some(Histogram {
+                            sample_count: Some(1),
+                            sample_sum: Some(2.0),
+                            ..Default::default()
+                        }),
+                        ..Default::default()
+                    },
+                    Metric {
+                        label: vec![label("le", "1")],
+                        histogram: Some(Histogram {
+                            sample_count: Some(99),
+                            sample_sum: Some(99.0),
+                            ..Default::default()
+                        }),
+                        ..Default::default()
+                    },
+                ],
+                unit: None,
+            },
+            MetricFamily {
+                name: Some("row_summary".to_owned()),
+                help: None,
+                r#type: Some(MetricType::Summary as i32),
+                metric: vec![
+                    Metric {
+                        summary: Some(Default::default()),
+                        ..Default::default()
+                    },
+                    Metric {
+                        label: vec![label("quantile", "0.5")],
+                        summary: Some(Default::default()),
+                        ..Default::default()
+                    },
+                ],
+                unit: None,
+            },
+        ];
+
+        let output = encode_to_text(&families);
+        assert!(output.contains("row_gauge{id=\"valid\"} 1.0\n"));
+        assert!(!output.contains("99.0"));
+        assert!(!output.contains("98.0"));
+        assert_eq!(output.matches("row_histogram_sum").count(), 1);
+        assert_eq!(output.matches("row_summary_sum").count(), 1);
+        assert!(output.ends_with("# EOF\n"));
+    }
+
+    #[test]
+    fn invalid_exemplar_labels_drop_only_the_exemplar() {
+        let families = [
+            MetricFamily {
+                name: Some("exemplar_counter".to_owned()),
+                help: None,
+                r#type: Some(MetricType::Counter as i32),
+                metric: vec![
+                    Metric {
+                        label: vec![label("id", "invalid")],
+                        counter: Some(Counter {
+                            value: Some(1.0),
+                            exemplar: Some(Exemplar {
+                                label: vec![label("trace:id", "bad")],
+                                value: Some(2.0),
+                                timestamp: None,
+                            }),
+                            created_timestamp: None,
+                        }),
+                        ..Default::default()
+                    },
+                    Metric {
+                        label: vec![label("id", "valid")],
+                        counter: Some(Counter {
+                            value: Some(3.0),
+                            exemplar: Some(Exemplar {
+                                label: vec![label("trace_id", "good")],
+                                value: Some(4.0),
+                                timestamp: None,
+                            }),
+                            created_timestamp: None,
+                        }),
+                        ..Default::default()
+                    },
+                ],
+                unit: None,
+            },
+            MetricFamily {
+                name: Some("exemplar_histogram".to_owned()),
+                help: None,
+                r#type: Some(MetricType::Histogram as i32),
+                metric: vec![Metric {
+                    histogram: Some(Histogram {
+                        sample_count: Some(1),
+                        sample_sum: Some(1.0),
+                        bucket: vec![Bucket {
+                            cumulative_count: Some(1),
+                            upper_bound: Some(1.0),
+                            exemplar: Some(Exemplar {
+                                label: vec![label("dup", "a"), label("dup", "b")],
+                                value: Some(5.0),
+                                timestamp: None,
+                            }),
+                            ..Default::default()
+                        }],
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                }],
+                unit: None,
+            },
+        ];
+
+        let output = encode_to_text(&families);
+        assert!(output.contains("exemplar_counter{id=\"invalid\"} 1.0\n"));
+        assert!(output.contains("exemplar_counter{id=\"valid\"} 3.0 # {trace_id=\"good\"} 4.0\n"));
+        assert!(output.contains("exemplar_histogram_bucket{le=\"1.0\"} 1\n"));
+        assert!(!output.contains("trace:id"));
+        assert!(!output.contains("{dup="));
     }
 }
