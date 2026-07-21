@@ -8,6 +8,7 @@
 
 mod collect;
 mod diagnostics;
+mod encoding;
 mod labels;
 pub mod metrics;
 mod registered;
@@ -15,6 +16,7 @@ mod value;
 
 pub use collect::{CollectionOptions, ServiceNameFormat, collect};
 pub use diagnostics::{CollectErrorHookAlreadySet, set_collect_error_hook};
+pub use encoding::{encode_to_protobuf, encode_to_text};
 pub use foundations_metrics_registry::{
     EncodeMetric, IntoMetrics, MetricFamily, RegistrationMetadata, register,
 };
