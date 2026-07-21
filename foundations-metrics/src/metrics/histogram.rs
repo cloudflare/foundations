@@ -252,7 +252,7 @@ impl TimeHistogram {
     /// Creates a time histogram with inclusive bucket bounds in seconds.
     ///
     /// A terminal `f64::MAX` bucket is appended automatically.
-    pub fn new(buckets: impl Iterator<Item = f64>) -> Self {
+    pub fn new(buckets: impl IntoIterator<Item = f64>) -> Self {
         Self {
             state: Arc::new(TimeHistogramState {
                 sum: Default::default(),
@@ -448,7 +448,7 @@ mod tests {
 
     #[test]
     fn time_histogram_encodes_seconds_and_cumulative_buckets() {
-        let histogram = TimeHistogram::new([1.0, 2.0].into_iter());
+        let histogram = TimeHistogram::new([1.0, 2.0]);
         histogram.observe(500_000_000);
         histogram.observe(1_500_000_000);
         histogram.observe(3_000_000_000);
