@@ -35,12 +35,17 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 
 mod counter;
+mod exemplar;
 mod family;
 mod gauge;
 mod histogram;
 mod native_histogram;
 
 pub use counter::{Counter, CounterAtomic};
+pub use exemplar::{
+    CounterWithExemplar, Exemplar, HistogramWithExemplars, NativeHistogramWithExemplars,
+    NativeHistogramWithExemplarsBuilder,
+};
 pub use family::{Family, FamilyMetricGuard, MetricConstructor};
 pub use gauge::{Gauge, GaugeAtomic, GaugeGuard, RangeGauge};
 pub use histogram::{

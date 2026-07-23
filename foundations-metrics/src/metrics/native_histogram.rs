@@ -56,6 +56,16 @@ impl NativeHistogram {
     pub fn observe(&self, value: f64) {
         self.inner.observe(value);
     }
+
+    pub(super) fn try_encode_metric_value(&self) -> Result<Vec<MetricFamily>, std::fmt::Error> {
+        // Upstream keeps native bucket state private. A cloned histogram shares
+        // storage, so a temporary registry can drive its protobuf encoder.
+        let mut registry = Registry::default();
+        registry.register("native_histogram", "", self.inner.clone());
+
+        prometheus_protobuf::encode(&registry)
+            .map(|families| families.into_iter().map(convert_native_family).collect())
+    }
 }
 
 /// Constructs [`NativeHistogram`]s with a fixed configuration.
@@ -149,13 +159,8 @@ impl MetricConstructor<NativeHistogram> for NativeHistogramBuilder {
 
 impl EncodeMetricValue for NativeHistogram {
     fn encode_metric_value(&self) -> Vec<MetricFamily> {
-        // Upstream keeps native bucket state private. A cloned histogram shares
-        // storage, so a temporary registry can drive its protobuf encoder.
-        let mut registry = Registry::default();
-        registry.register("native_histogram", "", self.inner.clone());
-
-        match prometheus_protobuf::encode(&registry) {
-            Ok(families) => families.into_iter().map(convert_native_family).collect(),
+        match self.try_encode_metric_value() {
+            Ok(families) => families,
             Err(error) => {
                 report_collect_error(format_args!(
                     "non-fatal error while collecting metrics: skipped a native histogram; protobuf encoding failed: {error}"
@@ -310,7 +315,7 @@ mod tests {
 
     #[test]
     fn builder_applies_configuration() {
-        let histogram = NativeHistogramBuilder::new(1.5)
+        let histogram: NativeHistogram = NativeHistogramBuilder::new(1.5)
             .with_zero_threshold(0.001)
             .with_max_buckets(160)
             .new_metric();

@@ -300,9 +300,13 @@ fn write_sample(
         write_float(output, timestamp_ms as f64 / 1_000.0);
     }
 
-    if let Some(exemplar) = exemplar.filter(|exemplar| !exemplar.label.is_empty()) {
+    if let Some(exemplar) = exemplar {
         output.push_str(" # ");
-        write_labels(output, &exemplar.label, None);
+        if exemplar.label.is_empty() {
+            output.push_str("{}");
+        } else {
+            write_labels(output, &exemplar.label, None);
+        }
         output.push(' ');
         write_float(output, exemplar.value.unwrap_or_default());
 

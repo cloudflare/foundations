@@ -2,7 +2,7 @@ use std::fmt;
 
 use foundations_metrics_registry::proto::LabelPair;
 use serde::Serialize;
-use serde::ser::{Impossible, SerializeStruct, Serializer};
+use serde::ser::{Impossible, SerializeSeq, SerializeStruct, SerializeTuple, Serializer};
 
 use super::LabelError;
 use crate::validation::{NAME_REQUIREMENT, is_valid_name};
@@ -14,8 +14,8 @@ pub(super) struct LabelSetSerializer;
 impl Serializer for LabelSetSerializer {
     type Ok = Vec<LabelPair>;
     type Error = LabelError;
-    type SerializeSeq = Impossible<Self::Ok, Self::Error>;
-    type SerializeTuple = Impossible<Self::Ok, Self::Error>;
+    type SerializeSeq = LabelSequenceSerializer;
+    type SerializeTuple = LabelTupleSerializer;
     type SerializeTupleStruct = Impossible<Self::Ok, Self::Error>;
     type SerializeTupleVariant = Impossible<Self::Ok, Self::Error>;
     type SerializeMap = Impossible<Self::Ok, Self::Error>;
@@ -148,12 +148,21 @@ impl Serializer for LabelSetSerializer {
         Err(invalid_label_set())
     }
 
-    fn serialize_seq(self, _len: Option<usize>) -> Result<Self::SerializeSeq, Self::Error> {
-        Err(invalid_label_set())
+    fn serialize_seq(self, len: Option<usize>) -> Result<Self::SerializeSeq, Self::Error> {
+        Ok(LabelSequenceSerializer {
+            labels: Vec::with_capacity(len.unwrap_or_default()),
+        })
     }
 
-    fn serialize_tuple(self, _len: usize) -> Result<Self::SerializeTuple, Self::Error> {
-        Err(invalid_label_set())
+    fn serialize_tuple(self, len: usize) -> Result<Self::SerializeTuple, Self::Error> {
+        if len != 2 {
+            return Err(LabelError::new("label pairs must contain a name and value"));
+        }
+
+        Ok(LabelTupleSerializer {
+            name: None,
+            value: None,
+        })
     }
 
     fn serialize_tuple_struct(
@@ -190,6 +199,77 @@ impl Serializer for LabelSetSerializer {
 
     fn is_human_readable(&self) -> bool {
         true
+    }
+}
+
+pub(super) struct LabelSequenceSerializer {
+    labels: Vec<LabelPair>,
+}
+
+impl SerializeSeq for LabelSequenceSerializer {
+    type Ok = Vec<LabelPair>;
+    type Error = LabelError;
+
+    fn serialize_element<T>(&mut self, value: &T) -> Result<(), Self::Error>
+    where
+        T: Serialize + ?Sized,
+    {
+        let mut labels = value.serialize(LabelSetSerializer)?;
+        if labels.len() != 1 {
+            return Err(LabelError::new(
+                "label sequences must contain name-value pairs",
+            ));
+        }
+        self.labels
+            .push(labels.pop().expect("one label was encoded"));
+        Ok(())
+    }
+
+    fn end(self) -> Result<Self::Ok, Self::Error> {
+        Ok(self.labels)
+    }
+}
+
+pub(super) struct LabelTupleSerializer {
+    name: Option<String>,
+    value: Option<String>,
+}
+
+impl SerializeTuple for LabelTupleSerializer {
+    type Ok = Vec<LabelPair>;
+    type Error = LabelError;
+
+    fn serialize_element<T>(&mut self, value: &T) -> Result<(), Self::Error>
+    where
+        T: Serialize + ?Sized,
+    {
+        if self.name.is_none() {
+            let name = value.serialize(LabelValueSerializer)?;
+            validate_label_name(&name)?;
+            self.name = Some(name);
+        } else if self.value.is_none() {
+            self.value = Some(value.serialize(LabelValueSerializer)?);
+        } else {
+            return Err(LabelError::new(
+                "label pairs must contain exactly one name and value",
+            ));
+        }
+
+        Ok(())
+    }
+
+    fn end(self) -> Result<Self::Ok, Self::Error> {
+        let name = self
+            .name
+            .ok_or_else(|| LabelError::new("label pair is missing its name"))?;
+        let value = self
+            .value
+            .ok_or_else(|| LabelError::new("label pair is missing its value"))?;
+
+        Ok(vec![LabelPair {
+            name: Some(name),
+            value: Some(value),
+        }])
     }
 }
 
@@ -466,6 +546,23 @@ mod tests {
                 ("raw", "quote=\" slash=\\ newline=\n"),
             ]
         );
+    }
+
+    #[test]
+    fn serializes_legacy_name_value_sequences() {
+        let pairs = to_label_pairs(&vec![("trace_id", "abc"), ("span_id", "def")]).unwrap();
+        let values: Vec<_> = pairs
+            .iter()
+            .map(|pair| {
+                (
+                    pair.name.as_deref().unwrap(),
+                    pair.value.as_deref().unwrap(),
+                )
+            })
+            .collect();
+
+        assert_eq!(values, [("trace_id", "abc"), ("span_id", "def")]);
+        assert!(to_label_pairs(&vec![("trace:id", "bad")]).is_err());
     }
 
     #[test]

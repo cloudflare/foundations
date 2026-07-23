@@ -66,25 +66,31 @@ impl Histogram {
 
     /// Records an observed value.
     pub fn observe(&self, value: f64) {
+        self.observe_and_bucket(value);
+    }
+
+    pub(super) fn observe_and_bucket(&self, value: f64) -> Option<usize> {
         let mut state = self.state.lock();
         state.sum += value;
         state.count = state.count.wrapping_add(1);
 
-        let bucket = if value.is_nan() {
-            None
-        } else {
-            let index = state
-                .buckets
-                .partition_point(|(upper_bound, _)| *upper_bound < value);
-            state.buckets.get_mut(index)
-        };
+        if value.is_nan() {
+            return None;
+        }
 
-        if let Some((_, count)) = bucket {
+        let index = state
+            .buckets
+            .partition_point(|(upper_bound, _)| *upper_bound < value);
+
+        if let Some((_, count)) = state.buckets.get_mut(index) {
             *count = count.wrapping_add(1);
+            Some(index)
+        } else {
+            None
         }
     }
 
-    fn snapshot(&self) -> HistogramSnapshot {
+    pub(super) fn snapshot(&self) -> HistogramSnapshot {
         let state = self.state.lock();
         HistogramSnapshot {
             sum: state.sum,
@@ -100,7 +106,7 @@ impl EncodeMetricValue for Histogram {
     }
 }
 
-fn encode_snapshot(snapshot: HistogramSnapshot) -> Vec<MetricFamily> {
+pub(super) fn encode_snapshot(snapshot: HistogramSnapshot) -> Vec<MetricFamily> {
     let mut cumulative_count = 0_u64;
     let buckets = snapshot
         .buckets
