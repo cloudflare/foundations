@@ -46,6 +46,7 @@ impl NativeHistogram {
     /// # Panics
     ///
     /// Panics if `factor` is not greater than `1.0`.
+    #[track_caller]
     pub fn new(factor: f64) -> Self {
         NativeHistogramBuilder::new(factor).new_metric()
     }
@@ -138,6 +139,7 @@ impl NativeHistogramBuilder {
 }
 
 impl MetricConstructor<NativeHistogram> for NativeHistogramBuilder {
+    #[track_caller]
     fn new_metric(&self) -> NativeHistogram {
         NativeHistogram {
             inner: PrometheusHistogram::new_native(self.config()),
