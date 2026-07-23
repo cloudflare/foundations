@@ -689,9 +689,9 @@ mod tests {
         );
 
         let text = encode_to_text(std::slice::from_ref(family));
-        assert!(
-            text.contains("registered_counter_with_exemplar 4.0 # {trace_id=\"registered\"} 4.0\n")
-        );
+        assert!(text.contains(
+            "registered_counter_with_exemplar 4.0 # {\"trace_id\"=\"registered\"} 4.0\n"
+        ));
     }
 
     #[test]
