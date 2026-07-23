@@ -518,4 +518,30 @@ temperature -Inf\n\
 # EOF\n"
         );
     }
+
+    #[test]
+    fn encodes_legacy_info_metric_as_gauge() {
+        let families = [MetricFamily {
+            name: Some("build_info".to_owned()),
+            help: Some("Build information.".to_owned()),
+            r#type: Some(MetricType::Gauge as i32),
+            metric: vec![Metric {
+                label: vec![LabelPair {
+                    name: Some("version".to_owned()),
+                    value: Some("1.2.3".to_owned()),
+                }],
+                gauge: Some(Gauge { value: Some(1.0) }),
+                ..Default::default()
+            }],
+            unit: None,
+        }];
+
+        assert_eq!(
+            encode_to_text(&families),
+            "# HELP build_info Build information.\n\
+# TYPE build_info gauge\n\
+build_info{version=\"1.2.3\"} 1.0\n\
+# EOF\n"
+        );
+    }
 }
