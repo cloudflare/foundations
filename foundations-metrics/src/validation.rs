@@ -5,6 +5,8 @@ use foundations_metrics_registry::proto::{Exemplar, LabelPair, Metric, MetricFam
 use crate::diagnostics::report_collect_error;
 
 pub(crate) const NAME_REQUIREMENT: &str = "a non-empty UTF-8 string without NUL bytes";
+pub(crate) const EXEMPLAR_SERIALIZATION_ERROR_LABEL: &str =
+    "\0foundations_metrics_exemplar_serialization_error";
 
 #[derive(Clone, Copy)]
 pub(crate) enum ValidationContext {
@@ -115,6 +117,11 @@ enum LabelIssue<'a> {
     Reserved(&'a str),
 }
 
+enum ExemplarIssue<'a> {
+    Label(LabelIssue<'a>),
+    Serialization(&'a str),
+}
+
 fn find_label_issue<'a>(
     labels: &'a [LabelPair],
     reserved_label: Option<&str>,
@@ -166,12 +173,16 @@ fn exemplars_are_valid(metric: &Metric) -> bool {
                 .bucket
                 .iter()
                 .all(|bucket| bucket.exemplar.as_ref().is_none_or(exemplar_is_valid))
-                && histogram.exemplars.iter().all(exemplar_is_valid)
+                && histogram.exemplars.iter().all(native_exemplar_is_valid)
         })
 }
 
 fn exemplar_is_valid(exemplar: &Exemplar) -> bool {
-    find_label_issue(&exemplar.label, None).is_none()
+    find_exemplar_issue(&exemplar.label).is_none()
+}
+
+fn native_exemplar_is_valid(exemplar: &Exemplar) -> bool {
+    exemplar.timestamp.is_some() && exemplar_is_valid(exemplar)
 }
 
 fn sanitize_exemplars(metric: &mut Metric, family_name: &str, context: ValidationContext) {
@@ -189,8 +200,14 @@ fn sanitize_exemplars(metric: &mut Metric, family_name: &str, context: Validatio
             );
         }
         histogram.exemplars.retain(|exemplar| {
-            if let Some(issue) = find_label_issue(&exemplar.label, None) {
+            if let Some(issue) = find_exemplar_issue(&exemplar.label) {
                 report_exemplar_drop(context, family_name, "native histogram", issue);
+                false
+            } else if exemplar.timestamp.is_none() {
+                report_collect_error(format_args!(
+                    "non-fatal error while {}: dropped native histogram exemplar in metric family {family_name:?} without a required timestamp",
+                    context.action()
+                ));
                 false
             } else {
                 true
@@ -207,7 +224,7 @@ fn sanitize_exemplar_slot(
 ) {
     let Some(issue) = exemplar
         .as_ref()
-        .and_then(|exemplar| find_label_issue(&exemplar.label, None))
+        .and_then(|exemplar| find_exemplar_issue(&exemplar.label))
     else {
         return;
     };
@@ -220,19 +237,36 @@ fn report_exemplar_drop(
     context: ValidationContext,
     family_name: &str,
     kind: &str,
-    issue: LabelIssue<'_>,
+    issue: ExemplarIssue<'_>,
 ) {
     match issue {
-        LabelIssue::Invalid(name) => report_collect_error(format_args!(
+        ExemplarIssue::Label(LabelIssue::Invalid(name)) => report_collect_error(format_args!(
             "non-fatal error while {}: dropped {kind} exemplar in metric family {family_name:?} with invalid label name {name:?}; expected {NAME_REQUIREMENT}",
             context.action()
         )),
-        LabelIssue::Duplicate(name) => report_collect_error(format_args!(
+        ExemplarIssue::Label(LabelIssue::Duplicate(name)) => report_collect_error(format_args!(
             "non-fatal error while {}: dropped {kind} exemplar in metric family {family_name:?} with duplicate label name {name:?}",
             context.action()
         )),
-        LabelIssue::Reserved(_) => unreachable!("exemplar labels have no reserved names"),
+        ExemplarIssue::Serialization(error) => report_collect_error(format_args!(
+            "non-fatal error while {}: dropped {kind} exemplar in metric family {family_name:?}; label serialization failed: {error}",
+            context.action()
+        )),
+        ExemplarIssue::Label(LabelIssue::Reserved(_)) => {
+            unreachable!("exemplar labels have no reserved names")
+        }
     }
+}
+
+fn find_exemplar_issue(labels: &[LabelPair]) -> Option<ExemplarIssue<'_>> {
+    if labels.len() == 1
+        && labels[0].name.as_deref() == Some(EXEMPLAR_SERIALIZATION_ERROR_LABEL)
+        && let Some(error) = labels[0].value.as_deref()
+    {
+        return Some(ExemplarIssue::Serialization(error));
+    }
+
+    find_label_issue(labels, None).map(ExemplarIssue::Label)
 }
 
 #[cfg(test)]
@@ -259,5 +293,18 @@ mod tests {
         for name in ["", "nul\0name"] {
             assert!(!is_valid_name(name));
         }
+    }
+
+    #[test]
+    fn preserves_exemplar_serialization_errors_for_diagnostics() {
+        let labels = [LabelPair {
+            name: Some(EXEMPLAR_SERIALIZATION_ERROR_LABEL.to_owned()),
+            value: Some("root cause".to_owned()),
+        }];
+
+        assert!(matches!(
+            find_exemplar_issue(&labels),
+            Some(ExemplarIssue::Serialization("root cause"))
+        ));
     }
 }

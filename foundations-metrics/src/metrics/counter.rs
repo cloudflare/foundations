@@ -135,7 +135,7 @@ impl<N, A: Default> Default for Counter<N, A> {
 ///
 /// The name/help are left empty here; they are populated at registration and
 /// encode time.
-fn encode_counter(value: f64) -> Vec<MetricFamily> {
+pub(super) fn encode_counter(value: f64) -> Vec<MetricFamily> {
     vec![MetricFamily {
         name: Some(String::new()),
         help: None,

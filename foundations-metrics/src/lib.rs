@@ -23,8 +23,9 @@ pub use foundations_metrics_registry::{
 };
 pub use labels::{LabelError, to_label_pairs};
 pub use metrics::{
-    Counter, CounterAtomic, Family, FamilyMetricGuard, Gauge, GaugeAtomic, GaugeGuard, Histogram,
-    HistogramBuilder, HistogramSnapshot, HistogramTimer, MetricConstructor, NativeHistogram,
-    NativeHistogramBuilder, RangeGauge, TimeHistogram,
+    Counter, CounterAtomic, CounterWithExemplar, Exemplar, Family, FamilyMetricGuard, Gauge,
+    GaugeAtomic, GaugeGuard, Histogram, HistogramBuilder, HistogramSnapshot, HistogramTimer,
+    HistogramWithExemplars, MetricConstructor, NativeHistogram, NativeHistogramBuilder,
+    NativeHistogramWithExemplars, NativeHistogramWithExemplarsBuilder, RangeGauge, TimeHistogram,
 };
 pub use registered::NamedMetric;
