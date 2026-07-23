@@ -251,14 +251,12 @@ mod tests {
             "指标.名称",
         ] {
             assert!(is_valid_name(name), "metric name {name:?}");
-            assert!(is_valid_name(name), "label name {name:?}");
         }
     }
 
     #[test]
     fn rejects_empty_and_nul_names() {
         for name in ["", "nul\0name"] {
-            assert!(!is_valid_name(name));
             assert!(!is_valid_name(name));
         }
     }
