@@ -3,7 +3,7 @@ use foundations_metrics_registry::{iter, proto::LabelPair};
 use crate::MetricFamily;
 use crate::diagnostics::report_collect_error;
 use crate::validation::{
-    LABEL_NAME_GRAMMAR, ValidationContext, is_valid_label_name, sanitize_metric_family,
+    NAME_REQUIREMENT, ValidationContext, is_valid_name, sanitize_metric_family,
 };
 
 /// Options that control which registered metrics are collected and how the
@@ -34,10 +34,10 @@ pub enum ServiceNameFormat<'a> {
 pub fn collect(options: CollectionOptions) -> Vec<MetricFamily> {
     if options.service_name.is_some()
         && let ServiceNameFormat::LabelWithName(label_name) = options.service_name_format
-        && !is_valid_label_name(label_name)
+        && !is_valid_name(label_name)
     {
         report_collect_error(format_args!(
-            "non-fatal error while collecting metrics: invalid configured service label name {label_name:?}; expected {LABEL_NAME_GRAMMAR}; skipped all metric families"
+            "non-fatal error while collecting metrics: invalid configured service label name {label_name:?}; expected {NAME_REQUIREMENT}; skipped all metric families"
         ));
         return Vec::new();
     }
@@ -221,9 +221,9 @@ mod tests {
     }
 
     #[test]
-    fn rejects_invalid_final_service_prefixed_family_names() {
+    fn keeps_nonstandard_service_prefixed_family_names() {
         register_test_metric(
-            "collect_invalid_prefix_metric",
+            "collect_nonstandard_prefix_metric",
             RegistrationMetadata::default(),
         );
 
@@ -233,15 +233,15 @@ mod tests {
             service_name_format: ServiceNameFormat::MetricPrefix,
         });
 
-        assert!(!families.iter().any(|family| {
-            family.name.as_deref() == Some("invalid-service_collect_invalid_prefix_metric")
+        assert!(families.iter().any(|family| {
+            family.name.as_deref() == Some("invalid-service_collect_nonstandard_prefix_metric")
         }));
     }
 
     #[test]
-    fn invalid_service_label_name_rejects_the_whole_collection() {
+    fn keeps_nonstandard_service_label_names() {
         register_test_metric(
-            "collect_invalid_service_label_metric",
+            "collect_nonstandard_service_label_metric",
             RegistrationMetadata::default(),
         );
 
@@ -251,7 +251,16 @@ mod tests {
             service_name_format: ServiceNameFormat::LabelWithName("service:name"),
         });
 
-        assert!(families.is_empty());
+        let family = families
+            .iter()
+            .find(|family| {
+                family.name.as_deref() == Some("collect_nonstandard_service_label_metric")
+            })
+            .expect("metric with a nonstandard service label name should remain");
+        assert_eq!(
+            family.metric[0].label[0],
+            label("service:name", "test_service")
+        );
     }
 
     #[test]
@@ -324,7 +333,7 @@ mod tests {
     }
 
     #[test]
-    fn collection_skips_invalid_duplicate_and_reserved_row_labels() {
+    fn collection_keeps_nonstandard_names_and_skips_duplicate_and_reserved_labels() {
         register_test_family(MetricFamily {
             name: Some("collect_row_validation_gauge".to_owned()),
             help: None,
@@ -336,7 +345,7 @@ mod tests {
                     ..Default::default()
                 },
                 Metric {
-                    label: vec![label("bad\nname", "invalid")],
+                    label: vec![label("bad\nname", "nonstandard")],
                     gauge: Some(Gauge { value: Some(2.0) }),
                     ..Default::default()
                 },
@@ -371,20 +380,20 @@ mod tests {
             service_name_format: ServiceNameFormat::MetricPrefix,
         });
 
-        for name in [
-            "collect_row_validation_gauge",
-            "collect_row_validation_histogram",
+        for (name, expected_rows) in [
+            ("collect_row_validation_gauge", 2),
+            ("collect_row_validation_histogram", 1),
         ] {
             let family = families
                 .iter()
                 .find(|family| family.name.as_deref() == Some(name))
                 .expect("valid family should remain");
-            assert_eq!(family.metric.len(), 1, "family {name}");
+            assert_eq!(family.metric.len(), expected_rows, "family {name}");
         }
     }
 
     #[test]
-    fn collection_drops_only_invalid_exemplars() {
+    fn collection_keeps_nonstandard_exemplar_names_and_drops_duplicates() {
         register_test_family(MetricFamily {
             name: Some("collect_counter_exemplar_validation".to_owned()),
             help: None,
@@ -442,13 +451,18 @@ mod tests {
             .iter()
             .find(|family| family.name.as_deref() == Some("collect_counter_exemplar_validation"))
             .expect("counter family should remain");
-        assert!(
+        assert_eq!(
             counter.metric[0]
                 .counter
                 .as_ref()
                 .unwrap()
                 .exemplar
-                .is_none()
+                .as_ref()
+                .unwrap()
+                .label[0]
+                .name
+                .as_deref(),
+            Some("trace:id")
         );
 
         let histogram = families
@@ -457,10 +471,14 @@ mod tests {
             .expect("histogram family should remain");
         let histogram = histogram.metric[0].histogram.as_ref().unwrap();
         assert!(histogram.bucket[0].exemplar.is_none());
-        assert_eq!(histogram.exemplars.len(), 1);
+        assert_eq!(histogram.exemplars.len(), 2);
         assert_eq!(
-            histogram.exemplars[0].label[0].name.as_deref(),
-            Some("trace_id")
+            histogram
+                .exemplars
+                .iter()
+                .map(|exemplar| exemplar.label[0].name.as_deref().unwrap())
+                .collect::<Vec<_>>(),
+            ["bad name", "trace_id"]
         );
     }
 }

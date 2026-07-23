@@ -7,7 +7,15 @@ use foundations_metrics_registry::proto::{
 use crate::diagnostics::report_collect_error;
 use crate::validation::{ValidationContext, sanitized_metric_family};
 
-/// Encodes metric families as OpenMetrics text.
+/// Content type for the UTF-8 OpenMetrics text emitted by [`encode_to_text`].
+pub const OPENMETRICS_CONTENT_TYPE: &str =
+    "application/openmetrics-text; version=1.0.0; charset=utf-8; escaping=allow-utf-8";
+
+/// Encodes metric families as UTF-8 OpenMetrics text.
+///
+/// Label names are always quoted. Metric names outside the legacy Prometheus
+/// grammar use the quoted metric-name form. Serve the output with
+/// [`OPENMETRICS_CONTENT_TYPE`] so scrapers retain UTF-8 names.
 pub fn encode_to_text(families: &[MetricFamily]) -> String {
     let mut output = String::new();
 
@@ -46,21 +54,21 @@ fn encode_family(output: &mut String, family: &MetricFamily) {
 
     if let Some(help) = &family.help {
         output.push_str("# HELP ");
-        output.push_str(name);
+        write_metadata_name(output, name);
         output.push(' ');
         write_escaped(output, help);
         output.push('\n');
     }
 
     output.push_str("# TYPE ");
-    output.push_str(name);
+    write_metadata_name(output, name);
     output.push(' ');
     output.push_str(metric_type_name);
     output.push('\n');
 
     if let Some(unit) = &family.unit {
         output.push_str("# UNIT ");
-        output.push_str(name);
+        write_metadata_name(output, name);
         output.push(' ');
         write_escaped(output, unit);
         output.push('\n');
@@ -278,9 +286,7 @@ fn write_sample(
     value: SampleValue,
     exemplar: Option<&Exemplar>,
 ) {
-    output.push_str(name);
-    output.push_str(suffix);
-    write_labels(output, &metric.label, additional_label);
+    write_sample_name_and_labels(output, name, suffix, &metric.label, additional_label);
     output.push(' ');
     match value {
         SampleValue::Float(value) => write_float(output, value),
@@ -321,7 +327,7 @@ fn write_labels(output: &mut String, labels: &[LabelPair], additional_label: Opt
     let mut separator = "";
     for label in labels {
         output.push_str(separator);
-        output.push_str(label.name.as_deref().unwrap_or_default());
+        write_quoted(output, label.name.as_deref().unwrap_or_default());
         output.push_str("=\"");
         write_escaped(output, label.value.as_deref().unwrap_or_default());
         output.push('"');
@@ -330,13 +336,74 @@ fn write_labels(output: &mut String, labels: &[LabelPair], additional_label: Opt
 
     if let Some((name, value)) = additional_label {
         output.push_str(separator);
-        output.push_str(name);
+        write_quoted(output, name);
         output.push_str("=\"");
         write_float(output, value);
         output.push('"');
     }
 
     output.push('}');
+}
+
+fn write_sample_name_and_labels(
+    output: &mut String,
+    name: &str,
+    suffix: &str,
+    labels: &[LabelPair],
+    additional_label: Option<(&str, f64)>,
+) {
+    if is_legacy_metric_name(name) {
+        output.push_str(name);
+        output.push_str(suffix);
+        write_labels(output, labels, additional_label);
+        return;
+    }
+
+    output.push('{');
+    output.push('"');
+    write_escaped(output, name);
+    output.push_str(suffix);
+    output.push('"');
+
+    for label in labels {
+        output.push(',');
+        write_quoted(output, label.name.as_deref().unwrap_or_default());
+        output.push_str("=\"");
+        write_escaped(output, label.value.as_deref().unwrap_or_default());
+        output.push('"');
+    }
+
+    if let Some((name, value)) = additional_label {
+        output.push(',');
+        write_quoted(output, name);
+        output.push_str("=\"");
+        write_float(output, value);
+        output.push('"');
+    }
+
+    output.push('}');
+}
+
+fn write_metadata_name(output: &mut String, name: &str) {
+    if is_legacy_metric_name(name) {
+        output.push_str(name);
+    } else {
+        write_quoted(output, name);
+    }
+}
+
+fn is_legacy_metric_name(name: &str) -> bool {
+    let mut bytes = name.bytes();
+    bytes
+        .next()
+        .is_some_and(|byte| byte.is_ascii_alphabetic() || matches!(byte, b'_' | b':'))
+        && bytes.all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b':'))
+}
+
+fn write_quoted(output: &mut String, value: &str) {
+    output.push('"');
+    write_escaped(output, value);
+    output.push('"');
 }
 
 fn write_float(output: &mut String, value: f64) {
@@ -422,7 +489,7 @@ mod tests {
             encode_to_text(&families),
             "# HELP requests A \\\"quoted\\\" help\\\\line\\nnext\n\
 # TYPE requests counter\n\
-requests{kind=\"a\\\"b\\\\c\\nd\"} 1.0 1.5 # {trace_id=\"abc\"} 2.0\n\
+requests{\"kind\"=\"a\\\"b\\\\c\\nd\"} 1.0 1.5 # {\"trace_id\"=\"abc\"} 2.0\n\
 # EOF\n"
         );
     }
@@ -465,10 +532,10 @@ requests{kind=\"a\\\"b\\\\c\\nd\"} 1.0 1.5 # {trace_id=\"abc\"} 2.0\n\
             "# HELP request_duration_seconds Request duration.\n\
 # TYPE request_duration_seconds histogram\n\
 # UNIT request_duration_seconds seconds\n\
-request_duration_seconds_sum{route=\"/test\"} 4.5\n\
-request_duration_seconds_count{route=\"/test\"} 3\n\
-request_duration_seconds_bucket{route=\"/test\",le=\"1.0\"} 1\n\
-request_duration_seconds_bucket{route=\"/test\",le=\"+Inf\"} 3\n\
+request_duration_seconds_sum{\"route\"=\"/test\"} 4.5\n\
+request_duration_seconds_count{\"route\"=\"/test\"} 3\n\
+request_duration_seconds_bucket{\"route\"=\"/test\",\"le\"=\"1.0\"} 1\n\
+request_duration_seconds_bucket{\"route\"=\"/test\",\"le\"=\"+Inf\"} 3\n\
 # EOF\n"
         );
     }
@@ -496,7 +563,7 @@ request_duration_seconds_bucket{route=\"/test\",le=\"+Inf\"} 3\n\
         }];
 
         let output = encode_to_text(&families);
-        assert!(output.contains("values_bucket{le=\"+Inf\"} 2\n"));
+        assert!(output.contains("values_bucket{\"le\"=\"+Inf\"} 2\n"));
     }
 
     #[test]
@@ -603,19 +670,63 @@ temperature -Inf\n\
             encode_to_text(&families),
             "# HELP build_info Build information.\n\
 # TYPE build_info gauge\n\
-build_info{version=\"1.2.3\"} 1.0\n\
+build_info{\"version\"=\"1.2.3\"} 1.0\n\
 # EOF\n"
         );
     }
 
     #[test]
-    fn invalid_family_names_cannot_inject_metadata_and_valid_siblings_remain() {
+    fn appends_histogram_suffixes_inside_quoted_metric_names() {
+        let families = [MetricFamily {
+            name: Some("request.耗时".to_owned()),
+            help: None,
+            r#type: Some(MetricType::Histogram as i32),
+            metric: vec![Metric {
+                histogram: Some(Histogram {
+                    sample_count: Some(1),
+                    sample_sum: Some(0.5),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            unit: None,
+        }];
+
+        assert_eq!(
+            encode_to_text(&families),
+            "# TYPE \"request.耗时\" histogram\n\
+{\"request.耗时_sum\"} 0.5\n\
+{\"request.耗时_count\"} 1\n\
+{\"request.耗时_bucket\",\"le\"=\"+Inf\"} 1\n\
+# EOF\n"
+        );
+    }
+
+    #[test]
+    fn skips_empty_metric_names() {
+        let families = [MetricFamily {
+            name: Some(String::new()),
+            help: None,
+            r#type: Some(MetricType::Gauge as i32),
+            metric: vec![Metric {
+                gauge: Some(Gauge { value: Some(1.0) }),
+                ..Default::default()
+            }],
+            unit: None,
+        }];
+
+        assert_eq!(encode_to_text(&families), "# EOF\n");
+    }
+
+    #[test]
+    fn quotes_and_escapes_utf8_metric_and_label_names() {
         let families = [
             MetricFamily {
                 name: Some("bad\n# HELP injected metadata".to_owned()),
-                help: Some("should not be written".to_owned()),
+                help: Some("Escaped help.".to_owned()),
                 r#type: Some(MetricType::Gauge as i32),
                 metric: vec![Metric {
+                    label: vec![label("路由.name\n", "值")],
                     gauge: Some(Gauge { value: Some(99.0) }),
                     ..Default::default()
                 }],
@@ -635,12 +746,17 @@ build_info{version=\"1.2.3\"} 1.0\n\
 
         assert_eq!(
             encode_to_text(&families),
-            "# TYPE valid:metric gauge\nvalid:metric 1.0\n# EOF\n"
+            "# HELP \"bad\\n# HELP injected metadata\" Escaped help.\n\
+# TYPE \"bad\\n# HELP injected metadata\" gauge\n\
+{\"bad\\n# HELP injected metadata\",\"路由.name\\n\"=\"值\"} 99.0\n\
+# TYPE valid:metric gauge\n\
+valid:metric 1.0\n\
+# EOF\n"
         );
     }
 
     #[test]
-    fn invalid_duplicate_and_reserved_row_labels_skip_only_their_rows() {
+    fn nonstandard_labels_are_kept_while_duplicate_and_reserved_labels_are_dropped() {
         let families = [
             MetricFamily {
                 name: Some("row_gauge".to_owned()),
@@ -653,7 +769,7 @@ build_info{version=\"1.2.3\"} 1.0\n\
                         ..Default::default()
                     },
                     Metric {
-                        label: vec![label("bad name", "invalid")],
+                        label: vec![label("bad name", "nonstandard")],
                         gauge: Some(Gauge { value: Some(99.0) }),
                         ..Default::default()
                     },
@@ -710,8 +826,8 @@ build_info{version=\"1.2.3\"} 1.0\n\
         ];
 
         let output = encode_to_text(&families);
-        assert!(output.contains("row_gauge{id=\"valid\"} 1.0\n"));
-        assert!(!output.contains("99.0"));
+        assert!(output.contains("row_gauge{\"id\"=\"valid\"} 1.0\n"));
+        assert!(output.contains("row_gauge{\"bad name\"=\"nonstandard\"} 99.0\n"));
         assert!(!output.contains("98.0"));
         assert_eq!(output.matches("row_histogram_sum").count(), 1);
         assert_eq!(output.matches("row_summary_sum").count(), 1);
@@ -719,7 +835,7 @@ build_info{version=\"1.2.3\"} 1.0\n\
     }
 
     #[test]
-    fn invalid_exemplar_labels_drop_only_the_exemplar() {
+    fn nonstandard_exemplar_labels_are_kept_while_duplicates_are_dropped() {
         let families = [
             MetricFamily {
                 name: Some("exemplar_counter".to_owned()),
@@ -727,7 +843,7 @@ build_info{version=\"1.2.3\"} 1.0\n\
                 r#type: Some(MetricType::Counter as i32),
                 metric: vec![
                     Metric {
-                        label: vec![label("id", "invalid")],
+                        label: vec![label("id", "nonstandard")],
                         counter: Some(Counter {
                             value: Some(1.0),
                             exemplar: Some(Exemplar {
@@ -782,10 +898,14 @@ build_info{version=\"1.2.3\"} 1.0\n\
         ];
 
         let output = encode_to_text(&families);
-        assert!(output.contains("exemplar_counter{id=\"invalid\"} 1.0\n"));
-        assert!(output.contains("exemplar_counter{id=\"valid\"} 3.0 # {trace_id=\"good\"} 4.0\n"));
-        assert!(output.contains("exemplar_histogram_bucket{le=\"1.0\"} 1\n"));
-        assert!(!output.contains("trace:id"));
-        assert!(!output.contains("{dup="));
+        assert!(output.contains(
+            "exemplar_counter{\"id\"=\"nonstandard\"} 1.0 # {\"trace:id\"=\"bad\"} 2.0\n"
+        ));
+        assert!(
+            output
+                .contains("exemplar_counter{\"id\"=\"valid\"} 3.0 # {\"trace_id\"=\"good\"} 4.0\n")
+        );
+        assert!(output.contains("exemplar_histogram_bucket{\"le\"=\"1.0\"} 1\n"));
+        assert!(!output.contains("\"dup\"="));
     }
 }

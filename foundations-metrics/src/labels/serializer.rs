@@ -5,7 +5,7 @@ use serde::Serialize;
 use serde::ser::{Impossible, SerializeStruct, Serializer};
 
 use super::LabelError;
-use crate::validation::{LABEL_NAME_GRAMMAR, is_valid_label_name};
+use crate::validation::{NAME_REQUIREMENT, is_valid_name};
 
 // Adapted from prometools' `serde::top::TopSerializer`
 // (https://github.com/nox/prometools, licensed MIT OR Apache-2.0).
@@ -397,9 +397,9 @@ impl Serializer for LabelValueSerializer {
 // Adapted from prometools' `serde::top::check_key`
 // (https://github.com/nox/prometools, licensed MIT OR Apache-2.0).
 fn validate_label_name(name: &str) -> Result<(), LabelError> {
-    is_valid_label_name(name).then_some(()).ok_or_else(|| {
+    is_valid_name(name).then_some(()).ok_or_else(|| {
         LabelError::new(format!(
-            "invalid metric label name {name:?}: expected {LABEL_NAME_GRAMMAR}"
+            "invalid metric label name {name:?}: expected {NAME_REQUIREMENT}"
         ))
     })
 }
@@ -474,10 +474,10 @@ mod tests {
     }
 
     #[test]
-    fn rejects_invalid_label_names() {
+    fn rejects_empty_label_names() {
         #[derive(Serialize)]
         struct Invalid {
-            #[serde(rename = "not-valid")]
+            #[serde(rename = "")]
             value: &'static str,
         }
 
@@ -485,18 +485,15 @@ mod tests {
     }
 
     #[test]
-    fn rejects_colon_label_names_with_the_label_grammar_in_the_error() {
+    fn serializes_utf8_label_names() {
         #[derive(Serialize)]
-        struct Invalid {
-            #[serde(rename = "trace:id")]
+        struct Labels {
+            #[serde(rename = "trace.id λ\n\"")]
             value: &'static str,
         }
 
-        let error = to_label_pairs(&Invalid { value: "x" }).unwrap_err();
-        assert_eq!(
-            error.to_string(),
-            "invalid metric label name \"trace:id\": expected [a-zA-Z_][a-zA-Z0-9_]*"
-        );
+        let labels = to_label_pairs(&Labels { value: "x" }).unwrap();
+        assert_eq!(labels[0].name.as_deref(), Some("trace.id λ\n\""));
     }
 
     #[test]
