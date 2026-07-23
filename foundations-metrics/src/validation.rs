@@ -4,8 +4,7 @@ use foundations_metrics_registry::proto::{Exemplar, LabelPair, Metric, MetricFam
 
 use crate::diagnostics::report_collect_error;
 
-pub(crate) const METRIC_NAME_GRAMMAR: &str = "[a-zA-Z_:][a-zA-Z0-9_:]*";
-pub(crate) const LABEL_NAME_GRAMMAR: &str = "[a-zA-Z_][a-zA-Z0-9_]*";
+pub(crate) const NAME_REQUIREMENT: &str = "a non-empty UTF-8 string without NUL bytes";
 
 #[derive(Clone, Copy)]
 pub(crate) enum ValidationContext {
@@ -24,31 +23,15 @@ impl ValidationContext {
     }
 }
 
-pub(crate) fn is_valid_metric_name(name: &str) -> bool {
-    is_valid_name(name, true)
-}
-
-pub(crate) fn is_valid_label_name(name: &str) -> bool {
-    is_valid_name(name, false)
-}
-
-fn is_valid_name(name: &str, allow_colon: bool) -> bool {
-    let mut bytes = name.bytes();
-    bytes.next().is_some_and(|byte| {
-        byte.is_ascii_alphabetic() || byte == b'_' || (allow_colon && byte == b':')
-    }) && bytes
-        .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_' || (allow_colon && byte == b':'))
+pub(crate) fn is_valid_name(name: &str) -> bool {
+    !name.is_empty() && !name.contains('\0')
 }
 
 pub(crate) fn sanitize_metric_family(
     family: &mut MetricFamily,
     context: ValidationContext,
 ) -> bool {
-    let Some(name) = family
-        .name
-        .as_deref()
-        .filter(|name| is_valid_metric_name(name))
-    else {
+    let Some(name) = family.name.as_deref().filter(|name| is_valid_name(name)) else {
         report_invalid_family_name(context, family.name.as_deref());
         return false;
     };
@@ -68,11 +51,7 @@ pub(crate) fn sanitized_metric_family<'a>(
     family: &'a MetricFamily,
     context: ValidationContext,
 ) -> Option<Cow<'a, MetricFamily>> {
-    let Some(name) = family
-        .name
-        .as_deref()
-        .filter(|name| is_valid_metric_name(name))
-    else {
+    let Some(name) = family.name.as_deref().filter(|name| is_valid_name(name)) else {
         report_invalid_family_name(context, family.name.as_deref());
         return None;
     };
@@ -91,7 +70,7 @@ pub(crate) fn sanitized_metric_family<'a>(
 
 fn report_invalid_family_name(context: ValidationContext, name: Option<&str>) {
     report_collect_error(format_args!(
-        "non-fatal error while {}: skipped metric family with invalid name {name:?}; expected {METRIC_NAME_GRAMMAR}",
+        "non-fatal error while {}: skipped metric family with invalid name {name:?}; expected {NAME_REQUIREMENT}",
         context.action()
     ));
 }
@@ -141,11 +120,7 @@ fn find_label_issue<'a>(
     reserved_label: Option<&str>,
 ) -> Option<LabelIssue<'a>> {
     for (index, label) in labels.iter().enumerate() {
-        let Some(name) = label
-            .name
-            .as_deref()
-            .filter(|name| is_valid_label_name(name))
-        else {
+        let Some(name) = label.name.as_deref().filter(|name| is_valid_name(name)) else {
             return Some(LabelIssue::Invalid(label.name.as_deref()));
         };
 
@@ -166,7 +141,7 @@ fn find_label_issue<'a>(
 fn report_row_drop(context: ValidationContext, family_name: &str, issue: LabelIssue<'_>) {
     match issue {
         LabelIssue::Invalid(name) => report_collect_error(format_args!(
-            "non-fatal error while {}: skipped row in metric family {family_name:?} with invalid label name {name:?}; expected {LABEL_NAME_GRAMMAR}",
+            "non-fatal error while {}: skipped row in metric family {family_name:?} with invalid label name {name:?}; expected {NAME_REQUIREMENT}",
             context.action()
         )),
         LabelIssue::Duplicate(name) => report_collect_error(format_args!(
@@ -249,7 +224,7 @@ fn report_exemplar_drop(
 ) {
     match issue {
         LabelIssue::Invalid(name) => report_collect_error(format_args!(
-            "non-fatal error while {}: dropped {kind} exemplar in metric family {family_name:?} with invalid label name {name:?}; expected {LABEL_NAME_GRAMMAR}",
+            "non-fatal error while {}: dropped {kind} exemplar in metric family {family_name:?} with invalid label name {name:?}; expected {NAME_REQUIREMENT}",
             context.action()
         )),
         LabelIssue::Duplicate(name) => report_collect_error(format_args!(
@@ -265,68 +240,26 @@ mod tests {
     use super::*;
 
     #[test]
-    fn exhaustively_checks_ascii_metric_name_characters() {
-        for byte in 0_u8..=127 {
-            let character = char::from(byte);
-            let expected_first = byte.is_ascii_alphabetic() || matches!(byte, b'_' | b':');
-            let expected_continuation = byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b':');
-
-            assert_eq!(
-                is_valid_metric_name(&character.to_string()),
-                expected_first,
-                "metric first character {byte:#04x}"
-            );
-            assert_eq!(
-                is_valid_metric_name(&format!("a{character}")),
-                expected_continuation,
-                "metric continuation character {byte:#04x}"
-            );
-        }
-    }
-
-    #[test]
-    fn exhaustively_checks_ascii_label_name_characters() {
-        for byte in 0_u8..=127 {
-            let character = char::from(byte);
-            let expected_first = byte.is_ascii_alphabetic() || byte == b'_';
-            let expected_continuation = byte.is_ascii_alphanumeric() || byte == b'_';
-
-            assert_eq!(
-                is_valid_label_name(&character.to_string()),
-                expected_first,
-                "label first character {byte:#04x}"
-            );
-            assert_eq!(
-                is_valid_label_name(&format!("a{character}")),
-                expected_continuation,
-                "label continuation character {byte:#04x}"
-            );
-        }
-    }
-
-    #[test]
-    fn rejects_empty_non_ascii_and_injection_names() {
+    fn accepts_non_empty_utf8_metric_and_label_names() {
         for name in [
-            "",
             "é",
             "aλ",
             "metric name",
             "metric\nname",
             "metric#name",
             "metric\"name",
+            "指标.名称",
         ] {
-            assert!(!is_valid_metric_name(name), "metric name {name:?}");
-            assert!(!is_valid_label_name(name), "label name {name:?}");
+            assert!(is_valid_name(name), "metric name {name:?}");
+            assert!(is_valid_name(name), "label name {name:?}");
         }
     }
 
     #[test]
-    fn metric_names_allow_colons_but_label_names_do_not() {
-        for name in [":", ":metric", "metric:name"] {
-            assert!(is_valid_metric_name(name));
-            assert!(!is_valid_label_name(name));
+    fn rejects_empty_and_nul_names() {
+        for name in ["", "nul\0name"] {
+            assert!(!is_valid_name(name));
+            assert!(!is_valid_name(name));
         }
-        assert!(is_valid_metric_name("_metric"));
-        assert!(is_valid_label_name("_label"));
     }
 }
