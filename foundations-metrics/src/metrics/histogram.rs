@@ -247,17 +247,21 @@ impl Clone for TimeHistogram {
 impl TimeHistogram {
     /// Creates a time histogram with inclusive bucket bounds in seconds.
     ///
-    /// A terminal `f64::MAX` bucket is appended automatically.
+    /// Bounds may be given in any order; they are sorted ascending. A terminal
+    /// `f64::MAX` bucket is appended automatically.
     pub fn new(buckets: impl IntoIterator<Item = f64>) -> Self {
+        let mut buckets: Vec<_> = buckets
+            .into_iter()
+            .chain(once(f64::MAX))
+            .map(|upper_bound| (upper_bound, AtomicU64::new(0)))
+            .collect();
+        buckets.sort_by(|(a, _), (b, _)| a.total_cmp(b));
+
         Self {
             state: Arc::new(TimeHistogramState {
                 sum: Default::default(),
                 count: Default::default(),
-                buckets: buckets
-                    .into_iter()
-                    .chain(once(f64::MAX))
-                    .map(|upper_bound| (upper_bound, AtomicU64::new(0)))
-                    .collect(),
+                buckets,
             }),
         }
     }
@@ -477,6 +481,17 @@ mod tests {
                 .map(|bucket| bucket.cumulative_count)
                 .collect::<Vec<_>>(),
             vec![Some(1), Some(2), Some(3)]
+        );
+    }
+
+    #[test]
+    fn time_histogram_sorts_unsorted_buckets() {
+        let histogram = TimeHistogram::new([2.0, 1.0]);
+        histogram.observe(500_000_000);
+
+        assert_eq!(
+            histogram.snapshot().buckets(),
+            &[(1.0, 1), (2.0, 0), (f64::MAX, 0)]
         );
     }
 
