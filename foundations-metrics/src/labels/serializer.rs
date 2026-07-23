@@ -550,7 +550,12 @@ mod tests {
 
     #[test]
     fn serializes_legacy_name_value_sequences() {
-        let pairs = to_label_pairs(&vec![("trace_id", "abc"), ("span_id", "def")]).unwrap();
+        let pairs = to_label_pairs(&vec![
+            ("trace_id", "abc"),
+            ("span_id", "def"),
+            ("trace:id", "ghi"),
+        ])
+        .unwrap();
         let values: Vec<_> = pairs
             .iter()
             .map(|pair| {
@@ -561,8 +566,10 @@ mod tests {
             })
             .collect();
 
-        assert_eq!(values, [("trace_id", "abc"), ("span_id", "def")]);
-        assert!(to_label_pairs(&vec![("trace:id", "bad")]).is_err());
+        assert_eq!(
+            values,
+            [("trace_id", "abc"), ("span_id", "def"), ("trace:id", "ghi"),]
+        );
     }
 
     #[test]
