@@ -4,7 +4,7 @@
 /// [`register`](crate::register). Build it from [`default`](Self::default) plus
 /// the setters, since downstream crates can't use a struct literal.
 #[non_exhaustive]
-#[derive(Clone, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct RegistrationMetadata {
     /// Whether the metric is exported only when optional metrics are requested.
     pub optional: bool,
