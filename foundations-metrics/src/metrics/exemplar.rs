@@ -268,37 +268,6 @@ impl<S> MetricConstructor<HistogramWithExemplars<S>> for HistogramBuilder {
     }
 }
 
-/// Constructs native histograms with exemplar support.
-///
-/// This mirrors [`NativeHistogramBuilder`] without adding another constructor
-/// implementation to that type, which keeps existing constructor inference
-/// unambiguous.
-#[derive(Clone, Copy, Debug)]
-pub struct NativeHistogramWithExemplarsBuilder {
-    inner: NativeHistogramBuilder,
-}
-
-impl NativeHistogramWithExemplarsBuilder {
-    /// Creates a builder with the given bucket growth `factor`.
-    pub fn new(factor: f64) -> Self {
-        Self {
-            inner: NativeHistogramBuilder::new(factor),
-        }
-    }
-
-    /// Sets the zero-bucket threshold.
-    pub fn with_zero_threshold(mut self, zero_threshold: f64) -> Self {
-        self.inner = self.inner.with_zero_threshold(zero_threshold);
-        self
-    }
-
-    /// Sets a best-effort maximum number of populated buckets.
-    pub fn with_max_buckets(mut self, max_buckets: usize) -> Self {
-        self.inner = self.inner.with_max_buckets(max_buckets);
-        self
-    }
-}
-
 /// A native histogram that retains its latest labeled observation as an exemplar.
 ///
 /// Native histogram exemplars require timestamps in the Prometheus protobuf
@@ -323,7 +292,7 @@ impl<S> NativeHistogramWithExemplars<S> {
     ///
     /// Panics if `factor` is not greater than `1.0`.
     pub fn new(factor: f64) -> Self {
-        NativeHistogramWithExemplarsBuilder::new(factor).new_metric()
+        NativeHistogramBuilder::new(factor).new_metric()
     }
 
     /// Records an observation and optionally retains it as the latest exemplar.
@@ -373,14 +342,11 @@ where
     }
 }
 
-impl<S> MetricConstructor<NativeHistogramWithExemplars<S>> for NativeHistogramWithExemplarsBuilder {
+impl<S> MetricConstructor<NativeHistogramWithExemplars<S>> for NativeHistogramBuilder {
     fn new_metric(&self) -> NativeHistogramWithExemplars<S> {
         NativeHistogramWithExemplars {
             state: Arc::new(RwLock::new(NativeHistogramWithExemplarsState {
-                histogram:
-                    <NativeHistogramBuilder as MetricConstructor<NativeHistogram>>::new_metric(
-                        &self.inner,
-                    ),
+                histogram: NativeHistogramBuilder::new_metric(self),
                 exemplar: None,
             })),
         }
@@ -631,10 +597,9 @@ mod tests {
                 .is_some()
         );
 
-        let native: NativeHistogramWithExemplars<TraceLabels> =
-            NativeHistogramWithExemplarsBuilder::new(1.1)
-                .with_max_buckets(160)
-                .new_metric();
+        let native: NativeHistogramWithExemplars<TraceLabels> = NativeHistogramBuilder::new(1.1)
+            .with_max_buckets(160)
+            .new_metric();
         native.observe(0.75, Some(TraceLabels { trace_id: "native" }));
         assert_eq!(
             native.encode_metric_value()[0].metric[0]
@@ -704,8 +669,8 @@ mod tests {
         let family = Family::<
             SeriesLabels,
             NativeHistogramWithExemplars<TraceLabels>,
-            NativeHistogramWithExemplarsBuilder,
-        >::new_with_constructor(NativeHistogramWithExemplarsBuilder::new(1.1));
+            NativeHistogramBuilder,
+        >::new_with_constructor(NativeHistogramBuilder::new(1.1));
         family
             .get_or_create(&SeriesLabels { method: "GET" })
             .observe(0.25, Some(TraceLabels { trace_id: "native" }));
