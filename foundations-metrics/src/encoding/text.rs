@@ -611,14 +611,14 @@ request_duration_seconds_bucket{\"route\"=\"/test\",\"le\"=\"+Inf\"} 3\n\
         assert_eq!(
             encode_to_text(&families),
             "# TYPE request_size summary\n\
-request_size{quantile=\"0.5\"} 3.0\n\
+request_size{\"quantile\"=\"0.5\"} 3.0\n\
 request_size_sum 6.0\n\
 request_size_count 2\n\
 # TYPE queue_depth gaugehistogram\n\
 queue_depth_gsum 8.0\n\
 queue_depth_gcount 3\n\
-queue_depth_bucket{le=\"1.0\"} 1\n\
-queue_depth_bucket{le=\"+Inf\"} 3\n\
+queue_depth_bucket{\"le\"=\"1.0\"} 1\n\
+queue_depth_bucket{\"le\"=\"+Inf\"} 3\n\
 # EOF\n"
         );
     }
@@ -823,6 +823,23 @@ valid:metric 1.0\n\
                 ],
                 unit: None,
             },
+            MetricFamily {
+                name: Some("row_gauge_histogram".to_owned()),
+                help: None,
+                r#type: Some(MetricType::GaugeHistogram as i32),
+                metric: vec![
+                    Metric {
+                        histogram: Some(Histogram::default()),
+                        ..Default::default()
+                    },
+                    Metric {
+                        label: vec![label("le", "1")],
+                        histogram: Some(Histogram::default()),
+                        ..Default::default()
+                    },
+                ],
+                unit: None,
+            },
         ];
 
         let output = encode_to_text(&families);
@@ -831,6 +848,7 @@ valid:metric 1.0\n\
         assert!(!output.contains("98.0"));
         assert_eq!(output.matches("row_histogram_sum").count(), 1);
         assert_eq!(output.matches("row_summary_sum").count(), 1);
+        assert_eq!(output.matches("row_gauge_histogram_gsum").count(), 1);
         assert!(output.ends_with("# EOF\n"));
     }
 
