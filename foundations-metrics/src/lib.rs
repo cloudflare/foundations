@@ -26,6 +26,6 @@ pub use metrics::{
     Counter, CounterAtomic, CounterWithExemplar, Exemplar, Family, FamilyMetricGuard, Gauge,
     GaugeAtomic, GaugeGuard, Histogram, HistogramBuilder, HistogramSnapshot, HistogramTimer,
     HistogramWithExemplars, MetricConstructor, NativeHistogram, NativeHistogramBuilder,
-    NativeHistogramWithExemplars, NativeHistogramWithExemplarsBuilder, RangeGauge, TimeHistogram,
+    NativeHistogramWithExemplars, RangeGauge, TimeHistogram,
 };
 pub use registered::NamedMetric;
