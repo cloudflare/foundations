@@ -11,7 +11,7 @@ mod model;
 
 pub use model::{
     Bucket, BucketSpan, Counter, Exemplar, Gauge, Histogram, LabelPair, Metric, MetricFamily,
-    MetricType,
+    MetricType, Quantile, Summary,
 };
 
 #[cfg(test)]

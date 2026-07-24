@@ -34,6 +34,14 @@ fn encode_family(output: &mut String, family: &MetricFamily) {
         ));
         return;
     };
+    let metric_type_name = match metric_type {
+        MetricType::Counter => "counter",
+        MetricType::Gauge => "gauge",
+        MetricType::Summary => "summary",
+        MetricType::Untyped => "unknown",
+        MetricType::Histogram => "histogram",
+        MetricType::GaugeHistogram => "gaugehistogram",
+    };
 
     if let Some(help) = &family.help {
         output.push_str("# HELP ");
@@ -46,7 +54,7 @@ fn encode_family(output: &mut String, family: &MetricFamily) {
     output.push_str("# TYPE ");
     output.push_str(name);
     output.push(' ');
-    output.push_str(metric_type_name(metric_type));
+    output.push_str(metric_type_name);
     output.push('\n');
 
     if let Some(unit) = &family.unit {
@@ -59,17 +67,6 @@ fn encode_family(output: &mut String, family: &MetricFamily) {
 
     for metric in &family.metric {
         encode_metric(output, name, metric_type, metric);
-    }
-}
-
-fn metric_type_name(metric_type: MetricType) -> &'static str {
-    match metric_type {
-        MetricType::Counter => "counter",
-        MetricType::Gauge => "gauge",
-        MetricType::Summary => "summary",
-        MetricType::Untyped => "unknown",
-        MetricType::Histogram => "histogram",
-        MetricType::GaugeHistogram => "gaugehistogram",
     }
 }
 
@@ -378,7 +375,8 @@ fn report_missing_value(name: &str, expected: &str) {
 #[cfg(test)]
 mod tests {
     use foundations_metrics_registry::proto::{
-        Bucket, Counter, Gauge, Histogram, LabelPair, Metric, MetricFamily, MetricType,
+        Bucket, Counter, Gauge, Histogram, LabelPair, Metric, MetricFamily, MetricType, Quantile,
+        Summary,
     };
 
     use super::*;
@@ -491,6 +489,63 @@ request_duration_seconds_bucket{route=\"/test\",le=\"+Inf\"} 3\n\
 
         let output = encode_to_text(&families);
         assert!(output.contains("values_bucket{le=\"+Inf\"} 2\n"));
+    }
+
+    #[test]
+    fn encodes_summaries_and_gauge_histograms() {
+        let families = [
+            MetricFamily {
+                name: Some("request_size".to_owned()),
+                help: None,
+                r#type: Some(MetricType::Summary as i32),
+                metric: vec![Metric {
+                    summary: Some(Summary {
+                        sample_count: Some(2),
+                        sample_sum: Some(6.0),
+                        quantile: vec![Quantile {
+                            quantile: Some(0.5),
+                            value: Some(3.0),
+                        }],
+                        created_timestamp: None,
+                    }),
+                    ..Default::default()
+                }],
+                unit: None,
+            },
+            MetricFamily {
+                name: Some("queue_depth".to_owned()),
+                help: None,
+                r#type: Some(MetricType::GaugeHistogram as i32),
+                metric: vec![Metric {
+                    histogram: Some(Histogram {
+                        sample_count: Some(3),
+                        sample_sum: Some(8.0),
+                        bucket: vec![Bucket {
+                            cumulative_count: Some(1),
+                            upper_bound: Some(1.0),
+                            ..Default::default()
+                        }],
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                }],
+                unit: None,
+            },
+        ];
+
+        assert_eq!(
+            encode_to_text(&families),
+            "# TYPE request_size summary\n\
+request_size{quantile=\"0.5\"} 3.0\n\
+request_size_sum 6.0\n\
+request_size_count 2\n\
+# TYPE queue_depth gaugehistogram\n\
+queue_depth_gsum 8.0\n\
+queue_depth_gcount 3\n\
+queue_depth_bucket{le=\"1.0\"} 1\n\
+queue_depth_bucket{le=\"+Inf\"} 3\n\
+# EOF\n"
+        );
     }
 
     #[test]
