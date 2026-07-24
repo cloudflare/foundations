@@ -6,5 +6,8 @@ use crate::proto::MetricFamily;
 /// metric or series that fails, so an empty `Vec` is a valid result.
 pub trait EncodeMetric: Send + Sync + 'static {
     /// Encodes this metric into zero or more [`MetricFamily`] messages.
+    ///
+    /// Every returned [`MetricFamily`] must set `name` to a complete, non-empty
+    /// producer-level name.
     fn encode(&self) -> Vec<MetricFamily>;
 }
