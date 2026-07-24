@@ -6,19 +6,25 @@
 //! shared process-global registry and the stable wire format.
 #![warn(missing_docs)]
 
+mod collect;
 mod diagnostics;
+mod encoding;
 mod labels;
 pub mod metrics;
 mod registered;
+mod validation;
 mod value;
 
+pub use collect::{CollectionOptions, ServiceNameFormat, collect};
 pub use diagnostics::{CollectErrorHookAlreadySet, set_collect_error_hook};
+pub use encoding::{OPENMETRICS_CONTENT_TYPE, encode_to_protobuf, encode_to_text};
 pub use foundations_metrics_registry::{
     EncodeMetric, IntoMetrics, MetricFamily, RegistrationMetadata, register,
 };
 pub use labels::{LabelError, to_label_pairs};
 pub use metrics::{
-    Counter, CounterAtomic, Family, FamilyMetricGuard, Gauge, GaugeAtomic, GaugeGuard,
-    MetricConstructor, RangeGauge,
+    Counter, CounterAtomic, Family, FamilyMetricGuard, Gauge, GaugeAtomic, GaugeGuard, Histogram,
+    HistogramBuilder, HistogramSnapshot, HistogramTimer, MetricConstructor, NativeHistogram,
+    NativeHistogramBuilder, RangeGauge, TimeHistogram,
 };
 pub use registered::NamedMetric;

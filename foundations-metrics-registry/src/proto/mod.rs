@@ -10,7 +10,8 @@
 mod model;
 
 pub use model::{
-    BucketSpan, Counter, Gauge, Histogram, LabelPair, Metric, MetricFamily, MetricType,
+    Bucket, BucketSpan, Counter, Exemplar, Gauge, Histogram, LabelPair, Metric, MetricFamily,
+    MetricType, Quantile, Summary,
 };
 
 #[cfg(test)]
