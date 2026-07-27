@@ -15,10 +15,8 @@ pub struct RegistrationMetadata {
     /// Whether to suppress the service-name label for this metric.
     ///
     /// Independent of [`unprefixed`](Self::unprefixed): a metric that opts out
-    /// of the service-name prefix is still labelled with the service name under
-    /// [`ServiceNameFormat::LabelWithName`]. Info metrics opt out of both.
-    ///
-    /// [`ServiceNameFormat::LabelWithName`]: https://docs.rs/foundations-metrics
+    /// of the service-name prefix is still labelled with the service name when
+    /// collection represents it as a label. Info metrics opt out of both.
     pub unlabeled: bool,
 }
 

@@ -51,6 +51,14 @@ mod backend {
         Counter, CounterWithExemplar, Family, Gauge, GaugeGuard, Histogram, HistogramTimer,
         HistogramWithExemplars, InfoMetric, MetricConstructor, RangeGauge, TimeHistogram,
     };
+
+    // Everything needed to define, register, and label a custom metric. The
+    // protobuf data model is re-exported as `proto` so that implementors do not
+    // need a direct dependency on `foundations-metrics-registry`.
+    pub use foundations_metrics::{
+        EncodeMetric, EncodeMetricValue, IntoMetrics, LabelError, MetricFamily, NamedMetric,
+        RegistrationMetadata, proto, register, to_label_pairs,
+    };
 }
 #[cfg(not(feature = "foundations-metrics-backend"))]
 mod backend {
