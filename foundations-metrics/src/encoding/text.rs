@@ -43,7 +43,9 @@ fn encode_family(output: &mut String, family: &MetricFamily) {
         MetricType::GaugeHistogram => "gaugehistogram",
     };
 
-    if let Some(help) = &family.help {
+    // An empty help string carries no information, so the line is omitted rather
+    // than written with a blank value.
+    if let Some(help) = family.help.as_deref().filter(|help| !help.is_empty()) {
         output.push_str("# HELP ");
         output.push_str(name);
         output.push(' ');
@@ -380,6 +382,30 @@ mod tests {
     };
 
     use super::*;
+
+    #[test]
+    fn omits_the_help_line_when_there_is_no_help_text() {
+        let families = [MetricFamily {
+            name: Some("requests".to_owned()),
+            help: Some(String::new()),
+            r#type: Some(MetricType::Counter as i32),
+            metric: vec![Metric {
+                counter: Some(Counter {
+                    value: Some(1.0),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            unit: None,
+        }];
+
+        assert_eq!(
+            encode_to_text(&families),
+            "# TYPE requests counter\n\
+requests 1.0\n\
+# EOF\n"
+        );
+    }
 
     #[test]
     fn encodes_counter_metadata_labels_timestamps_and_exemplars() {
