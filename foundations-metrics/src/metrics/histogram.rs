@@ -84,7 +84,9 @@ impl Histogram {
         }
     }
 
-    fn snapshot(&self) -> HistogramSnapshot {
+    /// Returns a point-in-time snapshot of this histogram's sum, count, and
+    /// buckets.
+    pub fn snapshot(&self) -> HistogramSnapshot {
         let state = self.state.lock();
         HistogramSnapshot {
             sum: state.sum,
