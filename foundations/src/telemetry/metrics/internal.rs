@@ -218,6 +218,26 @@ pub fn wrap_metric(metric: impl SendSyncEncodeMetric + 'static) -> Box<dyn SendS
     Box::new(RewindErrorEncode(metric))
 }
 
+/// Registers a metric declared through the [`metrics`](super::metrics) macro.
+///
+/// `full_name` is unused here: the exported name is composed by the registries
+/// from the service prefix, the `subsystem` sub-registry, and `name`.
+pub fn register_metric<M>(
+    subsystem: &'static str,
+    name: &'static str,
+    _full_name: &'static str,
+    help: &'static str,
+    metric: M,
+    optional: bool,
+    with_service_prefix: bool,
+) where
+    M: SendSyncEncodeMetric + 'static,
+{
+    let mut registry = Registries::get_subsystem(subsystem, optional, with_service_prefix);
+
+    registry.register(name, help, wrap_metric(metric));
+}
+
 fn encode_registry(buffer: &mut Vec<u8>, registry: &Registry<impl EncodeMetric>) -> Result<()> {
     ENCODER_REWIND_STATE.with(|s| {
         let mut writer = s.activate(buffer);
