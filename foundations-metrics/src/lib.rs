@@ -9,6 +9,7 @@
 mod collect;
 mod diagnostics;
 mod encoding;
+mod info;
 mod labels;
 pub mod metrics;
 mod registered;
@@ -21,6 +22,7 @@ pub use encoding::{OPENMETRICS_CONTENT_TYPE, encode_to_protobuf, encode_to_text}
 pub use foundations_metrics_registry::{
     EncodeMetric, IntoMetrics, MetricFamily, RegistrationMetadata, register,
 };
+pub use info::{InfoMetric, report_info};
 pub use labels::{LabelError, to_label_pairs};
 pub use metrics::{
     Counter, CounterAtomic, Family, FamilyMetricGuard, Gauge, GaugeAtomic, GaugeGuard, Histogram,
