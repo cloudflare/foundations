@@ -329,7 +329,7 @@ fn write_labels(output: &mut String, labels: &[LabelPair], additional_label: Opt
     let mut separator = "";
     for label in labels {
         output.push_str(separator);
-        write_quoted(output, label.name.as_deref().unwrap_or_default());
+        write_label_name(output, label.name.as_deref().unwrap_or_default());
         output.push_str("=\"");
         write_escaped(output, label.value.as_deref().unwrap_or_default());
         output.push('"');
@@ -338,7 +338,7 @@ fn write_labels(output: &mut String, labels: &[LabelPair], additional_label: Opt
 
     if let Some((name, value)) = additional_label {
         output.push_str(separator);
-        write_quoted(output, name);
+        write_label_name(output, name);
         output.push_str("=\"");
         write_float(output, value);
         output.push('"');
@@ -369,7 +369,7 @@ fn write_sample_name_and_labels(
 
     for label in labels {
         output.push(',');
-        write_quoted(output, label.name.as_deref().unwrap_or_default());
+        write_label_name(output, label.name.as_deref().unwrap_or_default());
         output.push_str("=\"");
         write_escaped(output, label.value.as_deref().unwrap_or_default());
         output.push('"');
@@ -377,7 +377,7 @@ fn write_sample_name_and_labels(
 
     if let Some((name, value)) = additional_label {
         output.push(',');
-        write_quoted(output, name);
+        write_label_name(output, name);
         output.push_str("=\"");
         write_float(output, value);
         output.push('"');
@@ -400,6 +400,29 @@ fn is_legacy_metric_name(name: &str) -> bool {
         .next()
         .is_some_and(|byte| byte.is_ascii_alphabetic() || matches!(byte, b'_' | b':'))
         && bytes.all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b':'))
+}
+
+/// Whether `name` matches the legacy label name grammar, which unlike metric
+/// names does not permit colons.
+fn is_legacy_label_name(name: &str) -> bool {
+    let mut bytes = name.bytes();
+    bytes
+        .next()
+        .is_some_and(|byte| byte.is_ascii_alphabetic() || byte == b'_')
+        && bytes.all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
+}
+
+/// Writes a label name, quoting it only when it needs UTF-8 syntax.
+///
+/// Legacy-compatible names are emitted unquoted so that output stays byte
+/// identical to the classic Prometheus text format, which collectors that
+/// predate UTF-8 name support require.
+fn write_label_name(output: &mut String, name: &str) {
+    if is_legacy_label_name(name) {
+        output.push_str(name);
+    } else {
+        write_quoted(output, name);
+    }
 }
 
 fn write_quoted(output: &mut String, value: &str) {
@@ -459,6 +482,40 @@ mod tests {
     }
 
     #[test]
+    fn quotes_only_label_names_that_need_utf8_syntax() {
+        let families = [MetricFamily {
+            name: Some("requests".to_owned()),
+            help: None,
+            r#type: Some(MetricType::Counter as i32),
+            metric: vec![Metric {
+                label: vec![
+                    // Legacy-compatible names stay unquoted, so output remains
+                    // byte identical to the classic Prometheus text format.
+                    label("route", "/test"),
+                    label("_internal9", "yes"),
+                    // Colons are valid in metric names but not in label names.
+                    label("trace:id", "abc"),
+                    label("label.name", "dotted"),
+                    label("indicateur_\u{8017}\u{65f6}", "utf8"),
+                ],
+                counter: Some(Counter {
+                    value: Some(1.0),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            unit: None,
+        }];
+
+        assert_eq!(
+            encode_to_text(&families),
+            "# TYPE requests counter\n\
+requests{route=\"/test\",_internal9=\"yes\",\"trace:id\"=\"abc\",\"label.name\"=\"dotted\",\"indicateur_\u{8017}\u{65f6}\"=\"utf8\"} 1.0\n\
+# EOF\n"
+        );
+    }
+
+    #[test]
     fn omits_the_help_line_when_there_is_no_help_text() {
         let families = [MetricFamily {
             name: Some("requests".to_owned()),
@@ -515,7 +572,7 @@ requests 1.0\n\
             encode_to_text(&families),
             "# HELP requests A \\\"quoted\\\" help\\\\line\\nnext\n\
 # TYPE requests counter\n\
-requests{\"kind\"=\"a\\\"b\\\\c\\nd\"} 1.0 1.5 # {\"trace_id\"=\"abc\"} 2.0\n\
+requests{kind=\"a\\\"b\\\\c\\nd\"} 1.0 1.5 # {trace_id=\"abc\"} 2.0\n\
 # EOF\n"
         );
     }
@@ -558,10 +615,10 @@ requests{\"kind\"=\"a\\\"b\\\\c\\nd\"} 1.0 1.5 # {\"trace_id\"=\"abc\"} 2.0\n\
             "# HELP request_duration_seconds Request duration.\n\
 # TYPE request_duration_seconds histogram\n\
 # UNIT request_duration_seconds seconds\n\
-request_duration_seconds_sum{\"route\"=\"/test\"} 4.5\n\
-request_duration_seconds_count{\"route\"=\"/test\"} 3\n\
-request_duration_seconds_bucket{\"route\"=\"/test\",\"le\"=\"1.0\"} 1\n\
-request_duration_seconds_bucket{\"route\"=\"/test\",\"le\"=\"+Inf\"} 3\n\
+request_duration_seconds_sum{route=\"/test\"} 4.5\n\
+request_duration_seconds_count{route=\"/test\"} 3\n\
+request_duration_seconds_bucket{route=\"/test\",le=\"1.0\"} 1\n\
+request_duration_seconds_bucket{route=\"/test\",le=\"+Inf\"} 3\n\
 # EOF\n"
         );
     }
@@ -589,7 +646,7 @@ request_duration_seconds_bucket{\"route\"=\"/test\",\"le\"=\"+Inf\"} 3\n\
         }];
 
         let output = encode_to_text(&families);
-        assert!(output.contains("values_bucket{\"le\"=\"+Inf\"} 2\n"));
+        assert!(output.contains("values_bucket{le=\"+Inf\"} 2\n"));
     }
 
     #[test]
@@ -637,14 +694,14 @@ request_duration_seconds_bucket{\"route\"=\"/test\",\"le\"=\"+Inf\"} 3\n\
         assert_eq!(
             encode_to_text(&families),
             "# TYPE request_size summary\n\
-request_size{\"quantile\"=\"0.5\"} 3.0\n\
+request_size{quantile=\"0.5\"} 3.0\n\
 request_size_sum 6.0\n\
 request_size_count 2\n\
 # TYPE queue_depth gaugehistogram\n\
 queue_depth_gsum 8.0\n\
 queue_depth_gcount 3\n\
-queue_depth_bucket{\"le\"=\"1.0\"} 1\n\
-queue_depth_bucket{\"le\"=\"+Inf\"} 3\n\
+queue_depth_bucket{le=\"1.0\"} 1\n\
+queue_depth_bucket{le=\"+Inf\"} 3\n\
 # EOF\n"
         );
     }
@@ -696,7 +753,7 @@ temperature -Inf\n\
             encode_to_text(&families),
             "# HELP build_info Build information.\n\
 # TYPE build_info gauge\n\
-build_info{\"version\"=\"1.2.3\"} 1.0\n\
+build_info{version=\"1.2.3\"} 1.0\n\
 # EOF\n"
         );
     }
@@ -723,7 +780,7 @@ build_info{\"version\"=\"1.2.3\"} 1.0\n\
             "# TYPE \"request.耗时\" histogram\n\
 {\"request.耗时_sum\"} 0.5\n\
 {\"request.耗时_count\"} 1\n\
-{\"request.耗时_bucket\",\"le\"=\"+Inf\"} 1\n\
+{\"request.耗时_bucket\",le=\"+Inf\"} 1\n\
 # EOF\n"
         );
     }
@@ -869,7 +926,7 @@ valid:metric 1.0\n\
         ];
 
         let output = encode_to_text(&families);
-        assert!(output.contains("row_gauge{\"id\"=\"valid\"} 1.0\n"));
+        assert!(output.contains("row_gauge{id=\"valid\"} 1.0\n"));
         assert!(output.contains("row_gauge{\"bad name\"=\"nonstandard\"} 99.0\n"));
         assert!(!output.contains("98.0"));
         assert_eq!(output.matches("row_histogram_sum").count(), 1);
@@ -942,14 +999,13 @@ valid:metric 1.0\n\
         ];
 
         let output = encode_to_text(&families);
-        assert!(output.contains(
-            "exemplar_counter{\"id\"=\"nonstandard\"} 1.0 # {\"trace:id\"=\"bad\"} 2.0\n"
-        ));
         assert!(
-            output
-                .contains("exemplar_counter{\"id\"=\"valid\"} 3.0 # {\"trace_id\"=\"good\"} 4.0\n")
+            output.contains(
+                "exemplar_counter{id=\"nonstandard\"} 1.0 # {\"trace:id\"=\"bad\"} 2.0\n"
+            )
         );
-        assert!(output.contains("exemplar_histogram_bucket{\"le\"=\"1.0\"} 1\n"));
+        assert!(output.contains("exemplar_counter{id=\"valid\"} 3.0 # {trace_id=\"good\"} 4.0\n"));
+        assert!(output.contains("exemplar_histogram_bucket{le=\"1.0\"} 1\n"));
         assert!(!output.contains("\"dup\"="));
     }
 }
