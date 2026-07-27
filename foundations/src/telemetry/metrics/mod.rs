@@ -111,6 +111,7 @@ pub fn collect(settings: &MetricsSettings) -> Result<String> {
         // is dropped here and re-added once everything has been produced.
         truncate_eof(&mut buffer);
 
+        #[allow(deprecated)]
         if let Some(producers) = EXTRA_PRODUCERS.get() {
             for producer in producers.read().iter() {
                 producer.produce(&mut buffer);
@@ -564,10 +565,14 @@ impl MetricConstructor<TimeHistogram> for HistogramBuilder {
 ///
 /// cache.register_metrics(&mut sub_registry);
 ///
+/// # #[allow(deprecated)]
 /// foundations::telemetry::metrics::add_extra_producer(move |buffer: &mut Vec<u8>| {
 ///     prometheus_client::encoding::text::encode(buffer, &registry).unwrap();
 /// });
 /// ```
+#[deprecated = "Text output bypasses validation and cannot be encoded as protobuf. Implement `EncodeMetric` and pass it to `register` instead, enabling the `foundations-metrics-backend` feature if it is disabled."]
+// TODO: remove before next major release
+#[allow(deprecated)]
 pub fn add_extra_producer<P>(p: P)
 where
     P: ExtraProducer + 'static,
@@ -587,16 +592,20 @@ where
 /// The metric registry only holds metrics that encode into the protobuf data
 /// model, so text-emitting producers are kept here instead.
 #[cfg(feature = "foundations-metrics-backend")]
+#[allow(deprecated)]
 static EXTRA_PRODUCERS: OnceLock<parking_lot::RwLock<Vec<Box<dyn ExtraProducer>>>> =
     OnceLock::new();
 
 /// Describes something that can expand prometheus metrics but appending
 /// them in a text format to a provided buffer.
+#[deprecated = "Text output bypasses validation and cannot be encoded as protobuf. Implement `EncodeMetric` instead, enabling the `foundations-metrics-backend` feature if it is disabled."]
+// TODO: remove before next major release
 pub trait ExtraProducer: Send + Sync {
     /// Takes a buffer and appends prometheus metrics in text format into it.
     fn produce(&self, buffer: &mut Vec<u8>);
 }
 
+#[allow(deprecated)]
 impl<F> ExtraProducer for F
 where
     F: Fn(&mut Vec<u8>) + Send + Sync,
