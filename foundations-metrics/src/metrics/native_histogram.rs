@@ -131,7 +131,22 @@ impl NativeHistogramBuilder {
     ///
     /// Panics if `bucket_factor` is not greater than `1.0` or if
     /// `zero_threshold` is not finite.
+    #[track_caller]
     fn config(&self) -> NativeHistogramConfig {
+        // Validated here rather than left to `prometheus-client`: its assertions
+        // are not `#[track_caller]`, so they report a location inside that crate
+        // instead of the code that supplied the invalid configuration.
+        assert!(
+            self.bucket_factor > 1.0,
+            "native histogram bucket factor must be greater than 1.0, but was {}",
+            self.bucket_factor
+        );
+        assert!(
+            self.zero_threshold.is_finite(),
+            "native histogram zero threshold must be finite, but was {}",
+            self.zero_threshold
+        );
+
         NativeHistogramConfig::new(self.bucket_factor)
             .zero_threshold(self.zero_threshold)
             .max_buckets(self.max_buckets)
@@ -362,5 +377,42 @@ mod tests {
                     .iter()
                     .any(|label| label.name.as_deref() == Some("method"))
         }));
+    }
+
+    // Each `#[track_caller]` between the caller and the assertion is
+    // load-bearing: dropping any one of them collapses the reported location
+    // onto that frame instead of the code that supplied the configuration.
+    #[test]
+    fn invalid_bucket_factor_panics_at_the_callers_location() {
+        // Relies on each test running in its own process, as `cargo nextest`
+        // does, since the panic hook is process-wide.
+        let previous = std::panic::take_hook();
+        let location = std::sync::Arc::new(std::sync::Mutex::new(None));
+        let captured = std::sync::Arc::clone(&location);
+
+        std::panic::set_hook(Box::new(move |info| {
+            *captured.lock().unwrap() = info
+                .location()
+                .map(|location| (location.file().to_owned(), location.line()));
+        }));
+
+        let expected_line = line!() + 1;
+        let result = std::panic::catch_unwind(|| NativeHistogram::new(1.0));
+
+        std::panic::set_hook(previous);
+
+        assert!(result.is_err(), "a bucket factor of 1.0 must be rejected");
+
+        let (file, line) = location
+            .lock()
+            .unwrap()
+            .take()
+            .expect("the panic location was captured");
+
+        assert!(
+            file.ends_with("native_histogram.rs"),
+            "reported file: {file}"
+        );
+        assert_eq!(line, expected_line);
     }
 }
