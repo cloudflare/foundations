@@ -39,8 +39,15 @@ fn panic_hook_metrics_are_well_formed() {
     simulate_panic();
     assert_eq!(metrics::panics::total().get(), 1);
 
+    // `foundations-metrics` stores every value as a protobuf double, so integral
+    // counters render as floats. Both parse to the same series and value.
+    #[cfg(not(feature = "foundations-metrics-backend"))]
+    let expected = "panics_total 1";
+    #[cfg(feature = "foundations-metrics-backend")]
+    let expected = "panics_total 1.0";
+
     let metrics = foundations::telemetry::metrics::collect(&Default::default()).unwrap();
-    let has_metric = metrics.lines().any(|line| line == "panics_total 1");
+    let has_metric = metrics.lines().any(|line| line == expected);
     assert!(has_metric);
 }
 

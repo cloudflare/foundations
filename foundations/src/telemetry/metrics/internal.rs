@@ -1,5 +1,5 @@
 use super::rewind::{RewindState, RewindTo};
-use super::{ExtraProducer, InfoMetric, info_metric, report_nonfatal_collect_error};
+use super::{ExtraProducer, InfoMetric, report_nonfatal_collect_error};
 use crate::telemetry::settings::{MetricsSettings, ServiceNameFormat};
 use crate::{Result, ServiceInfo};
 use prometheus_client::encoding::text::{EncodeMetric, Encoder, SendSyncEncodeMetric, encode};
@@ -144,18 +144,6 @@ impl Registries {
             extra_producers: Default::default(),
         })
     }
-}
-
-/// Build and version information
-#[info_metric(crate_path = "crate")]
-pub(super) struct BuildInfo {
-    pub(super) version: &'static str,
-}
-
-/// Information about the process runtime
-#[info_metric(crate_path = "crate")]
-pub(super) struct RuntimeInfo {
-    pub(super) pid: u32,
 }
 
 pub(super) trait ErasedInfoMetric: erased_serde::Serialize + Send + Sync + 'static {

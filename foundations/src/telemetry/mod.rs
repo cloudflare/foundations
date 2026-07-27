@@ -402,7 +402,9 @@ pub fn init(config: TelemetryConfig) -> BootstrapResult<TelemetryDriver> {
 
 #[cfg(test)]
 mod tests {
-    use super::{TelemetryConfig, TelemetryContext, init, is_initialized};
+    #[cfg(not(feature = "foundations-metrics-backend"))]
+    use super::TelemetryContext;
+    use super::{TelemetryConfig, init, is_initialized};
     use crate::service_info;
 
     #[tokio::test]
@@ -424,8 +426,10 @@ mod tests {
         assert!(is_initialized());
     }
 
+    // We don't need this method in the new backend since the new registry doesn't hold any service name at all.
     /// Ensure that `TelemetryContext::test()` does not default-initialize the metrics registry.
     /// This has caused CI bugs in the past because metrics will be prefixed by `undefined_`.
+    #[cfg(not(feature = "foundations-metrics-backend"))]
     #[test]
     fn testing_telemetry_metrics_uninit() {
         let _ctx = TelemetryContext::test();

@@ -11,38 +11,105 @@
 
 use super::settings::MetricsSettings;
 use crate::Result;
-use prometheus::{Encoder, TextEncoder};
-use serde::Serialize;
-use std::any::TypeId;
 use std::fmt::Display;
 
+#[cfg(not(feature = "foundations-metrics-backend"))]
+use prometheus::{Encoder, TextEncoder};
+#[cfg(not(feature = "foundations-metrics-backend"))]
+use serde::Serialize;
+#[cfg(not(feature = "foundations-metrics-backend"))]
+use std::any::TypeId;
+
+// Aliased so it does not shadow the glob-re-exported `backend::ServiceNameFormat`.
+#[cfg(feature = "foundations-metrics-backend")]
+use super::settings::ServiceNameFormat as SettingsServiceNameFormat;
+#[cfg(feature = "foundations-metrics-backend")]
+use std::sync::OnceLock;
+
+#[cfg(not(feature = "foundations-metrics-backend"))]
 mod gauge;
+#[cfg(not(feature = "foundations-metrics-backend"))]
 mod rewind;
 
 pub(super) mod init;
 
 #[doc(hidden)]
+#[cfg(not(feature = "foundations-metrics-backend"))]
 pub mod internal;
 
+#[doc(hidden)]
+#[cfg(feature = "foundations-metrics-backend")]
+#[path = "internal_backend.rs"]
+pub mod internal;
+
+#[cfg(not(feature = "foundations-metrics-backend"))]
 use internal::{ErasedInfoMetric, Registries};
 
-pub use gauge::{GaugeGuard, RangeGauge};
-pub use prometheus_client::metrics::exemplar::{CounterWithExemplar, HistogramWithExemplars};
-pub use prometheus_client::metrics::family::MetricConstructor;
-pub use prometheus_client::metrics::gauge::Gauge;
-pub use prometheus_client::metrics::histogram::Histogram;
-pub use prometools::histogram::{HistogramTimer, TimeHistogram};
-pub use prometools::nonstandard::NonstandardUnsuffixedCounter as Counter;
-pub use prometools::serde::Family;
+#[cfg(feature = "foundations-metrics-backend")]
+mod backend {
+    pub use foundations_metrics::{
+        Counter, CounterWithExemplar, Family, Gauge, GaugeGuard, Histogram, HistogramTimer,
+        HistogramWithExemplars, InfoMetric, MetricConstructor, RangeGauge, TimeHistogram,
+    };
+}
+#[cfg(not(feature = "foundations-metrics-backend"))]
+mod backend {
+    pub use super::gauge::{GaugeGuard, RangeGauge};
+    pub use prometheus_client::metrics::exemplar::{CounterWithExemplar, HistogramWithExemplars};
+    pub use prometheus_client::metrics::family::MetricConstructor;
+    pub use prometheus_client::metrics::gauge::Gauge;
+    pub use prometheus_client::metrics::histogram::Histogram;
+    pub use prometools::histogram::{HistogramTimer, TimeHistogram};
+    pub use prometools::nonstandard::NonstandardUnsuffixedCounter as Counter;
+    pub use prometools::serde::Family;
+}
+
+pub use backend::*;
 
 /// Collects all metrics in [Prometheus text format].
 ///
 /// [Prometheus text format]: https://prometheus.io/docs/instrumenting/exposition_formats/#text-based-format
 pub fn collect(settings: &MetricsSettings) -> Result<String> {
-    let mut buffer = Vec::with_capacity(128);
+    let mut buffer: Vec<u8> = Vec::with_capacity(128);
 
-    Registries::collect(&mut buffer, settings.report_optional)?;
-    TextEncoder::new().encode(&prometheus::gather(), &mut buffer)?;
+    #[cfg(not(feature = "foundations-metrics-backend"))]
+    {
+        Registries::collect(&mut buffer, settings.report_optional)?;
+        TextEncoder::new().encode(&prometheus::gather(), &mut buffer)?;
+    }
+
+    #[cfg(feature = "foundations-metrics-backend")]
+    {
+        // The service name is only known once telemetry is initialized, so it is
+        // applied here rather than at registration time.
+        let service_name_format = match &settings.service_name_format {
+            SettingsServiceNameFormat::MetricPrefix => {
+                foundations_metrics::ServiceNameFormat::MetricPrefix
+            }
+            SettingsServiceNameFormat::LabelWithName(label_name) => {
+                foundations_metrics::ServiceNameFormat::LabelWithName(label_name)
+            }
+        };
+
+        let families = foundations_metrics::collect(foundations_metrics::CollectionOptions {
+            include_optional: settings.report_optional,
+            service_name: Some(init::service_name()),
+            service_name_format,
+        });
+
+        buffer.extend_from_slice(foundations_metrics::encode_to_text(&families).as_bytes());
+
+        // Extra producers append their own terminated output, so the terminator
+        // is dropped here and re-added once everything has been produced.
+        truncate_eof(&mut buffer);
+
+        if let Some(producers) = EXTRA_PRODUCERS.get() {
+            for producer in producers.read().iter() {
+                producer.produce(&mut buffer);
+                truncate_eof(&mut buffer);
+            }
+        }
+    }
 
     buffer.extend_from_slice(b"# EOF\n");
 
@@ -51,6 +118,16 @@ pub fn collect(settings: &MetricsSettings) -> Result<String> {
         String::from_utf8_lossy(err.as_bytes()).into_owned()
     });
     Ok(metrics_str)
+}
+
+/// Removes the trailing OpenMetrics terminator, if present.
+#[cfg(feature = "foundations-metrics-backend")]
+fn truncate_eof(buffer: &mut Vec<u8>) {
+    const EOF_MARKER: &[u8] = b"# EOF\n";
+
+    if buffer.ends_with(EOF_MARKER) {
+        buffer.truncate(buffer.len() - EOF_MARKER.len());
+    }
 }
 
 #[inline]
@@ -343,6 +420,7 @@ pub use foundations_macros::info_metric;
 /// Info metrics are used to expose textual information, through the label set, which should not
 /// change often during process lifetime. Common examples are an application's version, revision
 /// control commit, and the version of a compiler.
+#[cfg(not(feature = "foundations-metrics-backend"))]
 pub trait InfoMetric: Serialize + Send + Sync + 'static {
     /// The name of the info metric.
     const NAME: &'static str;
@@ -372,10 +450,18 @@ pub fn report_info<M>(info_metric: impl Into<Box<M>>)
 where
     M: InfoMetric,
 {
-    Registries::get().info.write().insert(
-        TypeId::of::<M>(),
-        info_metric.into() as Box<dyn ErasedInfoMetric>,
-    );
+    #[cfg(not(feature = "foundations-metrics-backend"))]
+    {
+        Registries::get().info.write().insert(
+            TypeId::of::<M>(),
+            info_metric.into() as Box<dyn ErasedInfoMetric>,
+        );
+    }
+
+    #[cfg(feature = "foundations-metrics-backend")]
+    {
+        foundations_metrics::report_info(info_metric);
+    }
 }
 
 /// A builder suitable for [`Histogram`] and [`TimeHistogram`].
@@ -478,8 +564,23 @@ pub fn add_extra_producer<P>(p: P)
 where
     P: ExtraProducer + 'static,
 {
+    #[cfg(not(feature = "foundations-metrics-backend"))]
     Registries::get().add_extra_producer(Box::new(p));
+
+    #[cfg(feature = "foundations-metrics-backend")]
+    EXTRA_PRODUCERS
+        .get_or_init(Default::default)
+        .write()
+        .push(Box::new(p));
 }
+
+/// Producers appended to the collected metrics, in registration order.
+///
+/// The metric registry only holds metrics that encode into the protobuf data
+/// model, so text-emitting producers are kept here instead.
+#[cfg(feature = "foundations-metrics-backend")]
+static EXTRA_PRODUCERS: OnceLock<parking_lot::RwLock<Vec<Box<dyn ExtraProducer>>>> =
+    OnceLock::new();
 
 /// Describes something that can expand prometheus metrics but appending
 /// them in a text format to a provided buffer.
