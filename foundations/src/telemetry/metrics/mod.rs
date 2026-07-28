@@ -173,11 +173,13 @@ impl ScrapeFormat {
 /// Chooses the most preferred format that the active encoder can produce, given
 /// the value of a request's `Accept` header.
 ///
-/// Absent or unusable preferences fall back to legacy OpenMetrics text.
+/// `None` means the header ruled out every format this server can produce, which
+/// the caller answers with `406`. An absent header expresses no preference and
+/// yields the fallback instead.
 #[cfg(feature = "foundations-metrics-backend")]
-fn negotiate(accept: Option<&str>) -> ScrapeFormat {
+fn negotiate(accept: Option<&str>, protobuf_available: bool) -> Option<ScrapeFormat> {
     let Some(accept) = accept else {
-        return ScrapeFormat::fallback();
+        return Some(ScrapeFormat::fallback());
     };
 
     let mut best: Option<(f32, ScrapeFormat)> = None;
@@ -219,8 +221,10 @@ fn negotiate(accept: Option<&str>) -> ScrapeFormat {
         }
 
         let format = if media_type.eq_ignore_ascii_case("application/vnd.google.protobuf") {
-            // Only delimited streams of this message type are produced.
-            if proto.is_some_and(|proto| proto == "io.prometheus.client.MetricFamily")
+            // Only delimited streams of this message type are produced, and only
+            // when protobuf can carry the whole exposition.
+            if protobuf_available
+                && proto.is_some_and(|proto| proto == "io.prometheus.client.MetricFamily")
                 && encoding.is_some_and(|encoding| encoding.eq_ignore_ascii_case("delimited"))
             {
                 ScrapeFormat::Protobuf
@@ -244,7 +248,22 @@ fn negotiate(accept: Option<&str>) -> ScrapeFormat {
         }
     }
 
-    best.map_or_else(ScrapeFormat::fallback, |(_, format)| format)
+    best.map(|(_, format)| format)
+}
+
+/// Reports whether protobuf can represent everything this process exposes.
+///
+/// Extra producers hand over opaque text, which cannot be transcoded into the
+/// protobuf data model, so serving protobuf while any are registered would
+/// silently drop every series they emit.
+///
+/// Evaluated per scrape because producers may be registered at any point.
+#[cfg(feature = "foundations-metrics-backend")]
+#[allow(deprecated)]
+fn protobuf_available() -> bool {
+    EXTRA_PRODUCERS
+        .get()
+        .is_none_or(|producers| producers.read().is_empty())
 }
 
 /// Collects metrics in the format a scraper asked for through its `Accept` header.
@@ -253,6 +272,9 @@ fn negotiate(accept: Option<&str>) -> ScrapeFormat {
 /// disagree; deriving one separately from the other is how a response ends up
 /// declaring a format it did not encode.
 ///
+/// `Ok(None)` means no requested format could be served and the caller should
+/// answer `406`.
+///
 /// The negotiated escaping is currently reported rather than enforced: the text
 /// encoder quotes a name whenever that name requires it, regardless of what the
 /// scraper asked for. Names produced in-tree are all legacy compatible, so the
@@ -260,23 +282,28 @@ fn negotiate(accept: Option<&str>) -> ScrapeFormat {
 pub(crate) fn collect_negotiated(
     accept: Option<&str>,
     settings: &MetricsSettings,
-) -> Result<(&'static str, Vec<u8>)> {
+) -> Result<Option<(&'static str, Vec<u8>)>> {
     #[cfg(feature = "foundations-metrics-backend")]
     {
-        let format = negotiate(accept);
+        let Some(format) = negotiate(accept, protobuf_available()) else {
+            return Ok(None);
+        };
 
-        // Extra producers emit text, so they cannot contribute to a protobuf
-        // response; only registered metrics are encoded for it.
+        // Protobuf is only reachable with no extra producers registered, so the
+        // registry holds everything and skipping them here loses nothing.
         if format == ScrapeFormat::Protobuf {
             let families = foundations_metrics::collect(collection_options(settings));
 
-            return Ok((
+            return Ok(Some((
                 format.content_type(),
                 foundations_metrics::encode_to_protobuf(&families),
-            ));
+            )));
         }
 
-        Ok((format.content_type(), collect(settings)?.into_bytes()))
+        Ok(Some((
+            format.content_type(),
+            collect(settings)?.into_bytes(),
+        )))
     }
 
     // The legacy encoder produces text only, so there is nothing to negotiate.
@@ -284,7 +311,7 @@ pub(crate) fn collect_negotiated(
     {
         let _ = accept;
 
-        Ok((LEGACY_CONTENT_TYPE, collect(settings)?.into_bytes()))
+        Ok(Some((LEGACY_CONTENT_TYPE, collect(settings)?.into_bytes())))
     }
 }
 
@@ -778,110 +805,121 @@ where
 mod negotiation_tests {
     use super::*;
 
-    const TEXT: ScrapeFormat = ScrapeFormat::Text { utf8_names: false };
-    const TEXT_UTF8: ScrapeFormat = ScrapeFormat::Text { utf8_names: true };
+    const TEXT: Option<ScrapeFormat> = Some(ScrapeFormat::Text { utf8_names: false });
+    const TEXT_UTF8: Option<ScrapeFormat> = Some(ScrapeFormat::Text { utf8_names: true });
+    const PROTOBUF: Option<ScrapeFormat> = Some(ScrapeFormat::Protobuf);
+
+    /// What Prometheus sends unless configured to prefer protobuf.
+    const PROMETHEUS_DEFAULT: &str = "application/openmetrics-text;version=1.0.0;q=0.5,\
+                                      text/plain;version=0.0.4;q=0.4,*/*;q=0.1";
+
+    const PROTOBUF_PREFERRED: &str = "application/vnd.google.protobuf;\
+                                      proto=io.prometheus.client.MetricFamily;\
+                                      encoding=delimited;q=0.5,\
+                                      application/openmetrics-text;version=1.0.0;q=0.4";
+
+    /// Delimited protobuf and nothing else: no text range, no `*/*`.
+    const PROTOBUF_ONLY: &str = "application/vnd.google.protobuf;\
+                                 proto=io.prometheus.client.MetricFamily;encoding=delimited";
 
     #[test]
     fn absent_header_falls_back_to_legacy_text() {
-        assert_eq!(negotiate(None), TEXT);
+        assert_eq!(negotiate(None, true), TEXT);
     }
 
     #[test]
     fn prometheus_default_accept_selects_text() {
-        assert_eq!(
-            negotiate(Some(
-                "application/openmetrics-text;version=1.0.0;q=0.5,\
-                 text/plain;version=0.0.4;q=0.4,*/*;q=0.1"
-            )),
-            TEXT
-        );
+        assert_eq!(negotiate(Some(PROMETHEUS_DEFAULT), true), TEXT);
     }
 
     #[test]
     fn utf8_escaping_is_detected() {
-        assert_eq!(
-            negotiate(Some(
-                "application/openmetrics-text;version=1.0.0;escaping=allow-utf-8;q=0.5,*/*;q=0.1"
-            )),
-            TEXT_UTF8
-        );
+        let accept =
+            "application/openmetrics-text;version=1.0.0;escaping=allow-utf-8;q=0.5,*/*;q=0.1";
+
+        assert_eq!(negotiate(Some(accept), true), TEXT_UTF8);
     }
 
     #[test]
     fn delimited_protobuf_wins_when_preferred() {
-        assert_eq!(
-            negotiate(Some(
-                "application/vnd.google.protobuf;proto=io.prometheus.client.MetricFamily;\
-                 encoding=delimited;q=0.5,application/openmetrics-text;version=1.0.0;q=0.4"
-            )),
-            ScrapeFormat::Protobuf
-        );
+        assert_eq!(negotiate(Some(PROTOBUF_PREFERRED), true), PROTOBUF);
     }
 
     #[test]
     fn protobuf_without_delimited_encoding_is_not_offered() {
-        assert_eq!(
-            negotiate(Some(
-                "application/vnd.google.protobuf;proto=io.prometheus.client.MetricFamily;q=0.9,\
-                 text/plain;q=0.1"
-            )),
-            TEXT
-        );
+        let accept = "application/vnd.google.protobuf;\
+                      proto=io.prometheus.client.MetricFamily;q=0.9,text/plain;q=0.1";
+
+        assert_eq!(negotiate(Some(accept), true), TEXT);
     }
 
     #[test]
     fn zero_quality_refuses_a_format() {
-        assert_eq!(
-            negotiate(Some(
-                "application/openmetrics-text;escaping=allow-utf-8;q=0,text/plain;q=0.4"
-            )),
-            TEXT
-        );
+        let accept = "application/openmetrics-text;escaping=allow-utf-8;q=0,text/plain;q=0.4";
+
+        assert_eq!(negotiate(Some(accept), true), TEXT);
     }
 
     #[test]
     fn malformed_quality_refuses_a_format() {
-        assert_eq!(
-            negotiate(Some(
-                "application/openmetrics-text;escaping=allow-utf-8;q=garbage,text/plain;q=0.4"
-            )),
-            TEXT
-        );
-    }
+        let accept = "application/openmetrics-text;escaping=allow-utf-8;q=garbage,text/plain;q=0.4";
 
-    #[test]
-    fn malformed_quality_on_the_only_range_falls_back() {
-        assert_eq!(
-            negotiate(Some(
-                "application/vnd.google.protobuf;proto=io.prometheus.client.MetricFamily;\
-                 encoding=delimited;q="
-            )),
-            TEXT
-        );
+        assert_eq!(negotiate(Some(accept), true), TEXT);
     }
 
     #[test]
     fn parameters_tolerate_whitespace_case_and_quoting() {
-        assert_eq!(
-            negotiate(Some(
-                "  APPLICATION/OpenMetrics-Text ; Version=1.0.0 ; Escaping=\"Allow-UTF-8\" ; Q=0.7 "
-            )),
-            TEXT_UTF8
-        );
-    }
+        let accept =
+            "  APPLICATION/OpenMetrics-Text ; Version=1.0.0 ; Escaping=\"Allow-UTF-8\" ; Q=0.7 ";
 
-    #[test]
-    fn unknown_media_types_are_ignored() {
-        assert_eq!(negotiate(Some("application/json,text/html")), TEXT);
+        assert_eq!(negotiate(Some(accept), true), TEXT_UTF8);
     }
 
     #[test]
     fn ties_keep_the_earliest_listed() {
-        assert_eq!(
-            negotiate(Some(
-                "application/openmetrics-text;escaping=allow-utf-8;q=0.5,text/plain;q=0.5"
-            )),
-            TEXT_UTF8
-        );
+        let accept = "application/openmetrics-text;escaping=allow-utf-8;q=0.5,text/plain;q=0.5";
+
+        assert_eq!(negotiate(Some(accept), true), TEXT_UTF8);
+    }
+
+    #[test]
+    fn protobuf_is_withheld_when_unavailable() {
+        assert_eq!(negotiate(Some(PROTOBUF_PREFERRED), false), TEXT);
+    }
+
+    #[test]
+    fn withholding_protobuf_leaves_text_negotiation_untouched() {
+        let utf8 = "application/openmetrics-text;escaping=allow-utf-8;q=0.9,text/plain;q=0.1";
+
+        assert_eq!(negotiate(Some(utf8), false), TEXT_UTF8);
+        assert_eq!(negotiate(Some(PROMETHEUS_DEFAULT), false), TEXT);
+        assert_eq!(negotiate(None, false), TEXT);
+    }
+
+    /// A scraper accepting only protobuf could not read text, so refusing is more
+    /// informative than sending something it must discard.
+    #[test]
+    fn protobuf_only_is_refused_when_unavailable() {
+        assert_eq!(negotiate(Some(PROTOBUF_ONLY), false), None);
+    }
+
+    #[test]
+    fn protobuf_only_is_served_when_available() {
+        assert_eq!(negotiate(Some(PROTOBUF_ONLY), true), PROTOBUF);
+    }
+
+    #[test]
+    fn unservable_media_types_are_refused() {
+        assert_eq!(negotiate(Some("application/json,text/html"), true), None);
+    }
+
+    /// RFC 9110 §12.4.2 invalidates a range with an unparseable weight, leaving
+    /// nothing acceptable behind.
+    #[test]
+    fn malformed_quality_on_the_only_range_is_refused() {
+        let accept = "application/vnd.google.protobuf;\
+                      proto=io.prometheus.client.MetricFamily;encoding=delimited;q=";
+
+        assert_eq!(negotiate(Some(accept), true), None);
     }
 }
