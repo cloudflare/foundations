@@ -305,7 +305,7 @@ fn not_acceptable() -> Result<Response<TelemetryRouteBody>, Infallible> {
             )
             .map_err(Into::into),
         ))
-        .unwrap())
+        .expect("a static status, content type, and body always build a valid response"))
 }
 
 fn into_response(
