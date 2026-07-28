@@ -117,12 +117,20 @@ impl Routes {
         self.set(TelemetryServerRoute {
             path: "/metrics".into(),
             methods: vec![Method::GET],
-            handler: Box::new(|_, settings| {
+            handler: Box::new(|req, settings| {
+                let accept = req
+                    .headers()
+                    .get(header::ACCEPT)
+                    .and_then(|v| v.to_str().ok())
+                    .map(str::to_owned);
                 async move {
-                    into_response(
-                        "application/openmetrics-text; version=1.0.0; charset=utf-8",
-                        metrics::collect(&settings.metrics),
-                    )
+                    match metrics::collect_negotiated(accept.as_deref(), &settings.metrics) {
+                        Ok((content_type, body)) => into_response(content_type, Ok(body)),
+                        // Errors are reported as plain text, so the content type
+                        // given here is unused; the body type only needs naming
+                        // because `Err` alone leaves it unconstrained.
+                        Err(err) => into_response("text/plain", Err::<Vec<u8>, _>(err)),
+                    }
                 }
                 .boxed()
             }),

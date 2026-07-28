@@ -74,6 +74,28 @@ mod backend {
 
 pub use backend::*;
 
+/// Translates telemetry settings into collection options.
+///
+/// The service name is only known once telemetry is initialized, so it is
+/// applied at collection time rather than at registration time.
+#[cfg(feature = "foundations-metrics-backend")]
+fn collection_options(settings: &MetricsSettings) -> foundations_metrics::CollectionOptions<'_> {
+    let service_name_format = match &settings.service_name_format {
+        SettingsServiceNameFormat::MetricPrefix => {
+            foundations_metrics::ServiceNameFormat::MetricPrefix
+        }
+        SettingsServiceNameFormat::LabelWithName(label_name) => {
+            foundations_metrics::ServiceNameFormat::LabelWithName(label_name)
+        }
+    };
+
+    foundations_metrics::CollectionOptions {
+        include_optional: settings.report_optional,
+        service_name: Some(init::service_name()),
+        service_name_format,
+    }
+}
+
 /// Collects all metrics in [Prometheus text format].
 ///
 /// [Prometheus text format]: https://prometheus.io/docs/instrumenting/exposition_formats/#text-based-format
@@ -88,22 +110,7 @@ pub fn collect(settings: &MetricsSettings) -> Result<String> {
 
     #[cfg(feature = "foundations-metrics-backend")]
     {
-        // The service name is only known once telemetry is initialized, so it is
-        // applied here rather than at registration time.
-        let service_name_format = match &settings.service_name_format {
-            SettingsServiceNameFormat::MetricPrefix => {
-                foundations_metrics::ServiceNameFormat::MetricPrefix
-            }
-            SettingsServiceNameFormat::LabelWithName(label_name) => {
-                foundations_metrics::ServiceNameFormat::LabelWithName(label_name)
-            }
-        };
-
-        let families = foundations_metrics::collect(foundations_metrics::CollectionOptions {
-            include_optional: settings.report_optional,
-            service_name: Some(init::service_name()),
-            service_name_format,
-        });
+        let families = foundations_metrics::collect(collection_options(settings));
 
         buffer.extend_from_slice(foundations_metrics::encode_to_text(&families).as_bytes());
 
@@ -127,6 +134,155 @@ pub fn collect(settings: &MetricsSettings) -> Result<String> {
         String::from_utf8_lossy(err.as_bytes()).into_owned()
     });
     Ok(metrics_str)
+}
+
+const LEGACY_CONTENT_TYPE: &str = "application/openmetrics-text; version=1.0.0; charset=utf-8";
+
+/// Wire format a scraper asked for.
+#[cfg(feature = "foundations-metrics-backend")]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ScrapeFormat {
+    /// Length-delimited Prometheus protobuf, the only format able to carry
+    /// native histograms.
+    Protobuf,
+
+    /// OpenMetrics text, optionally permitted to quote UTF-8 names.
+    Text { utf8_names: bool },
+}
+
+#[cfg(feature = "foundations-metrics-backend")]
+impl ScrapeFormat {
+    /// The format assumed when a scraper expresses no usable preference.
+    const fn fallback() -> Self {
+        Self::Text { utf8_names: false }
+    }
+
+    /// Content type describing what this format produces.
+    ///
+    /// Each string is owned by the encoder that emits it, so that what is
+    /// advertised cannot drift from what is produced.
+    fn content_type(self) -> &'static str {
+        match self {
+            Self::Protobuf => foundations_metrics::PROTOBUF_CONTENT_TYPE,
+            Self::Text { utf8_names: true } => foundations_metrics::OPENMETRICS_CONTENT_TYPE,
+            Self::Text { utf8_names: false } => LEGACY_CONTENT_TYPE,
+        }
+    }
+}
+
+/// Chooses the most preferred format that the active encoder can produce, given
+/// the value of a request's `Accept` header.
+///
+/// Absent or unusable preferences fall back to legacy OpenMetrics text.
+#[cfg(feature = "foundations-metrics-backend")]
+fn negotiate(accept: Option<&str>) -> ScrapeFormat {
+    let Some(accept) = accept else {
+        return ScrapeFormat::fallback();
+    };
+
+    let mut best: Option<(f32, ScrapeFormat)> = None;
+
+    for range in accept.split(',') {
+        let mut parts = range.split(';').map(str::trim);
+        let Some(media_type) = parts.next().filter(|media| !media.is_empty()) else {
+            continue;
+        };
+
+        let mut quality = 1.0f32;
+        let (mut escaping, mut proto, mut encoding) = (None, None, None);
+
+        for parameter in parts {
+            let Some((name, value)) = parameter.split_once('=') else {
+                continue;
+            };
+
+            let value = value.trim().trim_matches('"');
+            let name = name.trim();
+
+            if name.eq_ignore_ascii_case("q") {
+                quality = value.parse().unwrap_or(1.0);
+            } else if name.eq_ignore_ascii_case("escaping") {
+                escaping = Some(value);
+            } else if name.eq_ignore_ascii_case("proto") {
+                proto = Some(value);
+            } else if name.eq_ignore_ascii_case("encoding") {
+                encoding = Some(value);
+            }
+        }
+
+        // `q=0` refuses a format outright rather than ranking it last.
+        if quality <= 0.0 {
+            continue;
+        }
+
+        let format = if media_type.eq_ignore_ascii_case("application/vnd.google.protobuf") {
+            // Only delimited streams of this message type are produced.
+            if proto.is_some_and(|proto| proto == "io.prometheus.client.MetricFamily")
+                && encoding.is_some_and(|encoding| encoding.eq_ignore_ascii_case("delimited"))
+            {
+                ScrapeFormat::Protobuf
+            } else {
+                continue;
+            }
+        } else if media_type.eq_ignore_ascii_case("application/openmetrics-text") {
+            ScrapeFormat::Text {
+                utf8_names: escaping
+                    .is_some_and(|escaping| escaping.eq_ignore_ascii_case("allow-utf-8")),
+            }
+        } else if media_type.eq_ignore_ascii_case("text/plain") || media_type == "*/*" {
+            ScrapeFormat::Text { utf8_names: false }
+        } else {
+            continue;
+        };
+
+        // Highest quality wins; ties keep the earliest listed.
+        if best.is_none_or(|(best_quality, _)| quality > best_quality) {
+            best = Some((quality, format));
+        }
+    }
+
+    best.map_or_else(ScrapeFormat::fallback, |(_, format)| format)
+}
+
+/// Collects metrics in the format a scraper asked for through its `Accept` header.
+///
+/// The content type is returned alongside the body so that the two cannot
+/// disagree; deriving one separately from the other is how a response ends up
+/// declaring a format it did not encode.
+///
+/// The negotiated escaping is currently reported rather than enforced: the text
+/// encoder quotes a name whenever that name requires it, regardless of what the
+/// scraper asked for. Names produced in-tree are all legacy compatible, so the
+/// two agree in practice.
+pub(crate) fn collect_negotiated(
+    accept: Option<&str>,
+    settings: &MetricsSettings,
+) -> Result<(&'static str, Vec<u8>)> {
+    #[cfg(feature = "foundations-metrics-backend")]
+    {
+        let format = negotiate(accept);
+
+        // Extra producers emit text, so they cannot contribute to a protobuf
+        // response; only registered metrics are encoded for it.
+        if format == ScrapeFormat::Protobuf {
+            let families = foundations_metrics::collect(collection_options(settings));
+
+            return Ok((
+                format.content_type(),
+                foundations_metrics::encode_to_protobuf(&families),
+            ));
+        }
+
+        Ok((format.content_type(), collect(settings)?.into_bytes()))
+    }
+
+    // The legacy encoder produces text only, so there is nothing to negotiate.
+    #[cfg(not(feature = "foundations-metrics-backend"))]
+    {
+        let _ = accept;
+
+        Ok((LEGACY_CONTENT_TYPE, collect(settings)?.into_bytes()))
+    }
 }
 
 /// Removes the trailing OpenMetrics terminator, if present.
@@ -612,5 +768,96 @@ where
 {
     fn produce(&self, buffer: &mut Vec<u8>) {
         self(buffer)
+    }
+}
+
+#[cfg(all(test, feature = "foundations-metrics-backend"))]
+mod negotiation_tests {
+    use super::*;
+
+    const TEXT: ScrapeFormat = ScrapeFormat::Text { utf8_names: false };
+    const TEXT_UTF8: ScrapeFormat = ScrapeFormat::Text { utf8_names: true };
+
+    #[test]
+    fn absent_header_falls_back_to_legacy_text() {
+        assert_eq!(negotiate(None), TEXT);
+    }
+
+    #[test]
+    fn prometheus_default_accept_selects_text() {
+        assert_eq!(
+            negotiate(Some(
+                "application/openmetrics-text;version=1.0.0;q=0.5,\
+                 text/plain;version=0.0.4;q=0.4,*/*;q=0.1"
+            )),
+            TEXT
+        );
+    }
+
+    #[test]
+    fn utf8_escaping_is_detected() {
+        assert_eq!(
+            negotiate(Some(
+                "application/openmetrics-text;version=1.0.0;escaping=allow-utf-8;q=0.5,*/*;q=0.1"
+            )),
+            TEXT_UTF8
+        );
+    }
+
+    #[test]
+    fn delimited_protobuf_wins_when_preferred() {
+        assert_eq!(
+            negotiate(Some(
+                "application/vnd.google.protobuf;proto=io.prometheus.client.MetricFamily;\
+                 encoding=delimited;q=0.5,application/openmetrics-text;version=1.0.0;q=0.4"
+            )),
+            ScrapeFormat::Protobuf
+        );
+    }
+
+    #[test]
+    fn protobuf_without_delimited_encoding_is_not_offered() {
+        assert_eq!(
+            negotiate(Some(
+                "application/vnd.google.protobuf;proto=io.prometheus.client.MetricFamily;q=0.9,\
+                 text/plain;q=0.1"
+            )),
+            TEXT
+        );
+    }
+
+    #[test]
+    fn zero_quality_refuses_a_format() {
+        assert_eq!(
+            negotiate(Some(
+                "application/openmetrics-text;escaping=allow-utf-8;q=0,text/plain;q=0.4"
+            )),
+            TEXT
+        );
+    }
+
+    #[test]
+    fn parameters_tolerate_whitespace_case_and_quoting() {
+        assert_eq!(
+            negotiate(Some(
+                "  APPLICATION/OpenMetrics-Text ; Version=1.0.0 ; Escaping=\"Allow-UTF-8\" ; Q=0.7 "
+            )),
+            TEXT_UTF8
+        );
+    }
+
+    #[test]
+    fn unknown_media_types_are_ignored() {
+        assert_eq!(negotiate(Some("application/json,text/html")), TEXT);
+    }
+
+    #[test]
+    fn ties_keep_the_earliest_listed() {
+        assert_eq!(
+            negotiate(Some(
+                "application/openmetrics-text;escaping=allow-utf-8;q=0.5,text/plain;q=0.5"
+            )),
+            TEXT_UTF8
+        );
     }
 }
