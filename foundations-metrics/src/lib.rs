@@ -4,6 +4,9 @@
 //! and the logic that encodes them into the Prometheus protobuf data model. It
 //! builds on the slow-moving `foundations-metrics-registry` crate, which owns the
 //! shared process-global registry and the stable wire format.
+//!
+//! Reaching these items through `foundations::telemetry::metrics` is a temporary fix,
+//! but still works; see the crate README for how to migrate off that facade.
 #![warn(missing_docs)]
 
 mod collect;

@@ -1,6 +1,7 @@
 [package]
 name = "foundations-metrics"
 version = "0.1.0"
+readme = "README.md"
 repository.workspace = true
 edition.workspace = true
 authors.workspace = true
