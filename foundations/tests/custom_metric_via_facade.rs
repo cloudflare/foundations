@@ -60,6 +60,9 @@ fn a_custom_metric_is_exposed_through_the_facade() {
     };
     let text = metrics::collect(&settings).expect("metrics should be collectable");
 
+    // Telemetry is never initialised here, so the service name prefix is the
+    // `UNINITIALISED_SERVICE_NAME` sentinel from `telemetry::metrics::init`
+    // ("undefined"). If that sentinel changes, this expectation changes with it.
     assert!(
         text.contains("undefined_facade_open_files{mount=\"/data\"} 5"),
         "collected output was: {text}"
