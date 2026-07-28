@@ -200,7 +200,10 @@ fn negotiate(accept: Option<&str>) -> ScrapeFormat {
             let name = name.trim();
 
             if name.eq_ignore_ascii_case("q") {
-                quality = value.parse().unwrap_or(1.0);
+                // RFC 9110 §12.4.2: an unparseable weight invalidates the
+                // media-range. Zero is the refusal value below, so a malformed
+                // `q` drops the range rather than promoting it to the top.
+                quality = value.parse().unwrap_or(0.0);
             } else if name.eq_ignore_ascii_case("escaping") {
                 escaping = Some(value);
             } else if name.eq_ignore_ascii_case("proto") {
@@ -831,6 +834,27 @@ mod negotiation_tests {
         assert_eq!(
             negotiate(Some(
                 "application/openmetrics-text;escaping=allow-utf-8;q=0,text/plain;q=0.4"
+            )),
+            TEXT
+        );
+    }
+
+    #[test]
+    fn malformed_quality_refuses_a_format() {
+        assert_eq!(
+            negotiate(Some(
+                "application/openmetrics-text;escaping=allow-utf-8;q=garbage,text/plain;q=0.4"
+            )),
+            TEXT
+        );
+    }
+
+    #[test]
+    fn malformed_quality_on_the_only_range_falls_back() {
+        assert_eq!(
+            negotiate(Some(
+                "application/vnd.google.protobuf;proto=io.prometheus.client.MetricFamily;\
+                 encoding=delimited;q="
             )),
             TEXT
         );
