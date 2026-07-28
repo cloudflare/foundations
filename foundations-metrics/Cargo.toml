@@ -1,5 +1,6 @@
 [package]
 name = "foundations-metrics"
+description = "Concrete Prometheus metric types and encoders for the Foundations stack."
 version = "0.1.0"
 readme = "README.md"
 repository.workspace = true

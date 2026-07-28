@@ -1,5 +1,6 @@
 [package]
 name = "foundations-metrics-registry"
+description = "Process-global metric registry and Prometheus protobuf data model for Foundations."
 version = "0.1.0"
 edition = { workspace = true }
 repository = { workspace = true }
