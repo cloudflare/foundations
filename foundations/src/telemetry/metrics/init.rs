@@ -44,7 +44,17 @@ pub(super) fn service_name() -> &'static str {
 ///
 /// Must be called before any use of metrics defined
 /// by the `metrics` proc macro attribute.
-pub(crate) fn init(service_info: &ServiceInfo, settings: &MetricsSettings) {
+///
+/// # Errors
+///
+/// Fails if the configured service label name cannot be encoded.
+pub(crate) fn init(
+    service_info: &ServiceInfo,
+    settings: &MetricsSettings,
+) -> crate::BootstrapResult<()> {
+    #[cfg(feature = "foundations-metrics-backend")]
+    validate_service_name_format(settings)?;
+
     #[cfg(not(feature = "foundations-metrics-backend"))]
     let first_install = Registries::init(service_info, settings);
 
@@ -73,5 +83,70 @@ pub(crate) fn init(service_info: &ServiceInfo, settings: &MetricsSettings) {
         report_info(RuntimeInfo {
             pid: std::process::id(),
         });
+    }
+
+    Ok(())
+}
+
+/// Rejects a service label name that collection could not encode.
+///
+/// The setting is fixed for the process lifetime, so checking it here only
+/// changes how it is discovered: collection skips every metric family, leaving a
+/// scrape that reads as a healthy process exporting nothing. Failing startup
+/// names the setting at fault instead.
+#[cfg(feature = "foundations-metrics-backend")]
+fn validate_service_name_format(settings: &MetricsSettings) -> crate::BootstrapResult<()> {
+    use crate::telemetry::settings::ServiceNameFormat;
+
+    if let ServiceNameFormat::LabelWithName(label_name) = &settings.service_name_format
+        && !foundations_metrics::is_valid_name(label_name)
+    {
+        anyhow::bail!(
+            "metrics.service_name_format label name {label_name:?} cannot be encoded; expected {}",
+            foundations_metrics::NAME_REQUIREMENT,
+        );
+    }
+
+    Ok(())
+}
+
+/// Tested here rather than through `telemetry::init`, which refuses to run twice
+/// per process and so cannot assert the accepting and rejecting cases together.
+#[cfg(all(test, feature = "foundations-metrics-backend", feature = "settings"))]
+mod service_name_format_tests {
+    use super::*;
+    use crate::telemetry::settings::ServiceNameFormat;
+
+    fn validate(format: ServiceNameFormat) -> crate::BootstrapResult<()> {
+        validate_service_name_format(&MetricsSettings {
+            service_name_format: format,
+            ..Default::default()
+        })
+    }
+
+    #[test]
+    fn usable_label_names_are_accepted() {
+        for name in ["service", "app_name", "a", "sérvice", "with space"] {
+            assert!(
+                validate(ServiceNameFormat::LabelWithName(name.to_owned())).is_ok(),
+                "{name:?} is encodable and should be accepted"
+            );
+        }
+    }
+
+    #[test]
+    fn unencodable_label_names_are_rejected() {
+        for name in ["", "\0", "ser\0vice"] {
+            assert!(
+                validate(ServiceNameFormat::LabelWithName(name.to_owned())).is_err(),
+                "{name:?} cannot be encoded and should be rejected"
+            );
+        }
+    }
+
+    /// Prefixing composes a family name that the encoders validate themselves.
+    #[test]
+    fn metric_prefix_format_is_not_subject_to_the_check() {
+        assert!(validate(ServiceNameFormat::MetricPrefix).is_ok());
     }
 }

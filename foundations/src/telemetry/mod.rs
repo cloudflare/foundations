@@ -344,7 +344,7 @@ pub fn init(config: TelemetryConfig) -> BootstrapResult<TelemetryDriver> {
     }
 
     #[cfg(feature = "metrics")]
-    self::metrics::init::init(config.service_info, &config.settings.metrics);
+    self::metrics::init::init(config.service_info, &config.settings.metrics)?;
 
     #[cfg(feature = "metrics")]
     crate::panic::install_hook();

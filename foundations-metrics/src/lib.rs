@@ -35,4 +35,5 @@ pub use metrics::{
     NativeHistogramBuilder, RangeGauge, TimeHistogram, WithExemplar,
 };
 pub use registered::NamedMetric;
+pub use validation::{NAME_REQUIREMENT, is_valid_name};
 pub use value::EncodeMetricValue;
