@@ -116,9 +116,15 @@ async fn extra_producers_withhold_protobuf() {
         "expected exactly one terminator, body was: {text}"
     );
 
-    // This scraper cannot read text, so it is refused rather than sent a body it
-    // would have to discard.
-    let (status, ..) = scrape(PROTOBUF_ONLY).await;
+    // Nothing this scraper accepts can be served: protobuf is withheld and it
+    // offers no text range. A 406 would cost the scrape entirely, so it is sent
+    // text it did not ask for instead, which the body assertions above already
+    // cover since both responses take the same encoding path.
+    let (status, content_type, ..) = scrape(PROTOBUF_ONLY).await;
 
-    assert_eq!(status, reqwest::StatusCode::NOT_ACCEPTABLE);
+    assert_eq!(status, reqwest::StatusCode::OK);
+    assert!(
+        content_type.starts_with("application/openmetrics-text"),
+        "unsatisfiable Accept should fall back to text, got: {content_type}"
+    );
 }

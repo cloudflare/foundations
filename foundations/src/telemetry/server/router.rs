@@ -125,8 +125,7 @@ impl Routes {
                     .map(str::to_owned);
                 async move {
                     match metrics::collect_negotiated(accept.as_deref(), &settings.metrics) {
-                        Ok(Some((content_type, body))) => into_response(content_type, Ok(body)),
-                        Ok(None) => not_acceptable(),
+                        Ok((content_type, body)) => into_response(content_type, Ok(body)),
                         // Errors are reported as plain text, so the content type
                         // given here is unused; the body type only needs naming
                         // because `Err` alone leaves it unconstrained.
@@ -288,24 +287,6 @@ impl Service<Request<Incoming>> for Router {
 
         async move { Ok(router.handle_request(req).await) }.boxed()
     }
-}
-
-/// Refuses a scrape whose `Accept` header excludes every format on offer.
-///
-/// OpenMetrics text is always available, so reaching this means the scraper
-/// refused text and would not have been able to read the response anyway.
-#[cfg(feature = "metrics")]
-fn not_acceptable() -> Result<Response<TelemetryRouteBody>, Infallible> {
-    Ok(Response::builder()
-        .status(StatusCode::NOT_ACCEPTABLE)
-        .header(header::CONTENT_TYPE, "text/plain; charset=utf-8")
-        .body(BoxBody::new(
-            Full::from(
-                "no acceptable metrics format; application/openmetrics-text is always offered\n",
-            )
-            .map_err(Into::into),
-        ))
-        .expect("a static status, content type, and body always build a valid response"))
 }
 
 fn into_response(
