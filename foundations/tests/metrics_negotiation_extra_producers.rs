@@ -117,9 +117,7 @@ async fn extra_producers_withhold_protobuf() {
     );
 
     // Nothing this scraper accepts can be served: protobuf is withheld and it
-    // offers no text range. A 406 would cost the scrape entirely, so it is sent
-    // text it did not ask for instead, which the body assertions above already
-    // cover since both responses take the same encoding path.
+    // offers no text range, so it receives the fallback text format.
     let (status, content_type, ..) = scrape(PROTOBUF_ONLY).await;
 
     assert_eq!(status, reqwest::StatusCode::OK);

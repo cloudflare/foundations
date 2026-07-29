@@ -49,8 +49,8 @@ use internal::{ErasedInfoMetric, Registries};
 mod backend {
     pub use foundations_metrics::{
         Counter, CounterWithExemplar, Family, Gauge, GaugeGuard, Histogram, HistogramTimer,
-        HistogramWithExemplars, InfoMetric, MetricConstructor, RangeGauge, TimeHistogram,
-        NativeHistogram, NativeHistogramBuilder, NativeHistogramWithExemplars
+        HistogramWithExemplars, InfoMetric, MetricConstructor, NativeHistogram,
+        NativeHistogramBuilder, NativeHistogramWithExemplars, RangeGauge, TimeHistogram,
     };
 
     // Everything needed to define, register, and label a custom metric. The
@@ -174,9 +174,8 @@ impl ScrapeFormat {
 /// Chooses the most preferred format that the active encoder can produce, given
 /// the value of a request's `Accept` header.
 ///
-/// `None` means the header ruled out every format this server can produce, which
-/// the caller answers with `406`. An absent header expresses no preference and
-/// yields the fallback instead.
+/// `None` means the header ruled out every format this server can produce. An
+/// absent header expresses no preference and yields the fallback instead.
 #[cfg(feature = "foundations-metrics-backend")]
 fn negotiate(accept: Option<&str>, protobuf_available: bool) -> Option<ScrapeFormat> {
     let Some(accept) = accept else {
@@ -203,7 +202,7 @@ fn negotiate(accept: Option<&str>, protobuf_available: bool) -> Option<ScrapeFor
             let name = name.trim();
 
             if name.eq_ignore_ascii_case("q") {
-                // RFC 9110 §12.4.2: an unparseable weight invalidates the
+                // RFC 9110: an unparseable weight invalidates the
                 // media-range. Zero is the refusal value below, so a malformed
                 // `q` drops the range rather than promoting it to the top.
                 quality = value.parse().unwrap_or(0.0);
@@ -273,8 +272,8 @@ fn protobuf_available() -> bool {
 /// disagree; deriving one separately from the other is how a response ends up
 /// declaring a format it did not encode.
 ///
-/// `Ok(None)` means no requested format could be served and the caller should
-/// answer `406`.
+/// An `Accept` header that rules out every available format is served the
+/// fallback text format, after logging a warning.
 ///
 /// The negotiated escaping is currently reported rather than enforced: the text
 /// encoder quotes a name whenever that name requires it, regardless of what the
@@ -283,28 +282,31 @@ fn protobuf_available() -> bool {
 pub(crate) fn collect_negotiated(
     accept: Option<&str>,
     settings: &MetricsSettings,
-) -> Result<Option<(&'static str, Vec<u8>)>> {
+) -> Result<(&'static str, Vec<u8>)> {
     #[cfg(feature = "foundations-metrics-backend")]
     {
-        let Some(format) = negotiate(accept, protobuf_available()) else {
-            return Ok(None);
-        };
+        let format = negotiate(accept, protobuf_available()).unwrap_or_else(|| {
+            let fallback = ScrapeFormat::fallback();
+
+            // Only a header that was present can rule everything out, so the
+            // default here stands in for a case `negotiate` never reports.
+            report_unsatisfiable_accept(accept.unwrap_or_default(), fallback.content_type());
+
+            fallback
+        });
 
         // Protobuf is only reachable with no extra producers registered, so the
         // registry holds everything and skipping them here loses nothing.
         if format == ScrapeFormat::Protobuf {
             let families = foundations_metrics::collect(collection_options(settings));
 
-            return Ok(Some((
+            return Ok((
                 format.content_type(),
                 foundations_metrics::encode_to_protobuf(&families),
-            )));
+            ));
         }
 
-        Ok(Some((
-            format.content_type(),
-            collect(settings)?.into_bytes(),
-        )))
+        Ok((format.content_type(), collect(settings)?.into_bytes()))
     }
 
     // The legacy encoder produces text only, so there is nothing to negotiate.
@@ -312,8 +314,28 @@ pub(crate) fn collect_negotiated(
     {
         let _ = accept;
 
-        Ok(Some((LEGACY_CONTENT_TYPE, collect(settings)?.into_bytes())))
+        Ok((LEGACY_CONTENT_TYPE, collect(settings)?.into_bytes()))
     }
+}
+
+/// Warns that a scrape's `Accept` header ruled out every available format.
+///
+/// Not routed through [`report_nonfatal_collect_error`], because collection
+/// itself succeeded and the actionable detail is the header.
+#[cfg(feature = "foundations-metrics-backend")]
+fn report_unsatisfiable_accept(accept: &str, served: &str) {
+    #[cfg(feature = "logging")]
+    crate::telemetry::log::warn!(
+        "no requested metrics format can be served, responding with the fallback instead";
+        "accept" => accept,
+        "served" => served,
+    );
+
+    #[cfg(not(feature = "logging"))]
+    eprintln!(
+        "no requested metrics format can be served, responding with the fallback instead: \
+         accept={accept:?} served={served:?}"
+    );
 }
 
 /// Removes the trailing OpenMetrics terminator, if present.
@@ -861,6 +883,18 @@ mod negotiation_tests {
         assert_eq!(negotiate(Some(accept), true), TEXT);
     }
 
+    /// `q=0` means "not acceptable" (RFC 9110), so a header offering
+    /// nothing else leaves nothing to serve. Refusing the range outright, rather
+    /// than merely ranking it last, is what keeps it from being selected as the
+    /// only remaining candidate.
+    #[test]
+    fn zero_quality_on_the_only_range_matches_nothing() {
+        assert_eq!(
+            negotiate(Some("application/openmetrics-text;q=0"), true),
+            None
+        );
+    }
+
     #[test]
     fn malformed_quality_refuses_a_format() {
         let accept = "application/openmetrics-text;escaping=allow-utf-8;q=garbage,text/plain;q=0.4";
@@ -897,10 +931,9 @@ mod negotiation_tests {
         assert_eq!(negotiate(None, false), TEXT);
     }
 
-    /// A scraper accepting only protobuf could not read text, so refusing is more
-    /// informative than sending something it must discard.
+    /// Nothing is servable to a protobuf-only scraper once protobuf is withheld.
     #[test]
-    fn protobuf_only_is_refused_when_unavailable() {
+    fn protobuf_only_matches_nothing_when_unavailable() {
         assert_eq!(negotiate(Some(PROTOBUF_ONLY), false), None);
     }
 
@@ -910,17 +943,60 @@ mod negotiation_tests {
     }
 
     #[test]
-    fn unservable_media_types_are_refused() {
+    fn unservable_media_types_match_nothing() {
         assert_eq!(negotiate(Some("application/json,text/html"), true), None);
     }
 
-    /// RFC 9110 §12.4.2 invalidates a range with an unparseable weight, leaving
-    /// nothing acceptable behind.
+    /// RFC 9110 invalidates a range with an unparseable weight, leaving
+    /// nothing acceptable behind. A bare `q=` is unparseable, so it invalidates
+    /// the range rather than reading as the default weight of 1.
     #[test]
-    fn malformed_quality_on_the_only_range_is_refused() {
+    fn malformed_quality_on_the_only_range_matches_nothing() {
         let accept = "application/vnd.google.protobuf;\
                       proto=io.prometheus.client.MetricFamily;encoding=delimited;q=";
 
         assert_eq!(negotiate(Some(accept), true), None);
+    }
+}
+
+/// Covers the warning emitted when an `Accept` header cannot be satisfied.
+#[cfg(all(test, feature = "foundations-metrics-backend", feature = "logging"))]
+mod fallback_logging_tests {
+    use super::*;
+    use crate::telemetry::TelemetryContext;
+
+    /// Matches nothing on offer whether or not protobuf is available, so it
+    /// reaches the fallback in a test binary that has no extra producers.
+    const UNSERVABLE: &str = "application/json,text/html";
+
+    #[test]
+    fn unsatisfiable_accept_is_served_as_text_with_a_warning() {
+        let ctx = TelemetryContext::test();
+        let _scope = ctx.scope();
+
+        let (content_type, body) =
+            collect_negotiated(Some(UNSERVABLE), &MetricsSettings::default())
+                .expect("an unsatisfiable header should still produce a body");
+
+        assert_eq!(content_type, ScrapeFormat::fallback().content_type());
+        assert!(
+            body.ends_with(b"# EOF\n"),
+            "fallback body should be terminated text"
+        );
+
+        let records = ctx.log_records();
+        let warning = records
+            .iter()
+            .find(|record| record.message.contains("no requested metrics format"))
+            .unwrap_or_else(|| panic!("falling back should warn: {records:?}"));
+
+        assert_eq!(warning.level, slog::Level::Warning);
+        assert!(
+            warning
+                .fields
+                .contains(&("accept".to_owned(), UNSERVABLE.to_owned())),
+            "the warning should name the header that could not be satisfied: {:?}",
+            warning.fields
+        );
     }
 }
