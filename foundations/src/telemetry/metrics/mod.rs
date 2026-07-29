@@ -202,10 +202,15 @@ fn negotiate(accept: Option<&str>, protobuf_available: bool) -> Option<ScrapeFor
             let name = name.trim();
 
             if name.eq_ignore_ascii_case("q") {
-                // RFC 9110: an unparseable weight invalidates the
-                // media-range. Zero is the refusal value below, so a malformed
-                // `q` drops the range rather than promoting it to the top.
-                quality = value.parse().unwrap_or(0.0);
+                // RFC 9110: a weight runs from 0 to 1, and an unusable one
+                // invalidates the media-range. Zero is the refusal value below.
+                // The bound also excludes `nan` and `inf`, which `parse`
+                // accepts: `NaN` loses no comparison so it would pin itself as
+                // the winner, and `inf` would outrank a legitimate `q=1.0`.
+                quality = match value.parse::<f32>() {
+                    Ok(parsed) if (0.0..=1.0).contains(&parsed) => parsed,
+                    _ => 0.0,
+                };
             } else if name.eq_ignore_ascii_case("escaping") {
                 escaping = Some(value);
             } else if name.eq_ignore_ascii_case("proto") {
@@ -956,6 +961,54 @@ mod negotiation_tests {
                       proto=io.prometheus.client.MetricFamily;encoding=delimited;q=";
 
         assert_eq!(negotiate(Some(accept), true), None);
+    }
+
+    /// `"nan"` and `"inf"` parse as floats, so parsing alone does not make a
+    /// weight usable.
+    #[test]
+    fn unrankable_quality_matches_nothing() {
+        for weight in [
+            "nan", "NaN", "+nan", "inf", "infinity", "-inf", "2", "1e3", "-0.5",
+        ] {
+            let accept = format!("application/openmetrics-text;q={weight}");
+
+            assert_eq!(
+                negotiate(Some(&accept), true),
+                None,
+                "q={weight} should invalidate the range"
+            );
+        }
+    }
+
+    /// `NaN` loses no comparison, so ranking it last is not enough: it would
+    /// stay `best` and discard the format actually preferred.
+    #[test]
+    fn unrankable_quality_does_not_mask_a_later_range() {
+        let accept = format!("application/openmetrics-text;q=nan,{PROTOBUF_PREFERRED}");
+
+        assert_eq!(negotiate(Some(&accept), true), PROTOBUF);
+    }
+
+    /// The escapings differ so the assertion fails if `q=5` is ranked rather
+    /// than refused.
+    #[test]
+    fn out_of_range_quality_does_not_outrank_the_maximum() {
+        let accept = "application/openmetrics-text;escaping=allow-utf-8;q=5,text/plain;q=1.0";
+
+        assert_eq!(negotiate(Some(accept), true), TEXT);
+    }
+
+    /// The boundary values of the spec range stay usable.
+    #[test]
+    fn quality_bounds_are_accepted() {
+        assert_eq!(
+            negotiate(Some("application/openmetrics-text;q=1.000"), true),
+            TEXT
+        );
+        assert_eq!(
+            negotiate(Some("application/openmetrics-text;q=0.001"), true),
+            TEXT
+        );
     }
 }
 
