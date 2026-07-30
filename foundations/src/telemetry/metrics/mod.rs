@@ -284,7 +284,7 @@ fn protobuf_available() -> bool {
 /// encoder quotes a name whenever that name requires it, regardless of what the
 /// scraper asked for. Names produced in-tree are all legacy compatible, so the
 /// two agree in practice.
-pub(crate) fn collect_negotiated(
+pub fn collect_negotiated(
     accept: Option<&str>,
     settings: &MetricsSettings,
 ) -> Result<(&'static str, Vec<u8>)> {
