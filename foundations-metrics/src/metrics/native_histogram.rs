@@ -58,7 +58,7 @@ impl NativeHistogram {
     }
 
     pub(super) fn try_encode_metric_value(&self) -> Result<Vec<MetricFamily>, std::fmt::Error> {
-        // Upstream keeps native bucket state private. A cloned histogram shares
+        // prometheus_client keeps native bucket state private. A cloned histogram shares
         // storage, so a temporary registry can drive its protobuf encoder.
         let mut registry = Registry::default();
         registry.register("native_histogram", "", self.inner.clone());
