@@ -12,11 +12,12 @@ mod encoding;
 mod labels;
 pub mod metrics;
 mod registered;
+mod validation;
 mod value;
 
 pub use collect::{CollectionOptions, ServiceNameFormat, collect};
 pub use diagnostics::{CollectErrorHookAlreadySet, set_collect_error_hook};
-pub use encoding::{encode_to_protobuf, encode_to_text};
+pub use encoding::{OPENMETRICS_CONTENT_TYPE, encode_to_protobuf, encode_to_text};
 pub use foundations_metrics_registry::{
     EncodeMetric, IntoMetrics, MetricFamily, RegistrationMetadata, register,
 };

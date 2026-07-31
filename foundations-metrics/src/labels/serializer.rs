@@ -5,6 +5,7 @@ use serde::Serialize;
 use serde::ser::{Impossible, SerializeStruct, Serializer};
 
 use super::LabelError;
+use crate::validation::{NAME_REQUIREMENT, is_valid_name};
 
 // Adapted from prometools' `serde::top::TopSerializer`
 // (https://github.com/nox/prometools, licensed MIT OR Apache-2.0).
@@ -396,16 +397,9 @@ impl Serializer for LabelValueSerializer {
 // Adapted from prometools' `serde::top::check_key`
 // (https://github.com/nox/prometools, licensed MIT OR Apache-2.0).
 fn validate_label_name(name: &str) -> Result<(), LabelError> {
-    let mut chars = name.chars();
-    let valid = chars
-        .next()
-        .is_some_and(|character| character.is_ascii_alphabetic() || matches!(character, '_' | ':'))
-        && chars
-            .all(|character| character.is_ascii_alphanumeric() || matches!(character, '_' | ':'));
-
-    valid.then_some(()).ok_or_else(|| {
+    is_valid_name(name).then_some(()).ok_or_else(|| {
         LabelError::new(format!(
-            "invalid metric label name {name:?}: expected [a-zA-Z_:][a-zA-Z0-9_:]*"
+            "invalid metric label name {name:?}: expected {NAME_REQUIREMENT}"
         ))
     })
 }
@@ -480,14 +474,26 @@ mod tests {
     }
 
     #[test]
-    fn rejects_invalid_label_names() {
+    fn rejects_empty_label_names() {
         #[derive(Serialize)]
         struct Invalid {
-            #[serde(rename = "not-valid")]
+            #[serde(rename = "")]
             value: &'static str,
         }
 
         assert!(to_label_pairs(&Invalid { value: "x" }).is_err());
+    }
+
+    #[test]
+    fn serializes_utf8_label_names() {
+        #[derive(Serialize)]
+        struct Labels {
+            #[serde(rename = "trace.id λ\n\"")]
+            value: &'static str,
+        }
+
+        let labels = to_label_pairs(&Labels { value: "x" }).unwrap();
+        assert_eq!(labels[0].name.as_deref(), Some("trace.id λ\n\""));
     }
 
     #[test]
