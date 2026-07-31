@@ -33,7 +33,15 @@ allow_list! {
         ..RUST_BASICS,
         exit,
         exit_group,
-        pause, // pause can be invoked by std::process::exit() if multiple threads call it simultaneously
+        #[cfg(target_arch = "x86_64")]
+        pause, // `pause` can be invoked by std::process::exit() if multiple threads call it simultaneously
+        #[cfg(target_arch = "aarch64")]
+        ppoll if [ // glibc implements `pause` using ppoll with the following arguments on aarch64
+            ArgCmp::Equal { arg_idx: 0, value: 0 }, // fds = NULL
+            ArgCmp::Equal { arg_idx: 1, value: 0 }, // nfds = 0
+            ArgCmp::Equal { arg_idx: 2, value: 0 }, // timeout = NULL
+            ArgCmp::Equal { arg_idx: 3, value: 0 }  // sigmask = NULL
+        ],
         kill if [ ArgCmp::Equal { arg_idx: 0, value: std::process::id().into() } ],
         tgkill if [ ArgCmp::Equal { arg_idx: 0, value: std::process::id().into() } ],
         getpid,
