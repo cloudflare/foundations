@@ -54,55 +54,74 @@ pub fn collect(options: CollectionOptions) -> Vec<MetricFamily> {
         let mut families = registered.metric().encode();
 
         if let Some(service_name) = options.service_name {
-            match options.service_name_format {
-                ServiceNameFormat::MetricPrefix if !metadata.unprefixed => {
-                    for family in &mut families {
-                        if let Some(name) = &mut family.name {
-                            name.insert(0, '_');
-                            name.insert_str(0, service_name);
-                        }
-                    }
-                }
-                ServiceNameFormat::LabelWithName(label_name) => {
-                    let service_label = LabelPair {
-                        name: Some(label_name.to_owned()),
-                        value: Some(service_name.to_owned()),
-                    };
-
-                    for family in &mut families {
-                        let family_name = family.name.as_deref().unwrap_or_default();
-                        family.metric.retain_mut(|metric| {
-                            let mut has_same_value = false;
-                            for label in &metric.label {
-                                if label.name.as_deref() != Some(label_name) {
-                                    continue;
-                                }
-
-                                if label.value.as_deref() != Some(service_name) {
-                                    report_collect_error(format_args!(
-                                        "non-fatal error while collecting metrics: skipped row in metric family {family_name:?}; service label {label_name:?} already has a different value"
-                                    ));
-                                    return false;
-                                }
-                                has_same_value = true;
-                            }
-
-                            if !has_same_value {
-                                metric.label.insert(0, service_label.clone());
-                            }
-                            true
-                        });
-                    }
-                }
-                ServiceNameFormat::MetricPrefix => {}
-            }
+            apply_service_name(
+                &mut families,
+                service_name,
+                options.service_name_format,
+                metadata.unprefixed,
+            );
         }
 
-        families.retain_mut(|family| sanitize_metric_family(family, ValidationContext::Collection));
-        collected.extend(families);
+        collected.extend(families.into_iter().filter_map(|mut family| {
+            sanitize_metric_family(&mut family, ValidationContext::Collection).then_some(family)
+        }));
     }
 
     collected
+}
+
+fn apply_service_name(
+    families: &mut [MetricFamily],
+    service_name: &str,
+    format: ServiceNameFormat<'_>,
+    unprefixed: bool,
+) {
+    match format {
+        ServiceNameFormat::MetricPrefix if !unprefixed => {
+            for family in families {
+                if let Some(name) = &mut family.name {
+                    name.insert(0, '_');
+                    name.insert_str(0, service_name);
+                }
+            }
+        }
+        ServiceNameFormat::LabelWithName(label_name) => {
+            apply_service_label(families, label_name, service_name);
+        }
+        ServiceNameFormat::MetricPrefix => {}
+    }
+}
+
+fn apply_service_label(families: &mut [MetricFamily], label_name: &str, service_name: &str) {
+    let service_label = LabelPair {
+        name: Some(label_name.to_owned()),
+        value: Some(service_name.to_owned()),
+    };
+
+    for family in families {
+        let family_name = family.name.as_deref().unwrap_or_default();
+        family.metric.retain_mut(|metric| {
+            let mut has_same_value = false;
+            for label in &metric.label {
+                if label.name.as_deref() != Some(label_name) {
+                    continue;
+                }
+
+                if label.value.as_deref() != Some(service_name) {
+                    report_collect_error(format_args!(
+                        "non-fatal error while collecting metrics: skipped row in metric family {family_name:?}; service label {label_name:?} already has a different value"
+                    ));
+                    return false;
+                }
+                has_same_value = true;
+            }
+
+            if !has_same_value {
+                metric.label.insert(0, service_label.clone());
+            }
+            true
+        });
+    }
 }
 
 #[cfg(test)]
