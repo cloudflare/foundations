@@ -33,6 +33,7 @@ allow_list! {
         ..RUST_BASICS,
         exit,
         exit_group,
+        pause, // pause can be invoked by std::process::exit() if multiple threads call it simultaneously
         kill if [ ArgCmp::Equal { arg_idx: 0, value: std::process::id().into() } ],
         tgkill if [ ArgCmp::Equal { arg_idx: 0, value: std::process::id().into() } ],
         getpid,
