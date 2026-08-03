@@ -42,9 +42,7 @@ mod histogram;
 mod native_histogram;
 
 pub use counter::{Counter, CounterAtomic};
-pub use exemplar::{
-    CounterWithExemplar, Exemplar, HistogramWithExemplars, NativeHistogramWithExemplars,
-};
+pub use exemplar::{Exemplar, WithExemplar};
 pub use family::{Family, FamilyMetricGuard, MetricConstructor};
 pub use gauge::{Gauge, GaugeAtomic, GaugeGuard, RangeGauge};
 pub use histogram::{

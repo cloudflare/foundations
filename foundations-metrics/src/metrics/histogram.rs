@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::iter::once;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -5,10 +6,12 @@ use std::time::{Duration, Instant};
 
 use foundations_metrics_registry::proto::{self, Bucket, MetricType};
 use parking_lot::Mutex;
+use serde::Serialize;
 
 use crate::{MetricFamily, value::EncodeMetricValue};
 
 use super::MetricConstructor;
+use super::exemplar::{Exemplar, ExemplarStorage, WithExemplar, finish_exemplar};
 
 /// A classic fixed-bucket histogram.
 ///
@@ -140,6 +143,65 @@ pub(super) fn encode_snapshot(snapshot: HistogramSnapshot) -> Vec<MetricFamily> 
     }]
 }
 
+impl<S> WithExemplar<Histogram, S> {
+    /// Records `value` and stores the exemplar in the matching bucket.
+    pub fn with_exemplar(&self, label_set: S, value: f64) {
+        let exemplar = Exemplar::new(label_set, value, None);
+        let mut exemplars = self.exemplars.lock();
+        if let Some(bucket) = self.inner.observe_and_bucket(value) {
+            match &mut *exemplars {
+                ExemplarStorage::Empty => {
+                    let mut per_bucket = HashMap::new();
+                    per_bucket.insert(bucket, exemplar);
+                    *exemplars = ExemplarStorage::PerBucket(per_bucket);
+                }
+                ExemplarStorage::PerBucket(exemplars) => {
+                    exemplars.insert(bucket, exemplar);
+                }
+                ExemplarStorage::Single(_) => {
+                    unreachable!("classic histogram uses per-bucket exemplar storage")
+                }
+            }
+        }
+    }
+}
+
+impl<S> EncodeMetricValue for WithExemplar<Histogram, S>
+where
+    S: Serialize + Send + Sync + 'static,
+{
+    fn encode_metric_value(&self) -> Vec<MetricFamily> {
+        let stored_exemplars = self.exemplars.lock();
+        let exemplars: Vec<_> = match &*stored_exemplars {
+            ExemplarStorage::Empty => Vec::new(),
+            ExemplarStorage::PerBucket(exemplars) => exemplars
+                .iter()
+                .map(|(&index, exemplar)| (index, exemplar.clone()))
+                .collect(),
+            ExemplarStorage::Single(_) => {
+                unreachable!("classic histogram uses per-bucket exemplar storage")
+            }
+        };
+        let snapshot = self.inner.snapshot();
+        drop(stored_exemplars);
+
+        let mut families = encode_snapshot(snapshot);
+        let buckets = &mut families[0].metric[0]
+            .histogram
+            .as_mut()
+            .expect("histogram encoder always creates a histogram value")
+            .bucket;
+
+        for (index, exemplar) in exemplars {
+            if let Some(bucket) = buckets.get_mut(index) {
+                bucket.exemplar = finish_exemplar(Some(exemplar.encode()));
+            }
+        }
+
+        families
+    }
+}
+
 /// Constructs classic and time histograms with a fixed set of buckets.
 #[derive(Clone, Debug)]
 pub struct HistogramBuilder {
@@ -150,6 +212,12 @@ pub struct HistogramBuilder {
 impl MetricConstructor<Histogram> for HistogramBuilder {
     fn new_metric(&self) -> Histogram {
         Histogram::new(self.buckets.iter().copied())
+    }
+}
+
+impl<S> MetricConstructor<WithExemplar<Histogram, S>> for HistogramBuilder {
+    fn new_metric(&self) -> WithExemplar<Histogram, S> {
+        WithExemplar::new(MetricConstructor::<Histogram>::new_metric(self))
     }
 }
 

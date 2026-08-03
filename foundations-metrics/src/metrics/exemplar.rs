@@ -1,34 +1,26 @@
 use std::collections::HashMap;
-use std::marker::PhantomData;
+use std::fmt;
+use std::ops::Deref;
 use std::sync::Arc;
-use std::sync::atomic::AtomicU64;
-use std::time::SystemTime;
 
 use foundations_metrics_registry::proto;
-use parking_lot::{MappedRwLockReadGuard, RwLock, RwLockReadGuard};
+use parking_lot::Mutex;
 use prost_types::Timestamp;
 use serde::Serialize;
 
-use super::counter::encode_counter;
-use super::histogram::encode_snapshot;
-use super::{
-    CounterAtomic, Histogram, HistogramBuilder, IntoF64, MetricConstructor, NativeHistogram,
-    NativeHistogramBuilder,
-};
-use crate::diagnostics::report_collect_error;
+use super::IntoF64;
 use crate::labels::to_label_pairs;
 use crate::validation::EXEMPLAR_SERIALIZATION_ERROR_LABEL;
-use crate::{MetricFamily, value::EncodeMetricValue};
 
 /// Labels and a sampled value associated with a metric observation.
 ///
-/// Exemplar values are exposed through [`CounterWithExemplar::get`]. Their fields
-/// remain private; exemplars are created by recording labeled metric updates.
+/// Their fields remain private; exemplars are created by recording labeled
+/// metric updates.
 #[derive(Debug)]
 pub struct Exemplar<S, V> {
     label_set: Arc<S>,
     value: V,
-    timestamp: Option<Timestamp>,
+    pub(super) timestamp: Option<Timestamp>,
 }
 
 impl<S, V> Exemplar<S, V> {
@@ -44,7 +36,7 @@ impl<S, V> Exemplar<S, V> {
 }
 
 impl<S, V> Exemplar<S, V> {
-    fn new(label_set: S, value: V, timestamp: Option<Timestamp>) -> Self {
+    pub(super) fn new(label_set: S, value: V, timestamp: Option<Timestamp>) -> Self {
         Self {
             label_set: Arc::new(label_set),
             value,
@@ -64,7 +56,7 @@ impl<S, V: Clone> Clone for Exemplar<S, V> {
 }
 
 impl<S, V> Exemplar<S, V> {
-    fn encode(&self) -> Result<proto::Exemplar, String>
+    pub(super) fn encode(&self) -> Result<proto::Exemplar, String>
     where
         S: Serialize,
         V: Clone + IntoF64,
@@ -77,7 +69,9 @@ impl<S, V> Exemplar<S, V> {
     }
 }
 
-fn finish_exemplar(exemplar: Option<Result<proto::Exemplar, String>>) -> Option<proto::Exemplar> {
+pub(super) fn finish_exemplar(
+    exemplar: Option<Result<proto::Exemplar, String>>,
+) -> Option<proto::Exemplar> {
     match exemplar {
         Some(Ok(exemplar)) => Some(exemplar),
         // Defer reporting to validation, after any enclosing Family lock has
@@ -93,263 +87,142 @@ fn finish_exemplar(exemplar: Option<Result<proto::Exemplar, String>>) -> Option<
     }
 }
 
-/// A monotonically increasing counter that records an exemplar with an update.
+/// A metric paired with exemplar storage.
 ///
-/// Calling [`inc_by`](Self::inc_by) with a label set replaces the previous
-/// exemplar. Calling it without a label set clears the previous exemplar. The
-/// exemplar value is the increment. [`get`](Self::get) returns the cumulative
-/// counter value and read-only access to the current exemplar. Clones share both
-/// values.
+/// The wrapper [`Deref`]s to the inner metric, so unlabeled updates go straight
+/// to it and never touch the exemplar lock:
+///
+/// ```
+/// use foundations_metrics::{Counter, WithExemplar};
+/// # #[derive(serde::Serialize)]
+/// # struct TraceLabels { trace_id: &'static str }
+///
+/// let requests: WithExemplar<Counter, TraceLabels> = WithExemplar::default();
+///
+/// // Unlabeled: identical to `Counter::inc`, and leaves any exemplar in place.
+/// requests.inc();
+///
+/// // Labeled: the exemplar and the increment are applied together.
+/// requests.with_exemplar(TraceLabels { trace_id: "abc" }, 4);
+///
+/// assert_eq!(requests.get(), 5);
+/// ```
+///
+/// Cloning a supported metric shares both its inner metric and exemplar storage.
 ///
 /// Exemplar labels are serialized with [`serde::Serialize`] during collection.
-#[derive(Debug)]
-pub struct CounterWithExemplar<S, N = u64, A = AtomicU64> {
-    state: Arc<RwLock<CounterWithExemplarState<S, N, A>>>,
-    marker: PhantomData<N>,
+pub struct WithExemplar<T, S> {
+    pub(super) inner: T,
+    pub(super) exemplars: Arc<Mutex<ExemplarStorage<S>>>,
 }
 
 #[derive(Debug)]
-struct CounterWithExemplarState<S, N, A> {
-    value: A,
-    exemplar: Option<Exemplar<S, N>>,
+pub(super) enum ExemplarStorage<S> {
+    Empty,
+    Single(Option<StoredExemplar<S>>),
+    PerBucket(HashMap<usize, Exemplar<S, f64>>),
 }
 
-impl<S, N, A> CounterWithExemplar<S, N, A>
+#[derive(Debug)]
+pub(super) enum StoredExemplar<S> {
+    I64(Exemplar<S, i64>),
+    U64(Exemplar<S, u64>),
+    F64(Exemplar<S, f64>),
+}
+
+impl<S> Clone for StoredExemplar<S> {
+    fn clone(&self) -> Self {
+        match self {
+            Self::I64(exemplar) => Self::I64(exemplar.clone()),
+            Self::U64(exemplar) => Self::U64(exemplar.clone()),
+            Self::F64(exemplar) => Self::F64(exemplar.clone()),
+        }
+    }
+}
+
+impl<S> StoredExemplar<S> {
+    pub(super) fn encode(&self) -> Result<proto::Exemplar, String>
+    where
+        S: Serialize,
+    {
+        match self {
+            Self::I64(exemplar) => exemplar.encode(),
+            Self::U64(exemplar) => exemplar.encode(),
+            Self::F64(exemplar) => exemplar.encode(),
+        }
+    }
+}
+
+impl<S> ExemplarStorage<S> {
+    fn clear(&mut self) {
+        match self {
+            Self::Empty => {}
+            Self::Single(exemplar) => *exemplar = None,
+            Self::PerBucket(exemplars) => exemplars.clear(),
+        }
+    }
+}
+
+impl<T, S> WithExemplar<T, S> {
+    /// Wraps `metric` in exemplar storage.
+    pub fn new(metric: T) -> Self {
+        Self {
+            inner: metric,
+            exemplars: Arc::new(Mutex::new(ExemplarStorage::Empty)),
+        }
+    }
+
+    /// Returns the wrapped metric.
+    pub fn metric(&self) -> &T {
+        &self.inner
+    }
+
+    /// Discards all stored exemplars.
+    pub fn clear_exemplars(&self) {
+        self.exemplars.lock().clear();
+    }
+}
+
+impl<T, S> Deref for WithExemplar<T, S> {
+    type Target = T;
+
+    fn deref(&self) -> &T {
+        &self.inner
+    }
+}
+
+impl<T, S> Clone for WithExemplar<T, S>
 where
-    N: Clone,
-    A: CounterAtomic<N>,
+    T: Clone,
 {
-    /// Increments the counter by `value`, returning the previous total.
-    ///
-    /// A provided label set replaces the stored exemplar. `None` clears it.
-    pub fn inc_by(&self, value: N, label_set: Option<S>) -> N {
-        let exemplar = label_set.map(|label_set| Exemplar::new(label_set, value.clone(), None));
-        let mut state = self.state.write();
-        state.exemplar = exemplar;
-        state.value.inc_by(value)
-    }
-
-    /// Returns the cumulative counter value and the current exemplar.
-    ///
-    /// The exemplar guard keeps the counter read-locked until it is dropped.
-    pub fn get(&self) -> (N, MappedRwLockReadGuard<'_, Option<Exemplar<S, N>>>) {
-        let state = self.state.read();
-        let value = state.value.get();
-        let exemplar = RwLockReadGuard::map(state, |state| &state.exemplar);
-        (value, exemplar)
-    }
-
-    /// Returns read-only access to the underlying counter storage.
-    ///
-    /// The returned guard prevents updates until it is dropped.
-    pub fn inner(&self) -> MappedRwLockReadGuard<'_, A> {
-        RwLockReadGuard::map(self.state.read(), |state| &state.value)
-    }
-}
-
-impl<S, N, A> Clone for CounterWithExemplar<S, N, A> {
     fn clone(&self) -> Self {
         Self {
-            state: Arc::clone(&self.state),
-            marker: PhantomData,
+            inner: self.inner.clone(),
+            exemplars: Arc::clone(&self.exemplars),
         }
     }
 }
 
-impl<S, N, A: Default> Default for CounterWithExemplar<S, N, A> {
+impl<T, S> Default for WithExemplar<T, S>
+where
+    T: Default,
+{
     fn default() -> Self {
-        Self {
-            state: Arc::new(RwLock::new(CounterWithExemplarState {
-                value: A::default(),
-                exemplar: None,
-            })),
-            marker: PhantomData,
-        }
+        Self::new(T::default())
     }
 }
 
-impl<S, N, A> EncodeMetricValue for CounterWithExemplar<S, N, A>
+impl<T, S> fmt::Debug for WithExemplar<T, S>
 where
-    S: Serialize + Send + Sync + 'static,
-    N: Clone + IntoF64,
-    A: CounterAtomic<N> + Send + Sync + 'static,
+    T: fmt::Debug,
+    S: fmt::Debug,
 {
-    fn encode_metric_value(&self) -> Vec<MetricFamily> {
-        let state = self.state.read();
-        let value = state.value.get().into_f64();
-        let exemplar = state.exemplar.clone();
-        drop(state);
-
-        let mut families = encode_counter(value);
-        let counter = families[0].metric[0]
-            .counter
-            .as_mut()
-            .expect("counter encoder always creates a counter value");
-        counter.exemplar = finish_exemplar(exemplar.as_ref().map(Exemplar::encode));
-        families
-    }
-}
-
-/// A classic fixed-bucket histogram that retains one exemplar per bucket.
-///
-/// A labeled observation replaces the exemplar in its bucket. An unlabeled
-/// observation updates the histogram without clearing an existing exemplar.
-/// Clones share histogram and exemplar storage.
-#[derive(Clone, Debug)]
-pub struct HistogramWithExemplars<S> {
-    state: Arc<RwLock<HistogramWithExemplarsState<S>>>,
-}
-
-#[derive(Debug)]
-struct HistogramWithExemplarsState<S> {
-    histogram: Histogram,
-    exemplars: HashMap<usize, Exemplar<S, f64>>,
-}
-
-impl<S> HistogramWithExemplars<S> {
-    /// Creates a histogram with the provided inclusive upper bounds.
-    ///
-    /// Bounds are sorted and a terminal `f64::MAX` bucket is appended.
-    pub fn new(bounds: impl IntoIterator<Item = f64>) -> Self {
-        Self {
-            state: Arc::new(RwLock::new(HistogramWithExemplarsState {
-                histogram: Histogram::new(bounds),
-                exemplars: HashMap::new(),
-            })),
-        }
-    }
-
-    /// Records an observation and optionally associates it with an exemplar.
-    pub fn observe(&self, value: f64, label_set: Option<S>) {
-        let exemplar = label_set.map(|label_set| Exemplar::new(label_set, value, None));
-        let mut state = self.state.write();
-        let bucket = state.histogram.observe_and_bucket(value);
-
-        if let (Some(bucket), Some(exemplar)) = (bucket, exemplar) {
-            state.exemplars.insert(bucket, exemplar);
-        }
-    }
-}
-
-impl<S> EncodeMetricValue for HistogramWithExemplars<S>
-where
-    S: Serialize + Send + Sync + 'static,
-{
-    fn encode_metric_value(&self) -> Vec<MetricFamily> {
-        let state = self.state.read();
-        let snapshot = state.histogram.snapshot();
-        let exemplars: Vec<_> = state
-            .exemplars
-            .iter()
-            .map(|(&index, exemplar)| (index, exemplar.clone()))
-            .collect();
-        drop(state);
-
-        let mut families = encode_snapshot(snapshot);
-        let buckets = &mut families[0].metric[0]
-            .histogram
-            .as_mut()
-            .expect("histogram encoder always creates a histogram value")
-            .bucket;
-
-        for (index, exemplar) in exemplars {
-            if let Some(bucket) = buckets.get_mut(index) {
-                bucket.exemplar = finish_exemplar(Some(exemplar.encode()));
-            }
-        }
-
-        families
-    }
-}
-
-impl<S> MetricConstructor<HistogramWithExemplars<S>> for HistogramBuilder {
-    fn new_metric(&self) -> HistogramWithExemplars<S> {
-        HistogramWithExemplars::new(self.buckets.iter().copied())
-    }
-}
-
-/// A native histogram that retains its latest labeled observation as an exemplar.
-///
-/// Native histogram exemplars require timestamps in the Prometheus protobuf
-/// model. The timestamp is captured when the labeled observation is recorded.
-/// Native histograms require protobuf exposition; OpenMetrics text encoding
-/// does not expose their sparse buckets or exemplars.
-#[derive(Clone, Debug)]
-pub struct NativeHistogramWithExemplars<S> {
-    state: Arc<RwLock<NativeHistogramWithExemplarsState<S>>>,
-}
-
-#[derive(Debug)]
-struct NativeHistogramWithExemplarsState<S> {
-    histogram: NativeHistogram,
-    exemplar: Option<Exemplar<S, f64>>,
-}
-
-impl<S> NativeHistogramWithExemplars<S> {
-    /// Creates a native histogram with the given bucket growth `factor`.
-    ///
-    /// # Panics
-    ///
-    /// Panics if `factor` is not greater than `1.0`.
-    pub fn new(factor: f64) -> Self {
-        NativeHistogramBuilder::new(factor).new_metric()
-    }
-
-    /// Records an observation and optionally retains it as the latest exemplar.
-    pub fn observe(&self, value: f64, label_set: Option<S>) {
-        let exemplar = label_set.map(|label_set| Exemplar::new(label_set, value, None));
-        let mut state = self.state.write();
-        state.histogram.observe(value);
-
-        if let Some(mut exemplar) = exemplar {
-            exemplar.timestamp = Some(SystemTime::now().into());
-            state.exemplar = Some(exemplar);
-        }
-    }
-}
-
-impl<S> EncodeMetricValue for NativeHistogramWithExemplars<S>
-where
-    S: Serialize + Send + Sync + 'static,
-{
-    fn encode_metric_value(&self) -> Vec<MetricFamily> {
-        let state = self.state.read();
-        let families = state.histogram.try_encode_metric_value();
-        let exemplar = state.exemplar.clone();
-        drop(state);
-
-        let mut families = match families {
-            Ok(families) => families,
-            Err(error) => {
-                report_collect_error(format_args!(
-                    "non-fatal error while collecting metrics: skipped a native histogram; protobuf encoding failed: {error}"
-                ));
-                return Vec::new();
-            }
-        };
-
-        if let Some(exemplar) = finish_exemplar(exemplar.as_ref().map(Exemplar::encode)) {
-            for histogram in families
-                .iter_mut()
-                .flat_map(|family| &mut family.metric)
-                .filter_map(|metric| metric.histogram.as_mut())
-            {
-                histogram.exemplars.push(exemplar.clone());
-            }
-        }
-
-        families
-    }
-}
-
-impl<S> MetricConstructor<NativeHistogramWithExemplars<S>> for NativeHistogramBuilder {
-    fn new_metric(&self) -> NativeHistogramWithExemplars<S> {
-        NativeHistogramWithExemplars {
-            state: Arc::new(RwLock::new(NativeHistogramWithExemplarsState {
-                histogram: NativeHistogramBuilder::new_metric(self),
-                exemplar: None,
-            })),
-        }
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("WithExemplar")
+            .field("inner", &self.inner)
+            .field("exemplars", &self.exemplars)
+            .finish()
     }
 }
 
@@ -360,14 +233,52 @@ mod tests {
     use serde::Serialize;
 
     use super::*;
+    use crate::value::EncodeMetricValue;
     use crate::{
-        CollectionOptions, EncodeMetric, Family, NamedMetric, RegistrationMetadata,
-        ServiceNameFormat, collect, encode_to_protobuf, encode_to_text, register,
+        CollectionOptions, Counter, CounterAtomic, EncodeMetric, Family, Histogram,
+        HistogramBuilder, MetricConstructor, MetricFamily, NamedMetric, NativeHistogram,
+        NativeHistogramBuilder, RegistrationMetadata, ServiceNameFormat, collect,
+        encode_to_protobuf, encode_to_text, register,
     };
 
     #[derive(Clone, Debug, Serialize)]
     struct TraceLabels {
         trace_id: &'static str,
+    }
+
+    #[derive(Default)]
+    struct BlockingCounterAtomic {
+        value: std::sync::atomic::AtomicU64,
+        block_get: std::sync::atomic::AtomicBool,
+        entered_get: (std::sync::Mutex<bool>, std::sync::Condvar),
+        release_get: (std::sync::Mutex<bool>, std::sync::Condvar),
+    }
+
+    impl CounterAtomic<u64> for BlockingCounterAtomic {
+        fn inc(&self) -> u64 {
+            self.inc_by(1)
+        }
+
+        fn inc_by(&self, value: u64) -> u64 {
+            self.value
+                .fetch_add(value, std::sync::atomic::Ordering::Relaxed)
+        }
+
+        fn get(&self) -> u64 {
+            if self.block_get.load(std::sync::atomic::Ordering::Relaxed) {
+                let (entered, entered_condvar) = &self.entered_get;
+                *entered.lock().unwrap() = true;
+                entered_condvar.notify_one();
+
+                let (release, release_condvar) = &self.release_get;
+                let mut release = release.lock().unwrap();
+                while !*release {
+                    release = release_condvar.wait(release).unwrap();
+                }
+            }
+
+            self.value.load(std::sync::atomic::Ordering::Relaxed)
+        }
     }
 
     fn trace_id(exemplar: &proto::Exemplar) -> Option<&str> {
@@ -379,15 +290,48 @@ mod tests {
     }
 
     #[test]
-    fn counter_replaces_and_clears_exemplars_and_clones_share_storage() {
-        let counter = CounterWithExemplar::<TraceLabels>::default();
+    fn reads_and_updates_interleave_without_deadlock() {
+        let counter = WithExemplar::<Counter, TraceLabels>::new(Counter::default());
+        counter.with_exemplar(TraceLabels { trace_id: "a" }, 1);
+
+        let value = counter.get();
+        assert_eq!(value, 1);
+        counter.inc();
+        assert_eq!(counter.get(), 2);
+        let _inner = counter.inner();
+        counter.with_exemplar(TraceLabels { trace_id: "b" }, 1);
+        assert_eq!(counter.get(), 3);
+    }
+
+    #[test]
+    fn reading_an_exemplar_does_not_block_inner_metric_updates() {
+        use std::sync::Arc as StdArc;
+        let counter = StdArc::new(WithExemplar::<Counter, TraceLabels>::default());
+        let exemplar = counter.exemplar();
+
+        let writer = StdArc::clone(&counter);
+        let handle = std::thread::spawn(move || {
+            writer.inc();
+            writer.get()
+        });
+        let _second = counter.inner();
+        assert!(exemplar.is_none());
+        assert_eq!(handle.join().unwrap(), 1);
+    }
+
+    #[test]
+    fn counter_replaces_exemplars_and_clones_share_storage() {
+        let counter = WithExemplar::<Counter, TraceLabels>::default();
         let clone = counter.clone();
 
         assert_eq!(
-            counter.inc_by(2, Some(TraceLabels { trace_id: "first" })),
+            counter.with_exemplar(TraceLabels { trace_id: "first" }, 2),
             0
         );
-        assert_eq!(clone.inc_by(3, Some(TraceLabels { trace_id: "latest" })), 2);
+        assert_eq!(
+            clone.with_exemplar(TraceLabels { trace_id: "latest" }, 3),
+            2
+        );
 
         let families = counter.encode_metric_value();
         let encoded = families[0].metric[0].counter.as_ref().unwrap();
@@ -397,17 +341,23 @@ mod tests {
         assert_eq!(trace_id(exemplar), Some("latest"));
         assert!(exemplar.timestamp.is_none());
 
-        let (value, exemplar) = counter.get();
-        assert_eq!(value, 5);
-        assert!(exemplar.is_some());
-        drop(exemplar);
+        // No guard is handed out, so reads and updates freely interleave. Under
+        // the previous `get() -> (N, MappedRwLockReadGuard<'_, _>)` API these
+        // three lines deadlocked.
+        assert_eq!(counter.get(), 5);
+        assert!(counter.exemplar().is_some());
         assert_eq!(
             counter.inner().load(std::sync::atomic::Ordering::Relaxed),
             5
         );
 
-        assert_eq!(counter.inc_by(1, None), 5);
-        assert_eq!(counter.get().0, 6);
+        // Unlabeled increments go straight to the inner counter and leave the
+        // exemplar in place.
+        assert_eq!(counter.inc(), 5);
+        assert_eq!(counter.get(), 6);
+        assert!(counter.exemplar().is_some());
+
+        counter.clear_exemplars();
         assert!(
             counter.encode_metric_value()[0].metric[0]
                 .counter
@@ -419,21 +369,92 @@ mod tests {
     }
 
     #[test]
-    fn classic_histogram_retains_latest_exemplar_per_bucket() {
-        let histogram = HistogramWithExemplars::new([1.0, 2.0]);
-        histogram.observe(0.5, Some(TraceLabels { trace_id: "first" }));
-        histogram.observe(
-            0.75,
-            Some(TraceLabels {
-                trace_id: "replacement",
-            }),
+    fn counter_exemplars_preserve_their_value_type() {
+        let unsigned = WithExemplar::<Counter, TraceLabels>::default();
+        unsigned.with_exemplar(
+            TraceLabels {
+                trace_id: "unsigned",
+            },
+            u64::MAX,
         );
-        histogram.observe(0.8, None);
-        histogram.observe(
-            1.5,
-            Some(TraceLabels {
+        assert_eq!(unsigned.exemplar().unwrap().value(), &u64::MAX);
+
+        let float = WithExemplar::<Counter<f64>, TraceLabels>::default();
+        float.with_exemplar(TraceLabels { trace_id: "float" }, 1.5);
+        assert_eq!(float.exemplar().unwrap().value(), &1.5);
+    }
+
+    #[test]
+    fn collection_keeps_labeled_counter_updates_atomic() {
+        use std::sync::mpsc::{self, RecvTimeoutError};
+        use std::time::Duration;
+
+        let counter = Arc::new(WithExemplar::<
+            Counter<u64, BlockingCounterAtomic>,
+            TraceLabels,
+        >::default());
+        counter.with_exemplar(TraceLabels { trace_id: "old" }, 1);
+        counter
+            .inner()
+            .block_get
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+
+        let collector = Arc::clone(&counter);
+        let collector = std::thread::spawn(move || collector.encode_metric_value());
+
+        let (entered, entered_condvar) = &counter.inner().entered_get;
+        let mut entered = entered.lock().unwrap();
+        while !*entered {
+            entered = entered_condvar.wait(entered).unwrap();
+        }
+        drop(entered);
+
+        let updater = Arc::clone(&counter);
+        let (updated_tx, updated_rx) = mpsc::channel();
+        let updater = std::thread::spawn(move || {
+            let previous = updater.with_exemplar(TraceLabels { trace_id: "new" }, 1);
+            updated_tx.send(previous).unwrap();
+        });
+
+        let early_update = updated_rx.recv_timeout(Duration::from_millis(50));
+        let update_blocked = matches!(&early_update, Err(RecvTimeoutError::Timeout));
+
+        let (release, release_condvar) = &counter.inner().release_get;
+        *release.lock().unwrap() = true;
+        release_condvar.notify_one();
+
+        let previous = match early_update {
+            Ok(previous) => previous,
+            Err(RecvTimeoutError::Timeout) => updated_rx.recv().unwrap(),
+            Err(RecvTimeoutError::Disconnected) => panic!("updater disconnected"),
+        };
+        updater.join().unwrap();
+        let families = collector.join().unwrap();
+
+        assert!(update_blocked);
+        assert_eq!(previous, 1);
+        let encoded = families[0].metric[0].counter.as_ref().unwrap();
+        assert_eq!(encoded.value, Some(1.0));
+        assert_eq!(trace_id(encoded.exemplar.as_ref().unwrap()), Some("old"));
+        assert_eq!(counter.get(), 2);
+    }
+
+    #[test]
+    fn classic_histogram_retains_latest_exemplar_per_bucket() {
+        let histogram = WithExemplar::new(Histogram::new([1.0, 2.0]));
+        histogram.with_exemplar(TraceLabels { trace_id: "first" }, 0.5);
+        histogram.with_exemplar(
+            TraceLabels {
+                trace_id: "replacement",
+            },
+            0.75,
+        );
+        histogram.observe(0.8);
+        histogram.with_exemplar(
+            TraceLabels {
                 trace_id: "second_bucket",
-            }),
+            },
+            1.5,
         );
 
         let families = histogram.encode_metric_value();
@@ -465,11 +486,11 @@ mod tests {
 
     #[test]
     fn native_histogram_retains_latest_timestamped_exemplar() {
-        let histogram = NativeHistogramWithExemplars::new(1.1);
+        let histogram = WithExemplar::new(NativeHistogram::new(1.1));
         let clone = histogram.clone();
-        histogram.observe(0.5, Some(TraceLabels { trace_id: "first" }));
-        clone.observe(2.0, None);
-        clone.observe(3.0, Some(TraceLabels { trace_id: "latest" }));
+        histogram.with_exemplar(TraceLabels { trace_id: "first" }, 0.5);
+        clone.observe(2.0);
+        clone.with_exemplar(TraceLabels { trace_id: "latest" }, 3.0);
 
         let families = histogram.encode_metric_value();
         let encoded = families[0].metric[0].histogram.as_ref().unwrap();
@@ -484,8 +505,8 @@ mod tests {
 
     #[test]
     fn exemplar_label_failure_drops_only_the_exemplar() {
-        let counter = CounterWithExemplar::<&'static str>::default();
-        counter.inc_by(2, Some("not a label set"));
+        let counter = WithExemplar::<Counter, &'static str>::default();
+        counter.with_exemplar("not a label set", 2);
 
         let families = NamedMetric::new("serialization_failure", "", counter).encode();
         let sentinel = &families[0].metric[0]
@@ -514,8 +535,8 @@ mod tests {
 
     #[test]
     fn empty_exemplar_label_sets_are_retained_in_text() {
-        let counter = CounterWithExemplar::<()>::default();
-        counter.inc_by(2, Some(()));
+        let counter = WithExemplar::<Counter, ()>::default();
+        counter.with_exemplar((), 2);
 
         let families = NamedMetric::new("empty_exemplar", "", counter).encode();
         assert!(encode_to_text(&families).contains("empty_exemplar 2.0 # {} 2.0\n"));
@@ -523,8 +544,8 @@ mod tests {
 
     #[test]
     fn accepts_legacy_sequence_label_sets() {
-        let counter = CounterWithExemplar::<Vec<(&'static str, &'static str)>>::default();
-        counter.inc_by(1, Some(vec![("trace_id", "legacy")]));
+        let counter = WithExemplar::<Counter, Vec<(&'static str, &'static str)>>::default();
+        counter.with_exemplar(vec![("trace_id", "legacy")], 1);
 
         let families = counter.encode_metric_value();
         let exemplar = families[0].metric[0]
@@ -541,15 +562,15 @@ mod tests {
     fn updates_do_not_require_serializable_label_sets() {
         struct OpaqueLabels;
 
-        let counter = CounterWithExemplar::<OpaqueLabels>::default();
-        counter.inc_by(1, Some(OpaqueLabels));
-        assert_eq!(counter.get().0, 1);
+        let counter = WithExemplar::<Counter, OpaqueLabels>::default();
+        counter.with_exemplar(OpaqueLabels, 1);
+        assert_eq!(counter.get(), 1);
 
-        let classic = HistogramWithExemplars::new([1.0]);
-        classic.observe(0.5, Some(OpaqueLabels));
+        let classic = WithExemplar::<Histogram, OpaqueLabels>::new(Histogram::new([1.0]));
+        classic.with_exemplar(OpaqueLabels, 0.5);
 
-        let native = NativeHistogramWithExemplars::new(1.1);
-        native.observe(0.5, Some(OpaqueLabels));
+        let native = WithExemplar::<NativeHistogram, OpaqueLabels>::new(NativeHistogram::new(1.1));
+        native.with_exemplar(OpaqueLabels, 0.5);
     }
 
     #[test]
@@ -559,10 +580,10 @@ mod tests {
             method: &'static str,
         }
 
-        let family = Family::<SeriesLabels, CounterWithExemplar<TraceLabels>>::default();
+        let family = Family::<SeriesLabels, WithExemplar<Counter, TraceLabels>>::default();
         family
             .get_or_create(&SeriesLabels { method: "GET" })
-            .inc_by(1, Some(TraceLabels { trace_id: "abc" }));
+            .with_exemplar(TraceLabels { trace_id: "abc" }, 1);
 
         let families = family.encode_metric_value();
         let metric = &families[0].metric[0];
@@ -577,15 +598,15 @@ mod tests {
 
     #[test]
     fn histogram_builders_construct_exemplar_metrics() {
-        let classic: HistogramWithExemplars<TraceLabels> = HistogramBuilder {
+        let classic: WithExemplar<Histogram, TraceLabels> = HistogramBuilder {
             buckets: &[0.5, 1.0],
         }
         .new_metric();
-        classic.observe(
-            0.75,
-            Some(TraceLabels {
+        classic.with_exemplar(
+            TraceLabels {
                 trace_id: "classic",
-            }),
+            },
+            0.75,
         );
         assert!(
             classic.encode_metric_value()[0].metric[0]
@@ -597,10 +618,10 @@ mod tests {
                 .is_some()
         );
 
-        let native: NativeHistogramWithExemplars<TraceLabels> = NativeHistogramBuilder::new(1.1)
+        let native: WithExemplar<NativeHistogram, TraceLabels> = NativeHistogramBuilder::new(1.1)
             .with_max_buckets(160)
             .new_metric();
-        native.observe(0.75, Some(TraceLabels { trace_id: "native" }));
+        native.with_exemplar(TraceLabels { trace_id: "native" }, 0.75);
         assert_eq!(
             native.encode_metric_value()[0].metric[0]
                 .histogram
@@ -614,12 +635,12 @@ mod tests {
 
     #[test]
     fn registered_exemplar_counter_is_collected_and_encoded() {
-        let counter = CounterWithExemplar::<TraceLabels>::default();
-        counter.inc_by(
-            4,
-            Some(TraceLabels {
+        let counter = WithExemplar::<Counter, TraceLabels>::default();
+        counter.with_exemplar(
+            TraceLabels {
                 trace_id: "registered",
-            }),
+            },
+            4,
         );
         register(
             Box::new(NamedMetric::new(
@@ -668,12 +689,12 @@ mod tests {
 
         let family = Family::<
             SeriesLabels,
-            NativeHistogramWithExemplars<TraceLabels>,
+            WithExemplar<NativeHistogram, TraceLabels>,
             NativeHistogramBuilder,
         >::new_with_constructor(NativeHistogramBuilder::new(1.1));
         family
             .get_or_create(&SeriesLabels { method: "GET" })
-            .observe(0.25, Some(TraceLabels { trace_id: "native" }));
+            .with_exemplar(TraceLabels { trace_id: "native" }, 0.25);
         register(
             Box::new(NamedMetric::new(
                 "registered_native_histogram_with_exemplars",
