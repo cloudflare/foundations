@@ -169,25 +169,9 @@ macro_rules! impl_counter_with_exemplar {
         where
             A: CounterAtomic<$value>,
         {
-            /// Returns the current exemplar.
-            pub fn exemplar(&self) -> Option<Exemplar<S, $value>> {
-                match &*self.exemplars.lock() {
-                    ExemplarStorage::Empty | ExemplarStorage::Single(None) => None,
-                    ExemplarStorage::Single(Some(StoredExemplar::$variant(exemplar))) => {
-                        Some(exemplar.clone())
-                    }
-                    ExemplarStorage::Single(Some(_)) => {
-                        unreachable!("counter uses matching exemplar value storage")
-                    }
-                    ExemplarStorage::PerBucket(_) => {
-                        unreachable!("counter uses single exemplar storage")
-                    }
-                }
-            }
-
             /// Increments the counter by `value`, records the exemplar, and
             /// returns the previous total.
-            pub fn with_exemplar(&self, label_set: S, value: $value) -> $value {
+            pub fn inc_by_with_exemplar(&self, label_set: S, value: $value) -> $value {
                 let exemplar = StoredExemplar::$variant(Exemplar::new(label_set, value, None));
                 let mut exemplars = self.exemplars.lock();
                 let previous = self.inner.inc_by(value);

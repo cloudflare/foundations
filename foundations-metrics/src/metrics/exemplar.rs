@@ -13,26 +13,11 @@ use crate::labels::to_label_pairs;
 use crate::validation::EXEMPLAR_SERIALIZATION_ERROR_LABEL;
 
 /// Labels and a sampled value associated with a metric observation.
-///
-/// Their fields remain private; exemplars are created by recording labeled
-/// metric updates.
 #[derive(Debug)]
-pub struct Exemplar<S, V> {
+pub(super) struct Exemplar<S, V> {
     label_set: Arc<S>,
     value: V,
     pub(super) timestamp: Option<Timestamp>,
-}
-
-impl<S, V> Exemplar<S, V> {
-    /// Returns the exemplar's label set.
-    pub fn label_set(&self) -> &S {
-        &self.label_set
-    }
-
-    /// Returns the sampled increment or observation.
-    pub fn value(&self) -> &V {
-        &self.value
-    }
 }
 
 impl<S, V> Exemplar<S, V> {
@@ -103,9 +88,25 @@ pub(super) fn finish_exemplar(
 /// requests.inc();
 ///
 /// // Labeled: the exemplar and the increment are applied together.
-/// requests.with_exemplar(TraceLabels { trace_id: "abc" }, 4);
+/// requests.inc_by_with_exemplar(TraceLabels { trace_id: "abc" }, 4);
 ///
 /// assert_eq!(requests.get(), 5);
+/// ```
+///
+/// A histogram exemplar can link an unusual observation to a trace:
+///
+/// ```
+/// use foundations_metrics::{Histogram, WithExemplar};
+/// # #[derive(serde::Serialize)]
+/// # struct TraceLabels { trace_id: &'static str }
+///
+/// let request_latency = WithExemplar::<Histogram, TraceLabels>::new(
+///     Histogram::new([0.1, 0.5, 1.0]),
+/// );
+///
+/// request_latency.observe(0.05);
+/// // Attach the trace ID of a slow request to the matching latency bucket.
+/// request_latency.observe_with_exemplar(TraceLabels { trace_id: "abc123" }, 0.8);
 /// ```
 ///
 /// Cloning a supported metric shares both its inner metric and exemplar storage.
@@ -292,31 +293,36 @@ mod tests {
     #[test]
     fn reads_and_updates_interleave_without_deadlock() {
         let counter = WithExemplar::<Counter, TraceLabels>::new(Counter::default());
-        counter.with_exemplar(TraceLabels { trace_id: "a" }, 1);
+        counter.inc_by_with_exemplar(TraceLabels { trace_id: "a" }, 1);
 
         let value = counter.get();
         assert_eq!(value, 1);
         counter.inc();
         assert_eq!(counter.get(), 2);
         let _inner = counter.inner();
-        counter.with_exemplar(TraceLabels { trace_id: "b" }, 1);
+        counter.inc_by_with_exemplar(TraceLabels { trace_id: "b" }, 1);
         assert_eq!(counter.get(), 3);
     }
 
     #[test]
-    fn reading_an_exemplar_does_not_block_inner_metric_updates() {
+    fn unlabeled_updates_do_not_take_the_exemplar_lock() {
         use std::sync::Arc as StdArc;
+        use std::sync::mpsc;
+        use std::time::Duration;
+
         let counter = StdArc::new(WithExemplar::<Counter, TraceLabels>::default());
-        let exemplar = counter.exemplar();
+        let exemplars = counter.exemplars.lock();
 
         let writer = StdArc::clone(&counter);
+        let (updated_tx, updated_rx) = mpsc::channel();
         let handle = std::thread::spawn(move || {
-            writer.inc();
-            writer.get()
+            updated_tx.send(writer.inc()).unwrap();
         });
-        let _second = counter.inner();
-        assert!(exemplar.is_none());
-        assert_eq!(handle.join().unwrap(), 1);
+
+        assert_eq!(updated_rx.recv_timeout(Duration::from_secs(1)).unwrap(), 0);
+        drop(exemplars);
+        handle.join().unwrap();
+        assert_eq!(counter.get(), 1);
     }
 
     #[test]
@@ -325,11 +331,11 @@ mod tests {
         let clone = counter.clone();
 
         assert_eq!(
-            counter.with_exemplar(TraceLabels { trace_id: "first" }, 2),
+            counter.inc_by_with_exemplar(TraceLabels { trace_id: "first" }, 2),
             0
         );
         assert_eq!(
-            clone.with_exemplar(TraceLabels { trace_id: "latest" }, 3),
+            clone.inc_by_with_exemplar(TraceLabels { trace_id: "latest" }, 3),
             2
         );
 
@@ -341,11 +347,7 @@ mod tests {
         assert_eq!(trace_id(exemplar), Some("latest"));
         assert!(exemplar.timestamp.is_none());
 
-        // No guard is handed out, so reads and updates freely interleave. Under
-        // the previous `get() -> (N, MappedRwLockReadGuard<'_, _>)` API these
-        // three lines deadlocked.
         assert_eq!(counter.get(), 5);
-        assert!(counter.exemplar().is_some());
         assert_eq!(
             counter.inner().load(std::sync::atomic::Ordering::Relaxed),
             5
@@ -355,7 +357,14 @@ mod tests {
         // exemplar in place.
         assert_eq!(counter.inc(), 5);
         assert_eq!(counter.get(), 6);
-        assert!(counter.exemplar().is_some());
+        assert!(
+            counter.encode_metric_value()[0].metric[0]
+                .counter
+                .as_ref()
+                .unwrap()
+                .exemplar
+                .is_some()
+        );
 
         counter.clear_exemplars();
         assert!(
@@ -371,17 +380,30 @@ mod tests {
     #[test]
     fn counter_exemplars_preserve_their_value_type() {
         let unsigned = WithExemplar::<Counter, TraceLabels>::default();
-        unsigned.with_exemplar(
+        unsigned.inc_by_with_exemplar(
             TraceLabels {
                 trace_id: "unsigned",
             },
             u64::MAX,
         );
-        assert_eq!(unsigned.exemplar().unwrap().value(), &u64::MAX);
+        let unsigned_exemplars = unsigned.exemplars.lock();
+        let ExemplarStorage::Single(Some(StoredExemplar::U64(unsigned_exemplar))) =
+            &*unsigned_exemplars
+        else {
+            panic!("expected an unsigned counter exemplar");
+        };
+        assert_eq!(unsigned_exemplar.value, u64::MAX);
+        assert_eq!(unsigned_exemplar.label_set.trace_id, "unsigned");
+        drop(unsigned_exemplars);
 
         let float = WithExemplar::<Counter<f64>, TraceLabels>::default();
-        float.with_exemplar(TraceLabels { trace_id: "float" }, 1.5);
-        assert_eq!(float.exemplar().unwrap().value(), &1.5);
+        float.inc_by_with_exemplar(TraceLabels { trace_id: "float" }, 1.5);
+        let float_exemplars = float.exemplars.lock();
+        let ExemplarStorage::Single(Some(StoredExemplar::F64(float_exemplar))) = &*float_exemplars
+        else {
+            panic!("expected a floating-point counter exemplar");
+        };
+        assert_eq!(float_exemplar.value, 1.5);
     }
 
     #[test]
@@ -393,7 +415,7 @@ mod tests {
             Counter<u64, BlockingCounterAtomic>,
             TraceLabels,
         >::default());
-        counter.with_exemplar(TraceLabels { trace_id: "old" }, 1);
+        counter.inc_by_with_exemplar(TraceLabels { trace_id: "old" }, 1);
         counter
             .inner()
             .block_get
@@ -412,7 +434,7 @@ mod tests {
         let updater = Arc::clone(&counter);
         let (updated_tx, updated_rx) = mpsc::channel();
         let updater = std::thread::spawn(move || {
-            let previous = updater.with_exemplar(TraceLabels { trace_id: "new" }, 1);
+            let previous = updater.inc_by_with_exemplar(TraceLabels { trace_id: "new" }, 1);
             updated_tx.send(previous).unwrap();
         });
 
@@ -442,15 +464,15 @@ mod tests {
     #[test]
     fn classic_histogram_retains_latest_exemplar_per_bucket() {
         let histogram = WithExemplar::new(Histogram::new([1.0, 2.0]));
-        histogram.with_exemplar(TraceLabels { trace_id: "first" }, 0.5);
-        histogram.with_exemplar(
+        histogram.observe_with_exemplar(TraceLabels { trace_id: "first" }, 0.5);
+        histogram.observe_with_exemplar(
             TraceLabels {
                 trace_id: "replacement",
             },
             0.75,
         );
         histogram.observe(0.8);
-        histogram.with_exemplar(
+        histogram.observe_with_exemplar(
             TraceLabels {
                 trace_id: "second_bucket",
             },
@@ -488,9 +510,9 @@ mod tests {
     fn native_histogram_retains_latest_timestamped_exemplar() {
         let histogram = WithExemplar::new(NativeHistogram::new(1.1));
         let clone = histogram.clone();
-        histogram.with_exemplar(TraceLabels { trace_id: "first" }, 0.5);
+        histogram.observe_with_exemplar(TraceLabels { trace_id: "first" }, 0.5);
         clone.observe(2.0);
-        clone.with_exemplar(TraceLabels { trace_id: "latest" }, 3.0);
+        clone.observe_with_exemplar(TraceLabels { trace_id: "latest" }, 3.0);
 
         let families = histogram.encode_metric_value();
         let encoded = families[0].metric[0].histogram.as_ref().unwrap();
@@ -506,7 +528,7 @@ mod tests {
     #[test]
     fn exemplar_label_failure_drops_only_the_exemplar() {
         let counter = WithExemplar::<Counter, &'static str>::default();
-        counter.with_exemplar("not a label set", 2);
+        counter.inc_by_with_exemplar("not a label set", 2);
 
         let families = NamedMetric::new("serialization_failure", "", counter).encode();
         let sentinel = &families[0].metric[0]
@@ -536,7 +558,7 @@ mod tests {
     #[test]
     fn empty_exemplar_label_sets_are_retained_in_text() {
         let counter = WithExemplar::<Counter, ()>::default();
-        counter.with_exemplar((), 2);
+        counter.inc_by_with_exemplar((), 2);
 
         let families = NamedMetric::new("empty_exemplar", "", counter).encode();
         assert!(encode_to_text(&families).contains("empty_exemplar 2.0 # {} 2.0\n"));
@@ -545,7 +567,7 @@ mod tests {
     #[test]
     fn accepts_legacy_sequence_label_sets() {
         let counter = WithExemplar::<Counter, Vec<(&'static str, &'static str)>>::default();
-        counter.with_exemplar(vec![("trace_id", "legacy")], 1);
+        counter.inc_by_with_exemplar(vec![("trace_id", "legacy")], 1);
 
         let families = counter.encode_metric_value();
         let exemplar = families[0].metric[0]
@@ -563,14 +585,14 @@ mod tests {
         struct OpaqueLabels;
 
         let counter = WithExemplar::<Counter, OpaqueLabels>::default();
-        counter.with_exemplar(OpaqueLabels, 1);
+        counter.inc_by_with_exemplar(OpaqueLabels, 1);
         assert_eq!(counter.get(), 1);
 
         let classic = WithExemplar::<Histogram, OpaqueLabels>::new(Histogram::new([1.0]));
-        classic.with_exemplar(OpaqueLabels, 0.5);
+        classic.observe_with_exemplar(OpaqueLabels, 0.5);
 
         let native = WithExemplar::<NativeHistogram, OpaqueLabels>::new(NativeHistogram::new(1.1));
-        native.with_exemplar(OpaqueLabels, 0.5);
+        native.observe_with_exemplar(OpaqueLabels, 0.5);
     }
 
     #[test]
@@ -583,7 +605,7 @@ mod tests {
         let family = Family::<SeriesLabels, WithExemplar<Counter, TraceLabels>>::default();
         family
             .get_or_create(&SeriesLabels { method: "GET" })
-            .with_exemplar(TraceLabels { trace_id: "abc" }, 1);
+            .inc_by_with_exemplar(TraceLabels { trace_id: "abc" }, 1);
 
         let families = family.encode_metric_value();
         let metric = &families[0].metric[0];
@@ -602,7 +624,7 @@ mod tests {
             buckets: &[0.5, 1.0],
         }
         .new_metric();
-        classic.with_exemplar(
+        classic.observe_with_exemplar(
             TraceLabels {
                 trace_id: "classic",
             },
@@ -621,7 +643,7 @@ mod tests {
         let native: WithExemplar<NativeHistogram, TraceLabels> = NativeHistogramBuilder::new(1.1)
             .with_max_buckets(160)
             .new_metric();
-        native.with_exemplar(TraceLabels { trace_id: "native" }, 0.75);
+        native.observe_with_exemplar(TraceLabels { trace_id: "native" }, 0.75);
         assert_eq!(
             native.encode_metric_value()[0].metric[0]
                 .histogram
@@ -636,7 +658,7 @@ mod tests {
     #[test]
     fn registered_exemplar_counter_is_collected_and_encoded() {
         let counter = WithExemplar::<Counter, TraceLabels>::default();
-        counter.with_exemplar(
+        counter.inc_by_with_exemplar(
             TraceLabels {
                 trace_id: "registered",
             },
@@ -694,7 +716,7 @@ mod tests {
         >::new_with_constructor(NativeHistogramBuilder::new(1.1));
         family
             .get_or_create(&SeriesLabels { method: "GET" })
-            .with_exemplar(TraceLabels { trace_id: "native" }, 0.25);
+            .observe_with_exemplar(TraceLabels { trace_id: "native" }, 0.25);
         register(
             Box::new(NamedMetric::new(
                 "registered_native_histogram_with_exemplars",

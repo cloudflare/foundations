@@ -74,7 +74,7 @@ impl NativeHistogram {
 
 impl<S> WithExemplar<NativeHistogram, S> {
     /// Records `value` and retains it as the latest exemplar.
-    pub fn with_exemplar(&self, label_set: S, value: f64) {
+    pub fn observe_with_exemplar(&self, label_set: S, value: f64) {
         let mut exemplar = Exemplar::new(label_set, value, None);
         let mut exemplars = self.exemplars.lock();
         self.inner.observe(value);

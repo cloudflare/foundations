@@ -145,7 +145,7 @@ pub(super) fn encode_snapshot(snapshot: HistogramSnapshot) -> Vec<MetricFamily> 
 
 impl<S> WithExemplar<Histogram, S> {
     /// Records `value` and stores the exemplar in the matching bucket.
-    pub fn with_exemplar(&self, label_set: S, value: f64) {
+    pub fn observe_with_exemplar(&self, label_set: S, value: f64) {
         let exemplar = Exemplar::new(label_set, value, None);
         let mut exemplars = self.exemplars.lock();
         if let Some(bucket) = self.inner.observe_and_bucket(value) {
