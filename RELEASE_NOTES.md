@@ -1,4 +1,21 @@
 
+5.8.1
+- 2026-08-03 Add pause syscall to seccomp SERVICE_BASICS allowlist (#241)
+- 2026-07-31 feat(metrics): add metric validation + UTF-8 support (#238)
+- 2026-07-30 feat(metrics): add protobuf and OpenMetrics text encoders and collection (#237)
+- 2026-07-17 Remove seccomp probe results
+- 2026-07-28 feat(metrics): add support for classic, time, and native histograms. (#236)
+- 2026-07-21 feat(metrics): add support for metric families and label serialisation (#234)
+- 2026-07-16 Apply suggestions from code review
+- 2026-07-16 doc(metrics): apply doc suggestions from code review.
+- 2026-07-15 docs(metrics): improve comments & examples in gauge.rs
+- 2026-07-14 feat(metrics): re-export registry API
+- 2026-07-13 refactor(metrics): own scalar metric atomic storage
+- 2026-07-13 chore(metrics): cleanup comments
+- 2026-07-13 fix(metrics): add Counter inner accessor
+- 2026-07-13 feat(metrics): implement Gauge, RangeGauge and GaugeGuard
+- 2026-07-13 feat(metrics): add Counter implementation.
+
 5.8.0
 - 2026-06-17 Bump tikv-jemallocator to 0.7.0
 - 2026-07-16 Add user-facing tracing pipeline
