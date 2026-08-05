@@ -29,7 +29,7 @@ pub use labels::{LabelError, to_label_pairs};
 pub use metrics::{
     Counter, CounterAtomic, Family, FamilyMetricGuard, Gauge, GaugeAtomic, GaugeGuard, Histogram,
     HistogramBuilder, HistogramSnapshot, HistogramTimer, MetricConstructor, NativeHistogram,
-    NativeHistogramBuilder, RangeGauge, TimeHistogram, WithExemplar,
+    NativeHistogramBuilder, ObserveNanos, RangeGauge, TimeHistogram, WithExemplar,
 };
 pub use registered::NamedMetric;
 pub use validation::{NAME_REQUIREMENT, is_valid_name};

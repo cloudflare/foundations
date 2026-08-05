@@ -235,6 +235,25 @@ pub struct TimeHistogram {
     state: Arc<TimeHistogramState>,
 }
 
+/// A histogram that records durations expressed in nanoseconds.
+///
+/// This is what lets a [`HistogramTimer`] drive either a fixed-bucket
+/// [`TimeHistogram`] or an exponential-bucket
+/// [`NativeTimeHistogram`](super::NativeTimeHistogram). Implementors must share
+/// storage across clones, since the timer records into a clone taken when it
+/// started.
+pub trait ObserveNanos: Clone {
+    /// Records an observed duration in nanoseconds.
+    fn observe_nanos(&self, nanos: u64);
+}
+
+impl ObserveNanos for TimeHistogram {
+    #[inline]
+    fn observe_nanos(&self, nanos: u64) {
+        self.observe(nanos);
+    }
+}
+
 /// Timer to measure and record the duration of an event.
 ///
 /// This timer can be stopped and observed at most once, either automatically
@@ -243,8 +262,8 @@ pub struct TimeHistogram {
 // Adapted from prometools' `histogram::HistogramTimer`
 // (https://github.com/nox/prometools, licensed MIT OR Apache-2.0).
 #[must_use = "HistogramTimer measures on Drop so should be assigned to named variable"]
-pub struct HistogramTimer {
-    histogram: TimeHistogram,
+pub struct HistogramTimer<H: ObserveNanos = TimeHistogram> {
+    histogram: H,
     observed: bool,
     start: Option<Instant>,
     accumulated: Duration,
@@ -257,7 +276,17 @@ struct TimeHistogramState {
     buckets: Vec<(f64, AtomicU64)>,
 }
 
-impl HistogramTimer {
+impl<H: ObserveNanos> HistogramTimer<H> {
+    /// Starts a timer that records into `histogram`.
+    pub(super) fn start(histogram: H) -> Self {
+        Self {
+            histogram,
+            observed: false,
+            start: Some(Instant::now()),
+            accumulated: Duration::new(0, 0),
+        }
+    }
+
     /// Pauses elapsed-time tracking.
     ///
     /// Calling this while the timer is already paused has no effect.
@@ -297,14 +326,14 @@ impl HistogramTimer {
 
         self.observed = true;
         if record {
-            self.histogram.observe(elapsed.as_nanos() as u64);
+            self.histogram.observe_nanos(elapsed.as_nanos() as u64);
         }
 
         elapsed
     }
 }
 
-impl Drop for HistogramTimer {
+impl<H: ObserveNanos> Drop for HistogramTimer<H> {
     fn drop(&mut self) {
         if !self.observed {
             self.observe(true);
@@ -344,12 +373,7 @@ impl TimeHistogram {
 
     /// Starts a timer that records its duration when stopped or dropped.
     pub fn start_timer(&self) -> HistogramTimer {
-        HistogramTimer {
-            histogram: self.clone(),
-            observed: false,
-            start: Some(Instant::now()),
-            accumulated: Duration::new(0, 0),
-        }
+        HistogramTimer::start(self.clone())
     }
 
     /// Records an observed duration in nanoseconds.
@@ -416,7 +440,7 @@ impl HistogramSnapshot {
 // Adapted from prometools' private `histogram::seconds`
 // (https://github.com/nox/prometools, licensed MIT OR Apache-2.0).
 #[inline(always)]
-fn seconds(val: u64) -> f64 {
+pub(super) fn seconds(val: u64) -> f64 {
     (val as f64) * 1E-9
 }
 
