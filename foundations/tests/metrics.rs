@@ -3,11 +3,6 @@ use foundations::telemetry::metrics::{self, Counter, Family, metrics};
 use foundations::telemetry::settings::{MetricsSettings, ServiceNameFormat, TelemetrySettings};
 use foundations::telemetry::{TelemetryConfig, TelemetryContext};
 
-/// How an integral sample value is rendered.
-///
-/// The classic Prometheus text format encodes the `u64` counter values it stores
-/// as integers, while `foundations-metrics` stores every value as a protobuf
-/// double and renders it as a float. Both parse to the same series and value.
 #[cfg(not(feature = "foundations-metrics-backend"))]
 const ONE: &str = "1";
 #[cfg(feature = "foundations-metrics-backend")]
@@ -81,10 +76,6 @@ fn encode_error_is_skipped() {
 
     // Note the absence of values for the `error_invalid_label` family: every one
     // of its rows fails label serialization.
-    //
-    // `prometheus-client` appends `.` to all help text, so an absent doc comment
-    // renders as `.`; `foundations-metrics` omits help it has none for, and drops
-    // a family once all of its rows are skipped instead of emitting bare metadata.
     #[cfg(not(feature = "foundations-metrics-backend"))]
     let expected_output = "# HELP undefined_encode_error_valid .
 # TYPE undefined_encode_error_valid counter

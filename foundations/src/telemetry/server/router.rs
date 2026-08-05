@@ -126,9 +126,6 @@ impl Routes {
                 async move {
                     match metrics::collect_negotiated(accept.as_deref(), &settings.metrics) {
                         Ok((content_type, body)) => into_response(content_type, Ok(body)),
-                        // Errors are reported as plain text, so the content type
-                        // given here is unused; the body type only needs naming
-                        // because `Err` alone leaves it unconstrained.
                         Err(err) => into_response("text/plain", Err::<Vec<u8>, _>(err)),
                     }
                 }

@@ -71,8 +71,6 @@ async fn metrics_endpoint_serves_the_negotiated_format() {
         }
     };
 
-    // Asking for delimited protobuf must produce protobuf, not text under a
-    // protobuf content type.
     let (content_type, body) = scrape(PROTOBUF_ACCEPT).await;
 
     assert_eq!(content_type, foundations_metrics::PROTOBUF_CONTENT_TYPE);
@@ -87,8 +85,6 @@ async fn metrics_endpoint_serves_the_negotiated_format() {
         "protobuf response carries the text terminator"
     );
 
-    // Asking for text must still produce text, terminated as OpenMetrics
-    // requires.
     let (content_type, body) = scrape(TEXT_ACCEPT).await;
 
     assert!(

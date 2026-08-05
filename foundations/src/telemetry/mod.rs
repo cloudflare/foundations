@@ -426,7 +426,6 @@ mod tests {
         assert!(is_initialized());
     }
 
-    // We don't need this method in the new backend since the new registry doesn't hold any service name at all.
     /// Ensure that `TelemetryContext::test()` does not default-initialize the metrics registry.
     /// This has caused CI bugs in the past because metrics will be prefixed by `undefined_`.
     #[cfg(not(feature = "foundations-metrics-backend"))]

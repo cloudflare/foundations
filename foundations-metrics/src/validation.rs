@@ -29,12 +29,6 @@ impl ValidationContext {
 
 /// Whether a metric or label name can be represented at all.
 ///
-/// This check is deliberately permissive, and tightening it to the legacy
-/// `[a-zA-Z_][a-zA-Z0-9_]*` pattern would be a regression: OpenMetrics 1.0
-/// admits arbitrary UTF-8 names, and the text encoder quotes any name that
-/// needs it, so names outside the legacy pattern still encode correctly. Naming
-/// policy therefore belongs to the encoders, not here.
-///
 /// Only the two cases that no encoder can express are rejected: an empty name
 /// has no rendering, and a NUL byte both breaks the text format and collides
 /// with the `EXEMPLAR_SERIALIZATION_ERROR_LABEL` sentinel, which relies on being

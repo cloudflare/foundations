@@ -7,10 +7,6 @@ use foundations::telemetry::settings::{MetricsSettings, ServiceNameFormat, Telem
 use foundations::telemetry::{TelemetryConfig, TelemetryContext, metrics};
 
 /// Returns the value of the sample line for `series`, if it was collected.
-///
-/// The value is parsed rather than matched textually: the classic Prometheus
-/// text format renders the `u64` it stores as `1`, while `foundations-metrics`
-/// renders its protobuf double as `1.0`. Both denote the same series.
 fn sample_value(metrics: &str, series: &str) -> Option<f64> {
     metrics.lines().find_map(|line| {
         line.strip_prefix(series)

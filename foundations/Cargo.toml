@@ -218,10 +218,6 @@ tracing-rs-compat = ["dep:tracing-slog"]
 # Selects the `foundations-metrics` implementation behind `telemetry::metrics`.
 # The `metrics` macro expands identically either way: it emits paths that this
 # crate resolves, so the macro needs no feature of its own.
-#
-# The substitution is shape-compatible, which makes this a transition aid and
-# not the destination: depend on `foundations-metrics` and import from it
-# directly instead of reaching it through this facade.
 foundations-metrics-backend = ["dep:foundations-metrics", "dep:foundations-metrics-registry"]
 
 [package.metadata.docs.rs]

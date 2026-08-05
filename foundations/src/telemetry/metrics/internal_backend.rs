@@ -1,17 +1,11 @@
 //! Registration glue used by the [`metrics`](super::metrics) macro when the
 //! `foundations-metrics` backend is enabled.
-//!
-//! This module mirrors the surface that the macro expects from the legacy
-//! `internal` module, so the macro expands to the same tokens under both
-//! backends.
 
 use foundations_metrics::{EncodeMetric, NamedMetric, RegistrationMetadata, register};
 
 /// Registers a metric declared through the [`metrics`](super::metrics) macro.
 ///
-/// `subsystem` and `name` are only meaningful to the legacy backend, which
-/// composes the exported name through nested registries. Here the macro
-/// supplies the already composed `full_name`, and the service name is applied
+/// Here the macro supplies the already composed `full_name`, and the service name is applied
 /// at collection time.
 pub fn register_metric<M>(
     _subsystem: &'static str,

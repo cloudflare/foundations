@@ -1,4 +1,4 @@
-//! Registries backing the legacy metrics implementation.
+//! Registries backing the deprecated metrics implementation.
 //!
 //! Extra producers are deprecated but still carried here until this
 //! implementation is removed, so their use is allowed throughout the module.

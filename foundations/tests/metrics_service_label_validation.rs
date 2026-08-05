@@ -20,8 +20,6 @@ fn init_with(format: ServiceNameFormat) -> foundations::BootstrapResult<()> {
     .map(|_| ())
 }
 
-/// The reachable case: the setting is a plain config string, so unsubstituted
-/// templating yields exactly this.
 #[test]
 fn empty_service_label_name_is_rejected_at_startup() {
     let error = init_with(ServiceNameFormat::LabelWithName(String::new()))
@@ -39,8 +37,6 @@ fn empty_service_label_name_is_rejected_at_startup() {
     );
 }
 
-/// The other unencodable case, so narrowing the rule to emptiness alone would be
-/// caught.
 #[test]
 fn service_label_name_with_nul_is_rejected_at_startup() {
     let error = init_with(ServiceNameFormat::LabelWithName("ser\0vice".to_owned()))

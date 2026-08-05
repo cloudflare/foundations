@@ -38,13 +38,8 @@ static INFO_METRICS: OnceLock<RwLock<HashMap<TypeId, InfoEntry>>> = OnceLock::ne
 /// Returns the info metric store, registering the collector on first use.
 fn info_metrics() -> &'static RwLock<HashMap<TypeId, InfoEntry>> {
     INFO_METRICS.get_or_init(|| {
-        // A single collector is registered for every info metric: the registry
-        // is append-only, so registering per report would emit a duplicate
-        // family each time the same info metric is reported again.
         register(
             Box::new(InfoCollector) as Box<dyn EncodeMetric>,
-            // Info metrics are exposed exactly as reported: they keep their bare
-            // name (e.g. `build_info`) and carry only their own fields as labels.
             RegistrationMetadata::default()
                 .unprefixed(true)
                 .unlabeled(true),
@@ -108,8 +103,6 @@ struct InfoCollector;
 
 impl EncodeMetric for InfoCollector {
     fn encode(&self) -> Vec<MetricFamily> {
-        // Read without initializing: the collector is only ever registered from
-        // `info_metrics`, so the store already exists by the time this runs.
         let Some(info_metrics) = INFO_METRICS.get() else {
             return Vec::new();
         };

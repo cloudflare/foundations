@@ -202,11 +202,6 @@ fn negotiate(accept: Option<&str>, protobuf_available: bool) -> Option<ScrapeFor
             let name = name.trim();
 
             if name.eq_ignore_ascii_case("q") {
-                // RFC 9110: a weight runs from 0 to 1, and an unusable one
-                // invalidates the media-range. Zero is the refusal value below.
-                // The bound also excludes `nan` and `inf`, which `parse`
-                // accepts: `NaN` loses no comparison so it would pin itself as
-                // the winner, and `inf` would outrank a legitimate `q=1.0`.
                 quality = match value.parse::<f32>() {
                     Ok(parsed) if (0.0..=1.0).contains(&parsed) => parsed,
                     _ => 0.0,
@@ -282,8 +277,7 @@ fn protobuf_available() -> bool {
 ///
 /// The negotiated escaping is currently reported rather than enforced: the text
 /// encoder quotes a name whenever that name requires it, regardless of what the
-/// scraper asked for. Names produced in-tree are all legacy compatible, so the
-/// two agree in practice.
+/// scraper asked for.
 pub fn collect_negotiated(
     accept: Option<&str>,
     settings: &MetricsSettings,
@@ -314,7 +308,6 @@ pub fn collect_negotiated(
         Ok((format.content_type(), collect(settings)?.into_bytes()))
     }
 
-    // The legacy encoder produces text only, so there is nothing to negotiate.
     #[cfg(not(feature = "foundations-metrics-backend"))]
     {
         let _ = accept;
@@ -814,9 +807,6 @@ where
 }
 
 /// Producers appended to the collected metrics, in registration order.
-///
-/// The metric registry only holds metrics that encode into the protobuf data
-/// model, so text-emitting producers are kept here instead.
 #[cfg(feature = "foundations-metrics-backend")]
 #[allow(deprecated)]
 static EXTRA_PRODUCERS: OnceLock<parking_lot::RwLock<Vec<Box<dyn ExtraProducer>>>> =
@@ -900,10 +890,6 @@ mod negotiation_tests {
         assert_eq!(negotiate(Some(accept), true), TEXT);
     }
 
-    /// `q=0` means "not acceptable" (RFC 9110), so a header offering
-    /// nothing else leaves nothing to serve. Refusing the range outright, rather
-    /// than merely ranking it last, is what keeps it from being selected as the
-    /// only remaining candidate.
     #[test]
     fn zero_quality_on_the_only_range_matches_nothing() {
         assert_eq!(
@@ -948,7 +934,6 @@ mod negotiation_tests {
         assert_eq!(negotiate(None, false), TEXT);
     }
 
-    /// Nothing is servable to a protobuf-only scraper once protobuf is withheld.
     #[test]
     fn protobuf_only_matches_nothing_when_unavailable() {
         assert_eq!(negotiate(Some(PROTOBUF_ONLY), false), None);
@@ -964,9 +949,6 @@ mod negotiation_tests {
         assert_eq!(negotiate(Some("application/json,text/html"), true), None);
     }
 
-    /// RFC 9110 invalidates a range with an unparseable weight, leaving
-    /// nothing acceptable behind. A bare `q=` is unparseable, so it invalidates
-    /// the range rather than reading as the default weight of 1.
     #[test]
     fn malformed_quality_on_the_only_range_matches_nothing() {
         let accept = "application/vnd.google.protobuf;\
@@ -975,8 +957,6 @@ mod negotiation_tests {
         assert_eq!(negotiate(Some(accept), true), None);
     }
 
-    /// `"nan"` and `"inf"` parse as floats, so parsing alone does not make a
-    /// weight usable.
     #[test]
     fn unrankable_quality_matches_nothing() {
         for weight in [
@@ -992,8 +972,6 @@ mod negotiation_tests {
         }
     }
 
-    /// `NaN` loses no comparison, so ranking it last is not enough: it would
-    /// stay `best` and discard the format actually preferred.
     #[test]
     fn unrankable_quality_does_not_mask_a_later_range() {
         let accept = format!("application/openmetrics-text;q=nan,{PROTOBUF_PREFERRED}");
@@ -1001,8 +979,6 @@ mod negotiation_tests {
         assert_eq!(negotiate(Some(&accept), true), PROTOBUF);
     }
 
-    /// The escapings differ so the assertion fails if `q=5` is ranked rather
-    /// than refused.
     #[test]
     fn out_of_range_quality_does_not_outrank_the_maximum() {
         let accept = "application/openmetrics-text;escaping=allow-utf-8;q=5,text/plain;q=1.0";
@@ -1010,7 +986,6 @@ mod negotiation_tests {
         assert_eq!(negotiate(Some(accept), true), TEXT);
     }
 
-    /// The boundary values of the spec range stay usable.
     #[test]
     fn quality_bounds_are_accepted() {
         assert_eq!(

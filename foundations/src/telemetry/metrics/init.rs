@@ -58,8 +58,6 @@ pub(crate) fn init(
     #[cfg(not(feature = "foundations-metrics-backend"))]
     let first_install = Registries::init(service_info, settings);
 
-    // Only the service name is kept. How it is represented is read from the
-    // settings passed to collection.
     #[cfg(feature = "foundations-metrics-backend")]
     let first_install = {
         let _ = settings; // format is read at collect time

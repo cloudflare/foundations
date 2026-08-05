@@ -103,11 +103,6 @@ fn apply_service_label(families: &mut [MetricFamily], label_name: &str, service_
     for family in families {
         let family_name = family.name.as_deref().unwrap_or_default();
         family.metric.retain_mut(|metric| {
-            // Only the first occurrence decides. A row that
-            // repeats the label is dropped by duplicate-label
-            // validation below with a clearer message, so
-            // scanning past the first match cannot change the
-            // outcome and would only make it order dependent.
             match metric
                 .label
                 .iter()

@@ -476,9 +476,6 @@ impl Serializer for LabelValueSerializer {
 
 // Adapted from prometools' `serde::top::check_key`
 // (https://github.com/nox/prometools, licensed MIT OR Apache-2.0).
-//
-// Rejects only names no encoder can express; see `is_valid_name` for why this is
-// intentionally permissive rather than the legacy Prometheus name pattern.
 fn validate_label_name(name: &str) -> Result<(), LabelError> {
     is_valid_name(name).then_some(()).ok_or_else(|| {
         LabelError::new(format!(
