@@ -58,9 +58,19 @@ structured metric families instead, which both encoders can serve. Prefer
 to control its own naming or emit several families.
 
 Enabling the feature also stops draining the `prometheus` crate's global
-registry, which the legacy collector exported alongside its own. Anything
-registered there, including that crate's process collector, needs to be
-re-registered through `register`.
+registry, which the legacy collector exported alongside its own. Metrics kept
+only there are no longer scraped. Note that `register` does not accept that
+crate's collectors — [`IntoMetrics`](https://docs.rs/foundations-metrics-registry/latest/foundations_metrics_registry/trait.IntoMetrics.html)
+is sealed over `EncodeMetric` — so they have to be reimplemented against the
+traits above rather than handed over as they are.
+
+On Linux this includes the process collector, which that crate registers on its
+own and which no longer has an equivalent here:
+`process_cpu_seconds_total`, `process_resident_memory_bytes`,
+`process_virtual_memory_bytes`, `process_open_fds`, `process_max_fds`,
+`process_start_time_seconds`, and `process_threads`. Nothing registers these
+after the switch, so alerts and dashboards reading them need either a
+reimplementation or another source such as `node_exporter` or cAdvisor.
 
 For further guidance, each deprecated item names its own replacement in the
 [`foundations` API docs](https://docs.rs/foundations/), and the traits above are
