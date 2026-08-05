@@ -49,8 +49,8 @@ use internal::{ErasedInfoMetric, Registries};
 mod backend {
     pub use foundations_metrics::{
         Counter, Family, Gauge, GaugeGuard, Histogram, HistogramTimer, InfoMetric,
-        MetricConstructor, NativeHistogram, NativeHistogramBuilder, RangeGauge, TimeHistogram,
-        WithExemplar,
+        MetricConstructor, NativeHistogram, NativeHistogramBuilder, ObserveNanos, RangeGauge,
+        TimeHistogram, WithExemplar,
     };
 
     // Everything needed to define, register, and label a custom metric. The
