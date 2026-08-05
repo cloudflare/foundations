@@ -48,7 +48,7 @@ pub use gauge::{Gauge, GaugeAtomic, GaugeGuard, RangeGauge};
 pub use histogram::{
     Histogram, HistogramBuilder, HistogramSnapshot, HistogramTimer, ObserveNanos, TimeHistogram,
 };
-pub use native_histogram::{NativeHistogram, NativeHistogramBuilder};
+pub use native_histogram::{NativeHistogram, NativeHistogramBuilder, NativeTimeHistogram};
 
 fn update_f64(atomic: &AtomicU64, f: impl Fn(f64) -> f64) -> f64 {
     let mut old_bits = atomic.load(Ordering::Relaxed);
