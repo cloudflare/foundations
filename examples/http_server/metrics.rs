@@ -19,9 +19,8 @@ pub(crate) mod http_server {
 
     /// Time spent handling a request, in seconds.
     #[ctor = NativeHistogramBuilder {
-        bucket_factor: 1.1,
-        zero_threshold: 0.0,
-        max_buckets: 160,
+        classic_buckets: Some(&[0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0]),
+        ..NativeHistogramBuilder::new(1.1).with_max_buckets(160)
     }]
     pub fn request_latency_seconds(endpoint_name: &Arc<String>) -> NativeHistogram;
 }
