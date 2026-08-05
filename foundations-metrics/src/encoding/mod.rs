@@ -158,10 +158,16 @@ mod tests {
                             exemplars: vec![
                                 Exemplar {
                                     label: vec![label("bad#name", "nonstandard")],
+                                    timestamp: Some(Default::default()),
+                                    ..Default::default()
+                                },
+                                Exemplar {
+                                    label: vec![label("trace_id", "missing_timestamp")],
                                     ..Default::default()
                                 },
                                 Exemplar {
                                     label: vec![label("trace_id", "good")],
+                                    timestamp: Some(Default::default()),
                                     ..Default::default()
                                 },
                             ],

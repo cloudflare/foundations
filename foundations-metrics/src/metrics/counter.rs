@@ -3,8 +3,10 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use foundations_metrics_registry::proto::{self, MetricType};
+use serde::Serialize;
 
 use super::IntoF64;
+use super::exemplar::{Exemplar, ExemplarStorage, StoredExemplar, WithExemplar, finish_exemplar};
 
 use crate::{MetricFamily, value::EncodeMetricValue};
 
@@ -135,7 +137,7 @@ impl<N, A: Default> Default for Counter<N, A> {
 ///
 /// The name/help are left empty here; they are populated at registration and
 /// encode time.
-fn encode_counter(value: f64) -> Vec<MetricFamily> {
+pub(super) fn encode_counter(value: f64) -> Vec<MetricFamily> {
     vec![MetricFamily {
         name: Some(String::new()),
         help: None,
@@ -158,6 +160,65 @@ where
 {
     fn encode_metric_value(&self) -> Vec<MetricFamily> {
         encode_counter(self.get().into_f64())
+    }
+}
+
+macro_rules! impl_counter_with_exemplar {
+    ($value:ty, $variant:ident) => {
+        impl<S, A> WithExemplar<Counter<$value, A>, S>
+        where
+            A: CounterAtomic<$value>,
+        {
+            /// Increments the counter by `value`, records the exemplar, and
+            /// returns the previous total.
+            pub fn inc_by_with_exemplar(&self, label_set: S, value: $value) -> $value {
+                let exemplar = StoredExemplar::$variant(Exemplar::new(label_set, value, None));
+                let mut exemplars = self.exemplars.lock();
+                let previous = self.inner.inc_by(value);
+
+                match &mut *exemplars {
+                    ExemplarStorage::Empty => {
+                        *exemplars = ExemplarStorage::Single(Some(exemplar));
+                    }
+                    ExemplarStorage::Single(stored) => *stored = Some(exemplar),
+                    ExemplarStorage::PerBucket(_) => {
+                        unreachable!("counter uses single exemplar storage")
+                    }
+                }
+
+                previous
+            }
+        }
+    };
+}
+
+impl_counter_with_exemplar!(i64, I64);
+impl_counter_with_exemplar!(u64, U64);
+impl_counter_with_exemplar!(f64, F64);
+
+impl<S, N, A> EncodeMetricValue for WithExemplar<Counter<N, A>, S>
+where
+    S: Serialize + Send + Sync + 'static,
+    N: IntoF64,
+    A: CounterAtomic<N> + Send + Sync + 'static,
+{
+    fn encode_metric_value(&self) -> Vec<MetricFamily> {
+        let exemplars = self.exemplars.lock();
+        let exemplar = match &*exemplars {
+            ExemplarStorage::Empty => None,
+            ExemplarStorage::Single(exemplar) => exemplar.clone(),
+            ExemplarStorage::PerBucket(_) => unreachable!("counter uses single exemplar storage"),
+        };
+        let value = self.inner.get().into_f64();
+        drop(exemplars);
+
+        let mut families = encode_counter(value);
+        let counter = families[0].metric[0]
+            .counter
+            .as_mut()
+            .expect("counter encoder always creates a counter value");
+        counter.exemplar = finish_exemplar(exemplar.as_ref().map(StoredExemplar::encode));
+        families
     }
 }
 

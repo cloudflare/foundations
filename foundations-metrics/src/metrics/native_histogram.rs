@@ -1,3 +1,5 @@
+use std::time::SystemTime;
+
 use foundations_metrics_registry::proto::{self, Bucket, BucketSpan, LabelPair, MetricType};
 use prometheus_client::encoding::prometheus_protobuf::{
     self, prometheus_data_model as prometheus_proto,
@@ -6,11 +8,13 @@ use prometheus_client::metrics::histogram::{
     Histogram as PrometheusHistogram, NativeHistogramConfig,
 };
 use prometheus_client::registry::Registry;
+use serde::Serialize;
 
 use crate::diagnostics::report_collect_error;
 use crate::{MetricFamily, value::EncodeMetricValue};
 
 use super::MetricConstructor;
+use super::exemplar::{Exemplar, ExemplarStorage, StoredExemplar, WithExemplar, finish_exemplar};
 
 /// A native (exponential-bucket) histogram.
 ///
@@ -55,6 +59,37 @@ impl NativeHistogram {
     #[inline]
     pub fn observe(&self, value: f64) {
         self.inner.observe(value);
+    }
+
+    pub(super) fn try_encode_metric_value(&self) -> Result<Vec<MetricFamily>, std::fmt::Error> {
+        // prometheus_client keeps native bucket state private. A cloned histogram shares
+        // storage, so a temporary registry can drive its protobuf encoder.
+        let mut registry = Registry::default();
+        registry.register("native_histogram", "", self.inner.clone());
+
+        prometheus_protobuf::encode(&registry)
+            .map(|families| families.into_iter().map(convert_native_family).collect())
+    }
+}
+
+impl<S> WithExemplar<NativeHistogram, S> {
+    /// Records `value` and retains it as the latest exemplar.
+    pub fn observe_with_exemplar(&self, label_set: S, value: f64) {
+        let mut exemplar = Exemplar::new(label_set, value, None);
+        let mut exemplars = self.exemplars.lock();
+        self.inner.observe(value);
+        exemplar.timestamp = Some(SystemTime::now().into());
+        let exemplar = StoredExemplar::F64(exemplar);
+
+        match &mut *exemplars {
+            ExemplarStorage::Empty => {
+                *exemplars = ExemplarStorage::Single(Some(exemplar));
+            }
+            ExemplarStorage::Single(stored) => *stored = Some(exemplar),
+            ExemplarStorage::PerBucket(_) => {
+                unreachable!("native histogram uses single exemplar storage")
+            }
+        }
     }
 }
 
@@ -162,15 +197,16 @@ impl MetricConstructor<NativeHistogram> for NativeHistogramBuilder {
     }
 }
 
+impl<S> MetricConstructor<WithExemplar<NativeHistogram, S>> for NativeHistogramBuilder {
+    fn new_metric(&self) -> WithExemplar<NativeHistogram, S> {
+        WithExemplar::new(NativeHistogramBuilder::new_metric(self))
+    }
+}
+
 impl EncodeMetricValue for NativeHistogram {
     fn encode_metric_value(&self) -> Vec<MetricFamily> {
-        // Upstream keeps native bucket state private. A cloned histogram shares
-        // storage, so a temporary registry can drive its protobuf encoder.
-        let mut registry = Registry::default();
-        registry.register("native_histogram", "", self.inner.clone());
-
-        match prometheus_protobuf::encode(&registry) {
-            Ok(families) => families.into_iter().map(convert_native_family).collect(),
+        match self.try_encode_metric_value() {
+            Ok(families) => families,
             Err(error) => {
                 report_collect_error(format_args!(
                     "non-fatal error while collecting metrics: skipped a native histogram; protobuf encoding failed: {error}"
@@ -178,6 +214,46 @@ impl EncodeMetricValue for NativeHistogram {
                 Vec::new()
             }
         }
+    }
+}
+
+impl<S> EncodeMetricValue for WithExemplar<NativeHistogram, S>
+where
+    S: Serialize + Send + Sync + 'static,
+{
+    fn encode_metric_value(&self) -> Vec<MetricFamily> {
+        let exemplars = self.exemplars.lock();
+        let exemplar = match &*exemplars {
+            ExemplarStorage::Empty => None,
+            ExemplarStorage::Single(exemplar) => exemplar.clone(),
+            ExemplarStorage::PerBucket(_) => {
+                unreachable!("native histogram uses single exemplar storage")
+            }
+        };
+        let families = self.inner.try_encode_metric_value();
+        drop(exemplars);
+
+        let mut families = match families {
+            Ok(families) => families,
+            Err(error) => {
+                report_collect_error(format_args!(
+                    "non-fatal error while collecting metrics: skipped a native histogram; protobuf encoding failed: {error}"
+                ));
+                return Vec::new();
+            }
+        };
+
+        if let Some(exemplar) = finish_exemplar(exemplar.as_ref().map(StoredExemplar::encode)) {
+            for histogram in families
+                .iter_mut()
+                .flat_map(|family| &mut family.metric)
+                .filter_map(|metric| metric.histogram.as_mut())
+            {
+                histogram.exemplars.push(exemplar.clone());
+            }
+        }
+
+        families
     }
 }
 
@@ -325,7 +401,7 @@ mod tests {
 
     #[test]
     fn builder_applies_configuration() {
-        let histogram = NativeHistogramBuilder::new(1.5)
+        let histogram: NativeHistogram = NativeHistogramBuilder::new(1.5)
             .with_zero_threshold(0.001)
             .with_max_buckets(160)
             .new_metric();
