@@ -21,7 +21,10 @@ use super::exemplar::{Exemplar, ExemplarStorage, StoredExemplar, WithExemplar, f
 /// Unlike a classic [`Histogram`](super::Histogram), whose buckets are a fixed
 /// list of upper bounds, a native histogram places observations into
 /// exponentially sized buckets whose resolution is chosen by a growth factor.
-/// Native histograms require the Prometheus protobuf exposition format.
+/// Native-only histograms require the Prometheus protobuf exposition format.
+/// Use [`NativeHistogram::new_classic_and_native`] or
+/// [`NativeHistogramBuilder::with_classic_buckets`] to retain classic buckets
+/// for text exposition.
 ///
 /// Clones share the same storage.
 ///
@@ -53,6 +56,26 @@ impl NativeHistogram {
     #[track_caller]
     pub fn new(factor: f64) -> Self {
         NativeHistogramBuilder::new(factor).new_metric()
+    }
+
+    /// Creates a histogram with both classic and native buckets.
+    ///
+    /// Classic bucket bounds are sorted ascending.
+    ///
+    /// Protobuf exposition includes both representations. Text exposition uses
+    /// the classic buckets as a fallback.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `factor` is not greater than `1.0`.
+    #[track_caller]
+    pub fn new_classic_and_native(buckets: impl IntoIterator<Item = f64>, factor: f64) -> Self {
+        Self {
+            inner: PrometheusHistogram::new_classic_and_native(
+                sorted_buckets(buckets),
+                NativeHistogramBuilder::new(factor).config(),
+            ),
+        }
     }
 
     /// Records an observed value.
@@ -109,12 +132,20 @@ impl<S> WithExemplar<NativeHistogram, S> {
 ///     method: &'static str,
 /// }
 ///
-/// let builder = NativeHistogramBuilder::new(1.1).with_max_buckets(160);
+/// let builder = NativeHistogramBuilder::new(1.1)
+///     .with_classic_buckets(&[0.1, 0.5, 1.0])
+///     .with_max_buckets(160);
 /// let latencies = Family::<Labels, NativeHistogram, _>::new_with_constructor(builder);
 /// latencies.get_or_create(&Labels { method: "GET" }).observe(0.5);
 /// ```
 #[derive(Clone, Copy, Debug)]
 pub struct NativeHistogramBuilder {
+    /// Optional upper bounds for classic histogram buckets.
+    ///
+    /// When present, each observation updates both the classic and native
+    /// representations so that text exposition can use the classic buckets.
+    pub classic_buckets: Option<&'static [f64]>,
+
     /// Bucket growth factor; must be greater than `1.0`. Smaller factors give
     /// finer resolution.
     pub bucket_factor: f64,
@@ -137,10 +168,22 @@ impl NativeHistogramBuilder {
     /// threshold, and an unbounded number of buckets.
     pub fn new(factor: f64) -> Self {
         Self {
+            classic_buckets: None,
             bucket_factor: factor,
             zero_threshold: 0.0,
             max_buckets: 0,
         }
+    }
+
+    /// Adds classic buckets as a fallback for text exposition.
+    ///
+    /// Bucket bounds are sorted ascending when the histogram is constructed.
+    ///
+    /// Each observation updates both the classic and native representations,
+    /// and protobuf exposition includes both.
+    pub fn with_classic_buckets(mut self, buckets: &'static [f64]) -> Self {
+        self.classic_buckets = Some(buckets);
+        self
     }
 
     /// Sets the zero-bucket threshold.
@@ -191,8 +234,15 @@ impl NativeHistogramBuilder {
 impl MetricConstructor<NativeHistogram> for NativeHistogramBuilder {
     #[track_caller]
     fn new_metric(&self) -> NativeHistogram {
+        let config = self.config();
         NativeHistogram {
-            inner: PrometheusHistogram::new_native(self.config()),
+            inner: match self.classic_buckets {
+                Some(buckets) => PrometheusHistogram::new_classic_and_native(
+                    sorted_buckets(buckets.iter().copied()),
+                    config,
+                ),
+                None => PrometheusHistogram::new_native(config),
+            },
         }
     }
 }
@@ -201,6 +251,12 @@ impl<S> MetricConstructor<WithExemplar<NativeHistogram, S>> for NativeHistogramB
     fn new_metric(&self) -> WithExemplar<NativeHistogram, S> {
         WithExemplar::new(NativeHistogramBuilder::new_metric(self))
     }
+}
+
+fn sorted_buckets(buckets: impl IntoIterator<Item = f64>) -> Vec<f64> {
+    let mut buckets: Vec<_> = buckets.into_iter().collect();
+    buckets.sort_by(f64::total_cmp);
+    buckets
 }
 
 impl EncodeMetricValue for NativeHistogram {
@@ -337,10 +393,11 @@ fn convert_native_span(span: prometheus_proto::BucketSpan) -> BucketSpan {
 #[cfg(test)]
 mod tests {
     use foundations_metrics_registry::proto::{self, MetricType};
+    use prost::Message;
     use serde::Serialize;
 
     use super::*;
-    use crate::{EncodeMetric, Family, NamedMetric};
+    use crate::{EncodeMetric, Family, NamedMetric, encode_to_protobuf, encode_to_text};
 
     fn encoded_histogram(families: &[MetricFamily]) -> &proto::Histogram {
         assert_eq!(families.len(), 1);
@@ -411,6 +468,69 @@ mod tests {
         let encoded = encoded_histogram(&families);
         assert_eq!(encoded.sample_count, Some(1));
         assert_eq!(encoded.zero_threshold, Some(0.001));
+    }
+
+    #[test]
+    fn classic_and_native_histogram_uses_each_exposition_format() {
+        let histogram: NativeHistogram = NativeHistogramBuilder::new(2.0)
+            .with_classic_buckets(&[1.0, 2.0])
+            .new_metric();
+        histogram.observe(0.5);
+        histogram.observe(1.5);
+        histogram.observe(3.0);
+
+        let families =
+            NamedMetric::new("request_latency_seconds", "Request latency.", histogram).encode();
+        let encoded = encoded_histogram(&families);
+
+        assert_eq!(encoded.sample_count, Some(3));
+        assert_eq!(encoded.bucket.len(), 3);
+        assert_eq!(encoded.bucket[0].cumulative_count, Some(1));
+        assert_eq!(encoded.bucket[1].cumulative_count, Some(2));
+        assert_eq!(encoded.bucket[2].cumulative_count, Some(3));
+        assert!(encoded.schema.is_some());
+        assert!(!encoded.positive_span.is_empty());
+
+        let text = encode_to_text(&families);
+        assert!(text.contains("request_latency_seconds_bucket{le=\"1.0\"} 1\n"));
+        assert!(text.contains("request_latency_seconds_bucket{le=\"2.0\"} 2\n"));
+        assert!(text.contains("request_latency_seconds_bucket{le=\"+Inf\"} 3\n"));
+
+        let payload = encode_to_protobuf(&families);
+        let mut payload = payload.as_slice();
+        let decoded = MetricFamily::decode_length_delimited(&mut payload)
+            .expect("combined histogram protobuf should decode");
+        assert!(payload.is_empty());
+
+        let decoded = decoded.metric[0]
+            .histogram
+            .as_ref()
+            .expect("decoded histogram is present");
+        assert_eq!(decoded.bucket.len(), 3);
+        assert!(decoded.schema.is_some());
+        assert!(!decoded.positive_span.is_empty());
+    }
+
+    #[test]
+    fn classic_and_native_constructor_uses_the_default_native_configuration() {
+        let histogram = NativeHistogram::new_classic_and_native([2.0, 1.0], 2.0);
+        histogram.observe(1.5);
+
+        let families = histogram.encode_metric_value();
+        let encoded = encoded_histogram(&families);
+        assert_eq!(
+            encoded
+                .bucket
+                .iter()
+                .map(|bucket| (bucket.upper_bound, bucket.cumulative_count))
+                .collect::<Vec<_>>(),
+            vec![
+                (Some(1.0), Some(0)),
+                (Some(2.0), Some(1)),
+                (Some(f64::MAX), Some(1)),
+            ]
+        );
+        assert!(encoded.schema.is_some());
     }
 
     #[test]
