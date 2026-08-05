@@ -48,9 +48,9 @@ use internal::{ErasedInfoMetric, Registries};
 #[cfg(feature = "foundations-metrics-backend")]
 mod backend {
     pub use foundations_metrics::{
-        Counter, CounterWithExemplar, Family, Gauge, GaugeGuard, Histogram, HistogramTimer,
-        HistogramWithExemplars, InfoMetric, MetricConstructor, NativeHistogram,
-        NativeHistogramBuilder, NativeHistogramWithExemplars, RangeGauge, TimeHistogram,
+        Counter, Family, Gauge, GaugeGuard, Histogram, HistogramTimer, InfoMetric,
+        MetricConstructor, NativeHistogram, NativeHistogramBuilder, RangeGauge, TimeHistogram,
+        WithExemplar,
     };
 
     // Everything needed to define, register, and label a custom metric. The
@@ -380,11 +380,12 @@ fn report_nonfatal_collect_error(err: &dyn Display) {
 /// are reexported from this module for convenience:
 ///
 /// * [`Counter`]
-/// * [`CounterWithExemplar`]
 /// * [`Gauge`]
 /// * [`Histogram`]
-/// * [`HistogramWithExemplars`]
 /// * [`TimeHistogram`]
+///
+/// To attach exemplars, wrap any of the above in the `WithExemplar<T, S>` smart
+/// pointer, which derefs to the metric it wraps.
 ///
 /// The metrics associated with the functions are automatically registered in a global
 /// registry, and they can be collected with the [`collect`] function.
@@ -721,9 +722,20 @@ impl MetricConstructor<Histogram> for HistogramBuilder {
     }
 }
 
+#[cfg(not(feature = "foundations-metrics-backend"))]
 impl<S> MetricConstructor<HistogramWithExemplars<S>> for HistogramBuilder {
     fn new_metric(&self) -> HistogramWithExemplars<S> {
         HistogramWithExemplars::new(self.buckets.iter().cloned())
+    }
+}
+
+// The `foundations-metrics` backend replaces the per-type exemplar wrappers
+// with a single generic `WithExemplar<T, S>`, so the builder constructs that
+// instead.
+#[cfg(feature = "foundations-metrics-backend")]
+impl<S> MetricConstructor<WithExemplar<Histogram, S>> for HistogramBuilder {
+    fn new_metric(&self) -> WithExemplar<Histogram, S> {
+        WithExemplar::new(MetricConstructor::<Histogram>::new_metric(self))
     }
 }
 
