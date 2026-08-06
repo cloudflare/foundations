@@ -10,9 +10,23 @@ pub struct RegistrationMetadata {
     pub optional: bool,
 
     /// Whether to suppress the service-name prefix for this metric.
+    ///
+    /// With service name `api` and `MetricPrefix`, enabling this changes:
+    ///
+    /// ```text
+    /// Before: api_requests_total 1.0
+    /// After:  requests_total 1.0
+    /// ```
     pub unprefixed: bool,
 
     /// Whether to suppress the service-name label for this metric.
+    ///
+    /// With service name `api` and `LabelWithName("service")`, enabling this changes:
+    ///
+    /// ```text
+    /// Before: requests_total{service="api"} 1.0
+    /// After:  requests_total 1.0
+    /// ```
     ///
     /// Independent of [`unprefixed`](Self::unprefixed): a metric that opts out
     /// of the service-name prefix is still labelled with the service name when
