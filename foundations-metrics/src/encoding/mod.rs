@@ -7,6 +7,10 @@ use crate::validation::{ValidationContext, sanitized_metric_family};
 
 pub use text::{OPENMETRICS_CONTENT_TYPE, encode_to_text};
 
+/// Content type of length-delimited Prometheus protobuf response.
+pub const PROTOBUF_CONTENT_TYPE: &str =
+    "application/vnd.google.protobuf; proto=io.prometheus.client.MetricFamily; encoding=delimited";
+
 /// Encodes metric families as length-delimited Prometheus protobuf messages.
 pub fn encode_to_protobuf(families: &[MetricFamily]) -> Vec<u8> {
     let mut output = Vec::new();
