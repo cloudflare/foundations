@@ -1,3 +1,9 @@
+//! Registries backing the deprecated metrics implementation.
+//!
+//! Extra producers are deprecated but still carried here until this
+//! implementation is removed, so their use is allowed throughout the module.
+#![allow(deprecated)]
+
 use super::rewind::{RewindState, RewindTo};
 use super::{ExtraProducer, InfoMetric, report_nonfatal_collect_error};
 use crate::telemetry::settings::{MetricsSettings, ServiceNameFormat};
