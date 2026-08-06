@@ -235,17 +235,24 @@ pub struct TimeHistogram {
     state: Arc<TimeHistogramState>,
 }
 
+mod private {
+    pub trait Sealed {}
+}
+
 /// A histogram that records durations expressed in nanoseconds.
 ///
 /// This is what lets a [`HistogramTimer`] drive either a fixed-bucket
 /// [`TimeHistogram`] or an exponential-bucket
-/// [`NativeTimeHistogram`](super::NativeTimeHistogram). Implementors must share
-/// storage across clones, since the timer records into a clone taken when it
-/// started.
-pub trait ObserveNanos: Clone {
+/// [`NativeTimeHistogram`](super::NativeTimeHistogram).
+///
+/// This trait is sealed and cannot be implemented outside this crate.
+pub trait ObserveNanos: private::Sealed + Clone {
     /// Records an observed duration in nanoseconds.
     fn observe_nanos(&self, nanos: u64);
 }
+
+impl private::Sealed for TimeHistogram {}
+impl private::Sealed for super::NativeTimeHistogram {}
 
 impl ObserveNanos for TimeHistogram {
     #[inline]
