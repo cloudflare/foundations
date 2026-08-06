@@ -3,6 +3,11 @@ use foundations::telemetry::metrics::{self, Counter, Family, metrics};
 use foundations::telemetry::settings::{MetricsSettings, ServiceNameFormat, TelemetrySettings};
 use foundations::telemetry::{TelemetryConfig, TelemetryContext};
 
+#[cfg(not(feature = "foundations-metrics-backend"))]
+const ONE: &str = "1";
+#[cfg(feature = "foundations-metrics-backend")]
+const ONE: &str = "1.0";
+
 #[metrics]
 mod regular {
     pub fn requests() -> Counter;
@@ -52,10 +57,10 @@ fn metrics_unprefixed() {
     let metrics = metrics::collect(&settings).expect("metrics should be collectable");
 
     // Global prefix defaults to "undefined" if not initialized
-    assert!(metrics.contains("\nundefined_regular_requests 1\n"));
+    assert!(metrics.contains(&format!("\nundefined_regular_requests {ONE}\n")));
     assert!(!metrics.contains("\nundefined_regular_optional"));
     assert!(!metrics.contains("\nundefined_regular_dynamic"));
-    assert!(metrics.contains("\nlibrary_calls 1\n"));
+    assert!(metrics.contains(&format!("\nlibrary_calls {ONE}\n")));
     assert!(!metrics.contains("\nlibrary_optional"));
 }
 
@@ -69,12 +74,19 @@ fn encode_error_is_skipped() {
         .get_or_create(&"another label".to_owned())
         .inc();
 
-    // Note the absence of values for the `error_invalid_label` family
+    // Note the absence of values for the `error_invalid_label` family: every one
+    // of its rows fails label serialization.
+    #[cfg(not(feature = "foundations-metrics-backend"))]
     let expected_output = "# HELP undefined_encode_error_valid .
 # TYPE undefined_encode_error_valid counter
 undefined_encode_error_valid 1
 # HELP undefined_encode_error_invalid_label .
 # TYPE undefined_encode_error_invalid_label counter
+";
+
+    #[cfg(feature = "foundations-metrics-backend")]
+    let expected_output = "# TYPE undefined_encode_error_valid counter
+undefined_encode_error_valid 1.0
 ";
 
     let settings = MetricsSettings {
@@ -123,6 +135,6 @@ async fn test_context_cooperates_with_init() {
     let metrics = metrics::collect(&settings.metrics).expect("metrics should be collectable");
 
     // Metrics registry should be initialized with explicit ServiceInfo from `foundations::telemetry::init`
-    assert!(metrics.contains("\nmy_bin_regular_requests 1\n"));
-    assert!(metrics.contains("\nlibrary_calls 1\n"));
+    assert!(metrics.contains(&format!("\nmy_bin_regular_requests {ONE}\n")));
+    assert!(metrics.contains(&format!("\nlibrary_calls {ONE}\n")));
 }

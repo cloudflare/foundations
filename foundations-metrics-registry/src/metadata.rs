@@ -11,6 +11,13 @@ pub struct RegistrationMetadata {
 
     /// Whether to suppress the service-name prefix for this metric.
     pub unprefixed: bool,
+
+    /// Whether to suppress the service-name label for this metric.
+    ///
+    /// Independent of [`unprefixed`](Self::unprefixed): a metric that opts out
+    /// of the service-name prefix is still labelled with the service name when
+    /// collection represents it as a label. Info metrics opt out of both.
+    pub unlabeled: bool,
 }
 
 impl RegistrationMetadata {
@@ -25,6 +32,13 @@ impl RegistrationMetadata {
     #[must_use]
     pub fn unprefixed(mut self, unprefixed: bool) -> Self {
         self.unprefixed = unprefixed;
+        self
+    }
+
+    /// Sets [`unlabeled`](Self::unlabeled)
+    #[must_use]
+    pub fn unlabeled(mut self, unlabeled: bool) -> Self {
+        self.unlabeled = unlabeled;
         self
     }
 }

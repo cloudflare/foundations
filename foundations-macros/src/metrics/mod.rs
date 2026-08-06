@@ -158,28 +158,9 @@ fn expand_from_parsed(args: MacroArgs, extern_: Mod) -> proc_macro2::TokenStream
         .iter()
         .filter_map(|fn_| label_set_struct(foundations, fn_));
 
-    let registry_init = |var: &str, opt: bool| {
-        let var = Ident::new(var, Span::call_site());
-        let optional = format_ident!("{opt}");
-
-        quote! {
-            let #var = &mut *#foundations::telemetry::metrics::internal::Registries::get_subsystem(
-                stringify!(#mod_name), #optional, #with_service_prefix
-            );
-        }
-    };
-
-    let init_registry = fns
+    let metric_inits = fns
         .iter()
-        .any(|fn_| !fn_.attrs.optional)
-        .then(|| registry_init("registry", false));
-
-    let init_opt_registry = fns
-        .iter()
-        .any(|fn_| fn_.attrs.optional)
-        .then(|| registry_init("opt_registry", true));
-
-    let metric_inits = fns.iter().map(|fn_| metric_init(foundations, fn_));
+        .map(|fn_| metric_init(foundations, &mod_name, &with_service_prefix, fn_));
 
     let metric_fns = fns
         .iter()
@@ -199,9 +180,6 @@ fn expand_from_parsed(args: MacroArgs, extern_: Mod) -> proc_macro2::TokenStream
             #[allow(non_upper_case_globals)]
             static #metrics_struct: ::std::sync::LazyLock<#metrics_struct> =
                 ::std::sync::LazyLock::new(|| {
-                    #init_registry
-                    #init_opt_registry
-
                     #metrics_struct {
                         #(#metric_inits,)*
                     }
@@ -229,7 +207,7 @@ fn metric_field(foundations: &Path, fn_: &ItemFn) -> proc_macro2::TokenStream {
     }) = ctor
     {
         quote! {
-            #foundations::reexports_for_macros::prometools::serde::Family<
+            #foundations::telemetry::metrics::Family<
                 #metric_name,
                 #metric_ty,
                 #ctor_path,
@@ -237,7 +215,7 @@ fn metric_field(foundations: &Path, fn_: &ItemFn) -> proc_macro2::TokenStream {
         }
     } else {
         quote! {
-            #foundations::reexports_for_macros::prometools::serde::Family<
+            #foundations::telemetry::metrics::Family<
                 #metric_name,
                 #metric_ty,
             >
@@ -291,7 +269,12 @@ fn label_set_struct(foundations: &Path, fn_: &ItemFn) -> Option<proc_macro2::Tok
     })
 }
 
-fn metric_init(foundations: &Path, fn_: &ItemFn) -> proc_macro2::TokenStream {
+fn metric_init(
+    foundations: &Path,
+    mod_name: &Ident,
+    with_service_prefix: &Ident,
+    fn_: &ItemFn,
+) -> proc_macro2::TokenStream {
     let ItemFn {
         attrs:
             FnAttrs {
@@ -306,31 +289,21 @@ fn metric_init(foundations: &Path, fn_: &ItemFn) -> proc_macro2::TokenStream {
         ..
     } = fn_;
 
-    let reexports = quote! { #foundations::reexports_for_macros };
-    let registry = Ident::new(
-        if *optional {
-            "opt_registry"
-        } else {
-            "registry"
-        },
-        Span::call_site(),
-    );
+    let optional = format_ident!("{optional}");
 
-    // Validate histogram buckets at compile time if this is a HistogramBuilder
+    // Validate classic buckets at compile time when the constructor exposes them.
     if let Some(ctor) = ctor
-        && let Some(path) = ctor.path.get_ident()
-        && path == "HistogramBuilder"
-        && let Err(err) = validation::validate_histogram_buckets(ctor)
+        && let Err(err) = validate_histogram_ctor(ctor)
     {
         return err.to_compile_error();
     }
 
     let metric_init = match ctor {
         Some(ctor) if args.is_empty() => quote! {
-            #reexports::prometheus_client::metrics::family::MetricConstructor::new_metric(&(#ctor))
+            #foundations::telemetry::metrics::MetricConstructor::new_metric(&(#ctor))
         },
         Some(ctor) => quote! {
-            #reexports::prometools::serde::Family::new_with_constructor(#ctor)
+            #foundations::telemetry::metrics::Family::new_with_constructor(#ctor)
         },
         None => quote! { ::std::default::Default::default() },
     };
@@ -340,15 +313,36 @@ fn metric_init(foundations: &Path, fn_: &ItemFn) -> proc_macro2::TokenStream {
         #field_name: {
             let metric = #metric_init;
 
-            #reexports::prometheus_client::registry::Registry::register(
-                #registry,
+            #foundations::telemetry::metrics::internal::register_metric(
+                ::std::stringify!(#mod_name),
                 ::std::stringify!(#field_name),
+                ::std::concat!(
+                    ::std::stringify!(#mod_name),
+                    "_",
+                    ::std::stringify!(#field_name),
+                ),
                 str::trim(#doc),
-                #foundations::telemetry::metrics::internal::wrap_metric(::std::clone::Clone::clone(&metric)),
+                ::std::clone::Clone::clone(&metric),
+                #optional,
+                #with_service_prefix,
             );
 
             metric
         }
+    }
+}
+
+fn validate_histogram_ctor(ctor: &ExprStruct) -> syn::Result<()> {
+    let Some(name) = ctor.path.get_ident() else {
+        return Ok(());
+    };
+
+    if name == "HistogramBuilder" {
+        validation::validate_histogram_buckets(ctor)
+    } else if name == "NativeHistogramBuilder" {
+        validation::validate_native_histogram_buckets(ctor)
+    } else {
+        Ok(())
     }
 }
 
@@ -386,7 +380,7 @@ fn metric_fn(foundations: &Path, metrics_struct: &Ident, fn_: &ItemFn) -> proc_m
 
         let accessor = quote! {
             ::std::clone::Clone::clone(
-                &#foundations::reexports_for_macros::prometools::serde::Family::get_or_create(
+                &#foundations::telemetry::metrics::Family::get_or_create(
                     &#metrics_struct.#metric_name,
                     &__args,
                 )
@@ -413,7 +407,7 @@ fn metric_fn(foundations: &Path, metrics_struct: &Ident, fn_: &ItemFn) -> proc_m
             #(#cfg)*
             #fn_vis #fn_token #remove_ident(#(#fn_args,)*) #arrow_token bool {
                 #convert_args
-                #foundations::reexports_for_macros::prometools::serde::Family::remove(
+                #foundations::telemetry::metrics::Family::remove(
                     &#metrics_struct.#metric_name,
                     &__args,
                 )
@@ -422,7 +416,7 @@ fn metric_fn(foundations: &Path, metrics_struct: &Ident, fn_: &ItemFn) -> proc_m
             #[doc = #clear_doc]
             #(#cfg)*
             #fn_vis #fn_token #clear_ident() {
-                #foundations::reexports_for_macros::prometools::serde::Family::clear(
+                #foundations::telemetry::metrics::Family::clear(
                     &#metrics_struct.#metric_name,
                 )
             }
@@ -509,17 +503,22 @@ mod tests {
                 #[allow(non_upper_case_globals)]
                 static __oxy_Metrics: ::std::sync::LazyLock<__oxy_Metrics> =
                     ::std::sync::LazyLock::new(|| {
-                        let registry = &mut *tarmac::telemetry::metrics::internal::Registries::get_subsystem(stringify!(oxy), false, true);
-
                         __oxy_Metrics {
                             connections_total: {
                                 let metric = ::std::default::Default::default();
 
-                                tarmac::reexports_for_macros::prometheus_client::registry::Registry::register(
-                                    registry,
+                                tarmac::telemetry::metrics::internal::register_metric(
+                                    ::std::stringify!(oxy),
                                     ::std::stringify!(connections_total),
+                                    ::std::concat!(
+                                        ::std::stringify!(oxy),
+                                        "_",
+                                        ::std::stringify!(connections_total),
+                                    ),
                                     str::trim(" Total number of connections"),
-                                    tarmac::telemetry::metrics::internal::wrap_metric(::std::clone::Clone::clone(&metric)),
+                                    ::std::clone::Clone::clone(&metric),
+                                    false,
+                                    true,
                                 );
 
                                 metric
@@ -566,17 +565,22 @@ mod tests {
                 #[allow(non_upper_case_globals)]
                 static __oxy_Metrics: ::std::sync::LazyLock<__oxy_Metrics> =
                     ::std::sync::LazyLock::new(|| {
-                        let opt_registry = &mut *::foundations::telemetry::metrics::internal::Registries::get_subsystem(stringify!(oxy), true, true);
-
                         __oxy_Metrics {
                             connections_total: {
                                 let metric = ::std::default::Default::default();
 
-                                ::foundations::reexports_for_macros::prometheus_client::registry::Registry::register(
-                                    opt_registry,
+                                ::foundations::telemetry::metrics::internal::register_metric(
+                                    ::std::stringify!(oxy),
                                     ::std::stringify!(connections_total),
+                                    ::std::concat!(
+                                        ::std::stringify!(oxy),
+                                        "_",
+                                        ::std::stringify!(connections_total),
+                                    ),
                                     str::trim(" Total number of connections"),
-                                    ::foundations::telemetry::metrics::internal::wrap_metric(::std::clone::Clone::clone(&metric)),
+                                    ::std::clone::Clone::clone(&metric),
+                                    true,
+                                    true,
                                 );
 
                                 metric
@@ -627,18 +631,22 @@ mod tests {
                 #[allow(non_upper_case_globals)]
                 static __oxy_Metrics: ::std::sync::LazyLock<__oxy_Metrics> =
                     ::std::sync::LazyLock::new(|| {
-                        let registry = &mut *::foundations::telemetry::metrics::internal::Registries::get_subsystem(stringify!(oxy), false, false);
-                        let opt_registry = &mut *::foundations::telemetry::metrics::internal::Registries::get_subsystem(stringify!(oxy), true, false);
-
                         __oxy_Metrics {
                             requests_total: {
                                 let metric = ::std::default::Default::default();
 
-                                ::foundations::reexports_for_macros::prometheus_client::registry::Registry::register(
-                                    registry,
+                                ::foundations::telemetry::metrics::internal::register_metric(
+                                    ::std::stringify!(oxy),
                                     ::std::stringify!(requests_total),
+                                    ::std::concat!(
+                                        ::std::stringify!(oxy),
+                                        "_",
+                                        ::std::stringify!(requests_total),
+                                    ),
                                     str::trim(" Total number of requests"),
-                                    ::foundations::telemetry::metrics::internal::wrap_metric(::std::clone::Clone::clone(&metric)),
+                                    ::std::clone::Clone::clone(&metric),
+                                    false,
+                                    false,
                                 );
 
                                 metric
@@ -646,11 +654,18 @@ mod tests {
                             connections_total: {
                                 let metric = ::std::default::Default::default();
 
-                                ::foundations::reexports_for_macros::prometheus_client::registry::Registry::register(
-                                    opt_registry,
+                                ::foundations::telemetry::metrics::internal::register_metric(
+                                    ::std::stringify!(oxy),
                                     ::std::stringify!(connections_total),
+                                    ::std::concat!(
+                                        ::std::stringify!(oxy),
+                                        "_",
+                                        ::std::stringify!(connections_total),
+                                    ),
                                     str::trim(" Total number of connections"),
-                                    ::foundations::telemetry::metrics::internal::wrap_metric(::std::clone::Clone::clone(&metric)),
+                                    ::std::clone::Clone::clone(&metric),
+                                    true,
+                                    false,
                                 );
 
                                 metric
@@ -704,7 +719,7 @@ mod tests {
                 #[allow(non_camel_case_types)]
                 struct __oxy_Metrics {
                     connections_errors_total:
-                        ::foundations::reexports_for_macros::prometools::serde::Family<
+                        ::foundations::telemetry::metrics::Family<
                             connections_errors_total,
                             Counter,
                         >,
@@ -732,17 +747,22 @@ mod tests {
                 #[allow(non_upper_case_globals)]
                 static __oxy_Metrics: ::std::sync::LazyLock<__oxy_Metrics> =
                     ::std::sync::LazyLock::new(|| {
-                        let registry = &mut *::foundations::telemetry::metrics::internal::Registries::get_subsystem(stringify!(oxy), false, true);
-
                         __oxy_Metrics {
                             connections_errors_total: {
                                 let metric = ::std::default::Default::default();
 
-                                ::foundations::reexports_for_macros::prometheus_client::registry::Registry::register(
-                                    registry,
+                                ::foundations::telemetry::metrics::internal::register_metric(
+                                    ::std::stringify!(oxy),
                                     ::std::stringify!(connections_errors_total),
+                                    ::std::concat!(
+                                        ::std::stringify!(oxy),
+                                        "_",
+                                        ::std::stringify!(connections_errors_total),
+                                    ),
                                     str::trim(" Total number of connection errors"),
-                                    ::foundations::telemetry::metrics::internal::wrap_metric(::std::clone::Clone::clone(&metric)),
+                                    ::std::clone::Clone::clone(&metric),
+                                    false,
+                                    true,
                                 );
 
                                 metric
@@ -765,7 +785,7 @@ mod tests {
                         error: ::std::convert::Into::into(error),
                     };
                     ::std::clone::Clone::clone(
-                        &::foundations::reexports_for_macros::prometools::serde::Family::get_or_create(
+                        &::foundations::telemetry::metrics::Family::get_or_create(
                             &__oxy_Metrics.connections_errors_total,
                             &__args,
                         )
@@ -805,7 +825,7 @@ mod tests {
                 struct __oxy_Metrics {
                     connections_latency: Histogram,
                     requests_per_connection:
-                        ::foundations::reexports_for_macros::prometools::serde::Family<
+                        ::foundations::telemetry::metrics::Family<
                             requests_per_connection,
                             Histogram,
                             HistogramBuilder,
@@ -828,33 +848,45 @@ mod tests {
                 #[allow(non_upper_case_globals)]
                 static __oxy_Metrics: ::std::sync::LazyLock<__oxy_Metrics> =
                     ::std::sync::LazyLock::new(|| {
-                        let registry = &mut *::foundations::telemetry::metrics::internal::Registries::get_subsystem(stringify!(oxy), false, true);
-
                         __oxy_Metrics {
                             connections_latency: {
-                                let metric = ::foundations::reexports_for_macros::prometheus_client::metrics::family::MetricConstructor::new_metric(
+                                let metric = ::foundations::telemetry::metrics::MetricConstructor::new_metric(
                                     &(HistogramBuilder { buckets: &[0.5, 1.] })
                                 );
 
-                                ::foundations::reexports_for_macros::prometheus_client::registry::Registry::register(
-                                    registry,
+                                ::foundations::telemetry::metrics::internal::register_metric(
+                                    ::std::stringify!(oxy),
                                     ::std::stringify!(connections_latency),
+                                    ::std::concat!(
+                                        ::std::stringify!(oxy),
+                                        "_",
+                                        ::std::stringify!(connections_latency),
+                                    ),
                                     str::trim(" Latency of connections"),
-                                    ::foundations::telemetry::metrics::internal::wrap_metric(::std::clone::Clone::clone(&metric)),
+                                    ::std::clone::Clone::clone(&metric),
+                                    false,
+                                    true,
                                 );
 
                                 metric
                             },
                             requests_per_connection: {
-                                let metric = ::foundations::reexports_for_macros::prometools::serde::Family::new_with_constructor(
+                                let metric = ::foundations::telemetry::metrics::Family::new_with_constructor(
                                     HistogramBuilder { buckets: &[2., 3.] }
                                 );
 
-                                ::foundations::reexports_for_macros::prometheus_client::registry::Registry::register(
-                                    registry,
+                                ::foundations::telemetry::metrics::internal::register_metric(
+                                    ::std::stringify!(oxy),
                                     ::std::stringify!(requests_per_connection),
+                                    ::std::concat!(
+                                        ::std::stringify!(oxy),
+                                        "_",
+                                        ::std::stringify!(requests_per_connection),
+                                    ),
                                     str::trim(" Number of requests per connection"),
-                                    ::foundations::telemetry::metrics::internal::wrap_metric(::std::clone::Clone::clone(&metric)),
+                                    ::std::clone::Clone::clone(&metric),
+                                    false,
+                                    true,
                                 );
 
                                 metric
@@ -875,7 +907,7 @@ mod tests {
                 ) -> Histogram {
                     let __args = requests_per_connection { endpoint, };
                     ::std::clone::Clone::clone(
-                        &::foundations::reexports_for_macros::prometools::serde::Family::get_or_create(
+                        &::foundations::telemetry::metrics::Family::get_or_create(
                             &__oxy_Metrics.requests_per_connection,
                             &__args,
                         )
@@ -911,7 +943,7 @@ mod tests {
                 #[allow(non_camel_case_types)]
                 struct __oxy_Metrics {
                     requests_total:
-                        ::foundations::reexports_for_macros::prometools::serde::Family<
+                        ::foundations::telemetry::metrics::Family<
                             requests_total,
                             Counter,
                         >,
@@ -933,17 +965,22 @@ mod tests {
                 #[allow(non_upper_case_globals)]
                 static __oxy_Metrics: ::std::sync::LazyLock<__oxy_Metrics> =
                     ::std::sync::LazyLock::new(|| {
-                        let registry = &mut *::foundations::telemetry::metrics::internal::Registries::get_subsystem(stringify!(oxy), false, true);
-
                         __oxy_Metrics {
                             requests_total: {
                                 let metric = ::std::default::Default::default();
 
-                                ::foundations::reexports_for_macros::prometheus_client::registry::Registry::register(
-                                    registry,
+                                ::foundations::telemetry::metrics::internal::register_metric(
+                                    ::std::stringify!(oxy),
                                     ::std::stringify!(requests_total),
+                                    ::std::concat!(
+                                        ::std::stringify!(oxy),
+                                        "_",
+                                        ::std::stringify!(requests_total),
+                                    ),
                                     str::trim(" Total number of requests"),
-                                    ::foundations::telemetry::metrics::internal::wrap_metric(::std::clone::Clone::clone(&metric)),
+                                    ::std::clone::Clone::clone(&metric),
+                                    false,
+                                    true,
                                 );
 
                                 metric
@@ -956,7 +993,7 @@ mod tests {
                 pub(crate) fn requests_total(status: u16,) -> Counter {
                     let __args = requests_total { status, };
                     ::std::clone::Clone::clone(
-                        &::foundations::reexports_for_macros::prometools::serde::Family::get_or_create(
+                        &::foundations::telemetry::metrics::Family::get_or_create(
                             &__oxy_Metrics.requests_total,
                             &__args,
                         )
@@ -966,7 +1003,7 @@ mod tests {
                 #[doc = "Removes one label set from the `requests_total` family."]
                 pub(crate) fn requests_total_remove(status: u16,) -> bool {
                     let __args = requests_total { status, };
-                    ::foundations::reexports_for_macros::prometools::serde::Family::remove(
+                    ::foundations::telemetry::metrics::Family::remove(
                         &__oxy_Metrics.requests_total,
                         &__args,
                     )
@@ -974,7 +1011,7 @@ mod tests {
 
                 #[doc = "Removes all label sets from the `requests_total` family."]
                 pub(crate) fn requests_total_clear() {
-                    ::foundations::reexports_for_macros::prometools::serde::Family::clear(
+                    ::foundations::telemetry::metrics::Family::clear(
                         &__oxy_Metrics.requests_total,
                     )
                 }
@@ -1042,5 +1079,47 @@ mod tests {
         };
 
         assert!(validation::validate_histogram_buckets(&expr).is_ok());
+    }
+
+    #[test]
+    fn test_qualified_custom_histogram_builder_is_not_rejected() {
+        let custom: ExprStruct = parse_quote! {
+            metrics::HistogramBuilder { limits: &[0.2, 0.1] }
+        };
+        let native: ExprStruct = parse_quote! {
+            NativeHistogramBuilder {
+                classic_buckets: None,
+                bucket_factor: 1.1,
+                zero_threshold: 0.0,
+                max_buckets: 0,
+            }
+        };
+
+        assert!(validate_histogram_ctor(&custom).is_ok());
+        assert!(validate_histogram_ctor(&native).is_ok());
+    }
+
+    #[test]
+    fn test_invalid_classic_and_native_buckets_are_rejected() {
+        let expr: ExprStruct = parse_quote! {
+            NativeHistogramBuilder {
+                classic_buckets: Some(&[0.2, 0.1]),
+                ..NativeHistogramBuilder::new(1.1)
+            }
+        };
+
+        assert!(validate_histogram_ctor(&expr).is_err());
+    }
+
+    #[test]
+    fn test_decreasing_negative_native_buckets_are_rejected() {
+        let expr: ExprStruct = parse_quote! {
+            NativeHistogramBuilder {
+                classic_buckets: Some(&[-1.0, -2.0]),
+                ..NativeHistogramBuilder::new(1.1)
+            }
+        };
+
+        assert!(validate_histogram_ctor(&expr).is_err());
     }
 }

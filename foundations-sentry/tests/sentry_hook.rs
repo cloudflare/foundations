@@ -34,10 +34,14 @@ fn sentry_hook_increments_metric_on_event() {
     simulate_sentry_event(&hub);
     assert_eq!(metrics::sentry::events_total(Level::Error).get(), 1);
 
+    const SERIES: &str = "sentry_events_total{level=\"error\"} ";
+
     let metrics = foundations::telemetry::metrics::collect(&Default::default()).unwrap();
-    let has_metric = metrics
-        .lines()
-        .any(|line| line == "sentry_events_total{level=\"error\"} 1");
+    let has_metric = metrics.lines().any(|line| {
+        line.strip_prefix(SERIES)
+            .and_then(|value| value.parse::<f64>().ok())
+            == Some(1.0)
+    });
     assert!(has_metric);
 }
 

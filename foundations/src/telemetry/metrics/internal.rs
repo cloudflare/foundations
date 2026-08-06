@@ -1,5 +1,11 @@
+//! Registries backing the deprecated metrics implementation.
+//!
+//! Extra producers are deprecated but still carried here until this
+//! implementation is removed, so their use is allowed throughout the module.
+#![allow(deprecated)]
+
 use super::rewind::{RewindState, RewindTo};
-use super::{ExtraProducer, InfoMetric, info_metric, report_nonfatal_collect_error};
+use super::{ExtraProducer, InfoMetric, report_nonfatal_collect_error};
 use crate::telemetry::settings::{MetricsSettings, ServiceNameFormat};
 use crate::{Result, ServiceInfo};
 use prometheus_client::encoding::text::{EncodeMetric, Encoder, SendSyncEncodeMetric, encode};
@@ -146,18 +152,6 @@ impl Registries {
     }
 }
 
-/// Build and version information
-#[info_metric(crate_path = "crate")]
-pub(super) struct BuildInfo {
-    pub(super) version: &'static str,
-}
-
-/// Information about the process runtime
-#[info_metric(crate_path = "crate")]
-pub(super) struct RuntimeInfo {
-    pub(super) pid: u32,
-}
-
 pub(super) trait ErasedInfoMetric: erased_serde::Serialize + Send + Sync + 'static {
     fn name(&self) -> &'static str;
 
@@ -216,6 +210,26 @@ impl<M: EncodeMetric> EncodeMetric for RewindErrorEncode<M> {
 /// Wraps a metric in our private error-handling type, without making the type public.
 pub fn wrap_metric(metric: impl SendSyncEncodeMetric + 'static) -> Box<dyn SendSyncEncodeMetric> {
     Box::new(RewindErrorEncode(metric))
+}
+
+/// Registers a metric declared through the [`metrics`](super::metrics) macro.
+///
+/// `full_name` is unused here: the exported name is composed by the registries
+/// from the service prefix, the `subsystem` sub-registry, and `name`.
+pub fn register_metric<M>(
+    subsystem: &'static str,
+    name: &'static str,
+    _full_name: &'static str,
+    help: &'static str,
+    metric: M,
+    optional: bool,
+    with_service_prefix: bool,
+) where
+    M: SendSyncEncodeMetric + 'static,
+{
+    let mut registry = Registries::get_subsystem(subsystem, optional, with_service_prefix);
+
+    registry.register(name, help, wrap_metric(metric));
 }
 
 fn encode_registry(buffer: &mut Vec<u8>, registry: &Registry<impl EncodeMetric>) -> Result<()> {
