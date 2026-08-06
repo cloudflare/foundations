@@ -20,7 +20,7 @@ pub use collect::{CollectionOptions, ServiceNameFormat, collect};
 pub use diagnostics::{CollectErrorHookAlreadySet, set_collect_error_hook};
 pub use encoding::{OPENMETRICS_CONTENT_TYPE, encode_to_protobuf, encode_to_text};
 pub use foundations_metrics_registry::{
-    EncodeMetric, IntoMetrics, MetricFamily, RegistrationMetadata, register,
+    EncodeMetric, IntoMetrics, MetricFamily, RegistrationMetadata, proto, register,
 };
 pub use info::{InfoMetric, report_info};
 pub use labels::{LabelError, to_label_pairs};
@@ -30,3 +30,4 @@ pub use metrics::{
     NativeHistogramBuilder, RangeGauge, TimeHistogram, WithExemplar,
 };
 pub use registered::NamedMetric;
+pub use value::EncodeMetricValue;
