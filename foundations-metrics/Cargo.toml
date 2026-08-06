@@ -1,10 +1,29 @@
 [package]
 name = "foundations-metrics"
+description = "Concrete Prometheus metric types and encoders for the Foundations stack."
 version = "0.1.0"
-repository.workspace = true
-edition.workspace = true
-authors.workspace = true
-license.workspace = true
+readme = "README.md"
+repository = { workspace = true }
+edition = { workspace = true }
+authors = { workspace = true }
+license = { workspace = true }
+categories = ["development-tools", "encoding"]
+keywords = ["foundations", "metrics", "prometheus", "openmetrics"]
+
+[package.metadata.release]
+pre-release-hook = [
+    "git-cliff",
+    "-w",
+    "..",
+    "--include-path",
+    "{{crate_name}}/**",
+    "--tag-pattern",
+    "{{crate_name}}-v[0-9]*",
+    "-o",
+    "RELEASE_NOTES.md",
+    "--tag",
+    "{{version}}",
+]
 
 [dependencies]
 foundations-metrics-registry = { workspace = true }
@@ -13,7 +32,7 @@ prometheus-client = { version = "0.25.0", features = [
     "protobuf-protox",
 ] }
 serde = { workspace = true, features = ["derive"] }
-ryu = "1.0.23"
+ryu = { workspace = true }
 parking_lot = { workspace = true }
 prost = { workspace = true }
 prost-types = { workspace = true }

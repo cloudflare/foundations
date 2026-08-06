@@ -85,6 +85,7 @@ percent-encoding = "2.3.2"
 quote = "1.0.45"
 regex = "1.12.3"
 reqwest = { version = "0.13.2", default-features = false }
+ryu = "1.0.23"
 socket2 = { version = "0.6.3", features = ["all"] }
 syn = "2.0.117"
 serde = "1.0.228"

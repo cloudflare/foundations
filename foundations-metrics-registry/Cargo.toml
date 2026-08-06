@@ -1,10 +1,33 @@
 [package]
 name = "foundations-metrics-registry"
+description = "Process-global metric registry and Prometheus protobuf data model for Foundations."
 version = "0.1.0"
 edition = { workspace = true }
 repository = { workspace = true }
 authors = { workspace = true }
 license = { workspace = true }
+readme = "README.md"
+categories = ["development-tools", "encoding"]
+keywords = ["foundations"]
+# Regenerating the model is a repo-development check whose result depends on the
+# exact `prost-build` in use. Publishing it would hand consumers a test that can
+# fail, and then rewrite its own source, for reasons they cannot act on.
+exclude = ["tests/proto_codegen.rs"]
+
+[package.metadata.release]
+pre-release-hook = [
+    "git-cliff",
+    "-w",
+    "..",
+    "--include-path",
+    "{{crate_name}}/**",
+    "--tag-pattern",
+    "{{crate_name}}-v[0-9]*",
+    "-o",
+    "RELEASE_NOTES.md",
+    "--tag",
+    "{{version}}",
+]
 
 [lints]
 workspace = true
