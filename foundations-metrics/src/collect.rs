@@ -59,6 +59,7 @@ pub fn collect(options: CollectionOptions) -> Vec<MetricFamily> {
                 service_name,
                 options.service_name_format,
                 metadata.unprefixed,
+                metadata.unlabeled,
             );
         }
 
@@ -75,6 +76,7 @@ fn apply_service_name(
     service_name: &str,
     format: ServiceNameFormat<'_>,
     unprefixed: bool,
+    unlabeled: bool,
 ) {
     match format {
         ServiceNameFormat::MetricPrefix if !unprefixed => {
@@ -85,10 +87,10 @@ fn apply_service_name(
                 }
             }
         }
-        ServiceNameFormat::LabelWithName(label_name) => {
+        ServiceNameFormat::LabelWithName(label_name) if !unlabeled => {
             apply_service_label(families, label_name, service_name);
         }
-        ServiceNameFormat::MetricPrefix => {}
+        ServiceNameFormat::MetricPrefix | ServiceNameFormat::LabelWithName(_) => {}
     }
 }
 
@@ -101,25 +103,23 @@ fn apply_service_label(families: &mut [MetricFamily], label_name: &str, service_
     for family in families {
         let family_name = family.name.as_deref().unwrap_or_default();
         family.metric.retain_mut(|metric| {
-            let mut has_same_value = false;
-            for label in &metric.label {
-                if label.name.as_deref() != Some(label_name) {
-                    continue;
-                }
-
-                if label.value.as_deref() != Some(service_name) {
+            match metric
+                .label
+                .iter()
+                .find(|label| label.name.as_deref() == Some(label_name))
+            {
+                Some(label) if label.value.as_deref() != Some(service_name) => {
                     report_collect_error(format_args!(
                         "non-fatal error while collecting metrics: skipped row in metric family {family_name:?}; service label {label_name:?} already has a different value"
                     ));
-                    return false;
+                    false
                 }
-                has_same_value = true;
+                Some(_) => true,
+                None => {
+                    metric.label.insert(0, service_label.clone());
+                    true
+                }
             }
-
-            if !has_same_value {
-                metric.label.insert(0, service_label.clone());
-            }
-            true
         });
     }
 }

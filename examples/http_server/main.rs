@@ -27,6 +27,7 @@ use hyper_util::rt::{TokioExecutor, TokioIo};
 use std::convert::Infallible;
 use std::net::{SocketAddr, TcpListener as StdTcpListener};
 use std::sync::Arc;
+use std::time::Instant;
 use tokio::net::{TcpListener, TcpStream};
 
 #[tokio::main]
@@ -218,6 +219,8 @@ async fn respond(
     req: Request<Incoming>,
     routes: Arc<Map<String, ResponseSettings>>,
 ) -> Result<Response<Full<Bytes>>, Infallible> {
+    let started = Instant::now();
+
     log::add_fields! {
         "request_uri" => req.uri().to_string(),
         "method" => req.method().to_string()
@@ -233,7 +236,7 @@ async fn respond(
         routes.get(req.uri().path())
     };
 
-    Ok(match route {
+    let response = match route {
         Some(route) => {
             log::info!("sending response to the client"; "status_code" => route.status_code);
 
@@ -247,7 +250,12 @@ async fn respond(
             metrics::http_server::requests_failed_total(&endpoint_name, 404).inc();
             Response::builder().status(404).body("".into()).unwrap()
         }
-    })
+    };
+
+    metrics::http_server::request_latency_seconds(&endpoint_name)
+        .observe(started.elapsed().as_secs_f64());
+
+    Ok(response)
 }
 
 #[cfg(target_os = "linux")]

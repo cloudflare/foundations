@@ -344,7 +344,7 @@ pub fn init(config: TelemetryConfig) -> BootstrapResult<TelemetryDriver> {
     }
 
     #[cfg(feature = "metrics")]
-    self::metrics::init::init(config.service_info, &config.settings.metrics);
+    self::metrics::init::init(config.service_info, &config.settings.metrics)?;
 
     #[cfg(feature = "metrics")]
     crate::panic::install_hook();
@@ -402,7 +402,9 @@ pub fn init(config: TelemetryConfig) -> BootstrapResult<TelemetryDriver> {
 
 #[cfg(test)]
 mod tests {
-    use super::{TelemetryConfig, TelemetryContext, init, is_initialized};
+    #[cfg(not(feature = "foundations-metrics-backend"))]
+    use super::TelemetryContext;
+    use super::{TelemetryConfig, init, is_initialized};
     use crate::service_info;
 
     #[tokio::test]
@@ -426,6 +428,7 @@ mod tests {
 
     /// Ensure that `TelemetryContext::test()` does not default-initialize the metrics registry.
     /// This has caused CI bugs in the past because metrics will be prefixed by `undefined_`.
+    #[cfg(not(feature = "foundations-metrics-backend"))]
     #[test]
     fn testing_telemetry_metrics_uninit() {
         let _ctx = TelemetryContext::test();

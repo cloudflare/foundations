@@ -4,11 +4,15 @@
 //! and the logic that encodes them into the Prometheus protobuf data model. It
 //! builds on the slow-moving `foundations-metrics-registry` crate, which owns the
 //! shared process-global registry and the stable wire format.
+//!
+//! Reaching these items through `foundations::telemetry::metrics` is a temporary fix,
+//! but still works; see the crate README for how to migrate off that facade.
 #![warn(missing_docs)]
 
 mod collect;
 mod diagnostics;
 mod encoding;
+mod info;
 mod labels;
 pub mod metrics;
 mod registered;
@@ -17,10 +21,13 @@ mod value;
 
 pub use collect::{CollectionOptions, ServiceNameFormat, collect};
 pub use diagnostics::{CollectErrorHookAlreadySet, set_collect_error_hook};
-pub use encoding::{OPENMETRICS_CONTENT_TYPE, encode_to_protobuf, encode_to_text};
-pub use foundations_metrics_registry::{
-    EncodeMetric, IntoMetrics, MetricFamily, RegistrationMetadata, register,
+pub use encoding::{
+    OPENMETRICS_CONTENT_TYPE, PROTOBUF_CONTENT_TYPE, encode_to_protobuf, encode_to_text,
 };
+pub use foundations_metrics_registry::{
+    EncodeMetric, IntoMetrics, MetricFamily, RegistrationMetadata, proto, register,
+};
+pub use info::{InfoMetric, report_info};
 pub use labels::{LabelError, to_label_pairs};
 pub use metrics::{
     Counter, CounterAtomic, Family, FamilyMetricGuard, Gauge, GaugeAtomic, GaugeGuard, Histogram,
@@ -28,3 +35,5 @@ pub use metrics::{
     NativeHistogramBuilder, RangeGauge, TimeHistogram, WithExemplar,
 };
 pub use registered::NamedMetric;
+pub use validation::{NAME_REQUIREMENT, is_valid_name};
+pub use value::EncodeMetricValue;

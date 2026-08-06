@@ -44,7 +44,8 @@ anyhow = "1.0.102"
 backtrace = "0.3.76"
 foundations = { version = "5.8.1", path = "./foundations", default-features = false }
 foundations-macros = { version = "=5.8.1", path = "./foundations-macros", default-features = false }
-foundations-metrics-registry = { version = "0.1.0", path = "./foundations-metrics-registry" }
+foundations-metrics-registry = { version = "0.1.0", path = "./foundations-metrics-registry", default-features = false }
+foundations-metrics = { version = "0.1.0", path = "./foundations-metrics", default-features = false }
 bindgen = { version = "0.72.1", default-features = false }
 cc = "1.2.61"
 cf-rustracing = "1.4.0"
@@ -84,6 +85,7 @@ percent-encoding = "2.3.2"
 quote = "1.0.45"
 regex = "1.12.3"
 reqwest = { version = "0.13.2", default-features = false }
+ryu = "1.0.23"
 socket2 = { version = "0.6.3", features = ["all"] }
 syn = "2.0.117"
 serde = "1.0.228"
