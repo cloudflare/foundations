@@ -1,4 +1,6 @@
-use foundations::telemetry::metrics::{Counter, Gauge, metrics};
+use foundations::telemetry::metrics::{
+    Counter, Gauge, NativeHistogram, NativeHistogramBuilder, metrics,
+};
 use std::sync::Arc;
 
 #[metrics]
@@ -14,4 +16,12 @@ pub(crate) mod http_server {
 
     /// Number of failed requests.
     pub fn requests_failed_total(endpoint_name: &Arc<String>, status_code: u16) -> Counter;
+
+    /// Time spent handling a request, in seconds.
+    #[ctor = NativeHistogramBuilder {
+        bucket_factor: 1.1,
+        zero_threshold: 0.0,
+        max_buckets: 160,
+    }]
+    pub fn request_latency_seconds(endpoint_name: &Arc<String>) -> NativeHistogram;
 }
