@@ -172,6 +172,11 @@ fn report_nonfatal_collect_error(err: &dyn Display) {
 /// To attach exemplars, wrap any of the above in [`WithExemplar<T, S>`], which
 /// derefs to the metric it wraps.
 ///
+/// ```ignore
+/// let requests: WithExemplar<Counter, TraceLabels> = WithExemplar::default();
+/// requests.inc_by_with_exemplar(TraceLabels { trace_id: "abc123" }, 1);
+/// ```
+///
 /// The metrics associated with the functions are automatically registered in a global
 /// registry, and they can be collected with the [`collect`] function.
 ///
