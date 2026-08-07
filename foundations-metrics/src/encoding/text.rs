@@ -13,9 +13,9 @@ pub const OPENMETRICS_CONTENT_TYPE: &str =
 
 /// Encodes metric families as UTF-8 OpenMetrics text.
 ///
-/// Label names are always quoted. Metric names outside the legacy Prometheus
-/// grammar use the quoted metric-name form. Serve the output with
-/// [`OPENMETRICS_CONTENT_TYPE`] so scrapers retain UTF-8 names.
+/// Metric and label names outside their legacy Prometheus grammars use quoted
+/// forms. Serve the output with [`OPENMETRICS_CONTENT_TYPE`] so scrapers retain
+/// UTF-8 names.
 pub fn encode_to_text(families: &[MetricFamily]) -> String {
     let mut output = String::new();
 
@@ -94,7 +94,7 @@ fn encode_metric(output: &mut String, name: &str, metric_type: MetricType, metri
                 "",
                 metric,
                 None,
-                SampleValue::Float(counter.value.unwrap_or_default()),
+                SampleValue::LegacyCompatibleFloat(counter.value.unwrap_or_default()),
                 counter.exemplar.as_ref(),
             );
         }
@@ -108,7 +108,7 @@ fn encode_metric(output: &mut String, name: &str, metric_type: MetricType, metri
                 name,
                 "",
                 metric,
-                SampleValue::Float(gauge.value.unwrap_or_default()),
+                SampleValue::LegacyCompatibleFloat(gauge.value.unwrap_or_default()),
             );
         }
         MetricType::Summary => {
@@ -266,6 +266,9 @@ fn has_native_buckets(histogram: &Histogram) -> bool {
 #[derive(Clone, Copy)]
 enum SampleValue {
     Float(f64),
+    // Removes `.0` from integral counters & gauges which protobuf produces
+    // to preserve compatibility with older foundations versions.
+    LegacyCompatibleFloat(f64),
     Unsigned(u64),
 }
 
@@ -292,6 +295,7 @@ fn write_sample(
     output.push(' ');
     match value {
         SampleValue::Float(value) => write_float(output, value),
+        SampleValue::LegacyCompatibleFloat(value) => write_legacy_compatible_float(output, value),
         SampleValue::Unsigned(value) => {
             write!(output, "{value}").expect("writing to a String cannot fail");
         }
@@ -436,6 +440,14 @@ fn write_quoted(output: &mut String, value: &str) {
 }
 
 fn write_float(output: &mut String, value: f64) {
+    write_float_impl(output, value, true);
+}
+
+fn write_legacy_compatible_float(output: &mut String, value: f64) {
+    write_float_impl(output, value, false);
+}
+
+fn write_float_impl(output: &mut String, value: f64, preserve_float_syntax: bool) {
     if value.is_nan() {
         output.push_str("NaN");
     } else if value == f64::INFINITY {
@@ -445,8 +457,13 @@ fn write_float(output: &mut String, value: f64) {
     } else {
         let mut buffer = ryu::Buffer::new();
         let formatted = buffer.format(value);
+        let formatted = if preserve_float_syntax {
+            formatted
+        } else {
+            formatted.strip_suffix(".0").unwrap_or(formatted)
+        };
         output.push_str(formatted);
-        if !formatted.contains(['.', 'e', 'E']) {
+        if preserve_float_syntax && !formatted.contains(['.', 'e', 'E']) {
             output.push_str(".0");
         }
     }
@@ -514,7 +531,7 @@ mod tests {
         assert_eq!(
             encode_to_text(&families),
             "# TYPE requests counter\n\
-requests{route=\"/test\",_internal9=\"yes\",\"trace:id\"=\"abc\",\"label.name\"=\"dotted\",\"indicateur_\u{8017}\u{65f6}\"=\"utf8\"} 1.0\n\
+requests{route=\"/test\",_internal9=\"yes\",\"trace:id\"=\"abc\",\"label.name\"=\"dotted\",\"indicateur_\u{8017}\u{65f6}\"=\"utf8\"} 1\n\
 # EOF\n"
         );
     }
@@ -538,7 +555,7 @@ requests{route=\"/test\",_internal9=\"yes\",\"trace:id\"=\"abc\",\"label.name\"=
         assert_eq!(
             encode_to_text(&families),
             "# TYPE requests counter\n\
-requests 1.0\n\
+requests 1\n\
 # EOF\n"
         );
     }
@@ -576,7 +593,7 @@ requests 1.0\n\
             encode_to_text(&families),
             "# HELP requests A \\\"quoted\\\" help\\\\line\\nnext\n\
 # TYPE requests counter\n\
-requests{kind=\"a\\\"b\\\\c\\nd\"} 1.0 1.5 # {trace_id=\"abc\"} 2.0\n\
+requests{kind=\"a\\\"b\\\\c\\nd\"} 1 1.5 # {trace_id=\"abc\"} 2.0\n\
 # EOF\n"
         );
     }
@@ -718,6 +735,7 @@ queue_depth_bucket{le=\"+Inf\"} 3\n\
             r#type: Some(MetricType::Gauge as i32),
             metric: [f64::NAN, f64::INFINITY, f64::NEG_INFINITY]
                 .into_iter()
+                .chain([1.0, 1.5])
                 .map(|value| Metric {
                     gauge: Some(Gauge { value: Some(value) }),
                     ..Default::default()
@@ -732,6 +750,8 @@ queue_depth_bucket{le=\"+Inf\"} 3\n\
 temperature NaN\n\
 temperature +Inf\n\
 temperature -Inf\n\
+temperature 1\n\
+temperature 1.5\n\
 # EOF\n"
         );
     }
@@ -757,7 +777,7 @@ temperature -Inf\n\
             encode_to_text(&families),
             "# HELP build_info Build information.\n\
 # TYPE build_info gauge\n\
-build_info{version=\"1.2.3\"} 1.0\n\
+build_info{version=\"1.2.3\"} 1\n\
 # EOF\n"
         );
     }
@@ -835,9 +855,9 @@ build_info{version=\"1.2.3\"} 1.0\n\
             encode_to_text(&families),
             "# HELP \"bad\\n# HELP injected metadata\" Escaped help.\n\
 # TYPE \"bad\\n# HELP injected metadata\" gauge\n\
-{\"bad\\n# HELP injected metadata\",\"路由.name\\n\"=\"值\"} 99.0\n\
+{\"bad\\n# HELP injected metadata\",\"路由.name\\n\"=\"值\"} 99\n\
 # TYPE valid:metric gauge\n\
-valid:metric 1.0\n\
+valid:metric 1\n\
 # EOF\n"
         );
     }
@@ -930,9 +950,9 @@ valid:metric 1.0\n\
         ];
 
         let output = encode_to_text(&families);
-        assert!(output.contains("row_gauge{id=\"valid\"} 1.0\n"));
-        assert!(output.contains("row_gauge{\"bad name\"=\"nonstandard\"} 99.0\n"));
-        assert!(!output.contains("98.0"));
+        assert!(output.contains("row_gauge{id=\"valid\"} 1\n"));
+        assert!(output.contains("row_gauge{\"bad name\"=\"nonstandard\"} 99\n"));
+        assert!(!output.contains(" 98\n"));
         assert_eq!(output.matches("row_histogram_sum").count(), 1);
         assert_eq!(output.matches("row_summary_sum").count(), 1);
         assert_eq!(output.matches("row_gauge_histogram_gsum").count(), 1);
@@ -1004,11 +1024,10 @@ valid:metric 1.0\n\
 
         let output = encode_to_text(&families);
         assert!(
-            output.contains(
-                "exemplar_counter{id=\"nonstandard\"} 1.0 # {\"trace:id\"=\"bad\"} 2.0\n"
-            )
+            output
+                .contains("exemplar_counter{id=\"nonstandard\"} 1 # {\"trace:id\"=\"bad\"} 2.0\n")
         );
-        assert!(output.contains("exemplar_counter{id=\"valid\"} 3.0 # {trace_id=\"good\"} 4.0\n"));
+        assert!(output.contains("exemplar_counter{id=\"valid\"} 3 # {trace_id=\"good\"} 4.0\n"));
         assert!(output.contains("exemplar_histogram_bucket{le=\"1.0\"} 1\n"));
         assert!(!output.contains("\"dup\"="));
     }

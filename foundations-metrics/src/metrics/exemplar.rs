@@ -561,7 +561,7 @@ mod tests {
         counter.inc_by_with_exemplar((), 2);
 
         let families = NamedMetric::new("empty_exemplar", "", counter).encode();
-        assert!(encode_to_text(&families).contains("empty_exemplar 2.0 # {} 2.0\n"));
+        assert!(encode_to_text(&families).contains("empty_exemplar 2 # {} 2.0\n"));
     }
 
     #[test]
@@ -698,7 +698,7 @@ mod tests {
 
         let text = encode_to_text(std::slice::from_ref(family));
         assert!(
-            text.contains("registered_counter_with_exemplar 4.0 # {trace_id=\"registered\"} 4.0\n")
+            text.contains("registered_counter_with_exemplar 4 # {trace_id=\"registered\"} 4.0\n")
         );
     }
 
