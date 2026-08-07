@@ -36,7 +36,7 @@ impl ValidationContext {
 ///
 /// Exposed so a name taken from configuration can be rejected where it is read
 /// rather than at the first scrape, which is all
-/// [`collect`](crate::collect) can do with it. [`NAME_REQUIREMENT`] describes the
+/// [`collect`](crate::collect()) can do with it. [`NAME_REQUIREMENT`] describes the
 /// rule for the resulting diagnostic.
 pub fn is_valid_name(name: &str) -> bool {
     !name.is_empty() && !name.contains('\0')
