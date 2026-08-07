@@ -39,10 +39,7 @@ fn panic_hook_metrics_are_well_formed() {
     simulate_panic();
     assert_eq!(metrics::panics::total().get(), 1);
 
-    #[cfg(not(feature = "foundations-metrics-backend"))]
     let expected = "panics_total 1";
-    #[cfg(feature = "foundations-metrics-backend")]
-    let expected = "panics_total 1.0";
 
     let metrics = foundations::telemetry::metrics::collect(&Default::default()).unwrap();
     let has_metric = metrics.lines().any(|line| line == expected);

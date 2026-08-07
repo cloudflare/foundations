@@ -14,8 +14,8 @@ pub struct RegistrationMetadata {
     /// With service name `api` and `MetricPrefix`, enabling this changes:
     ///
     /// ```text
-    /// Before: api_requests_total 1.0
-    /// After:  requests_total 1.0
+    /// Before: api_requests_total 1
+    /// After:  requests_total 1
     /// ```
     pub unprefixed: bool,
 
@@ -24,8 +24,8 @@ pub struct RegistrationMetadata {
     /// With service name `api` and `LabelWithName("service")`, enabling this changes:
     ///
     /// ```text
-    /// Before: requests_total{service="api"} 1.0
-    /// After:  requests_total 1.0
+    /// Before: requests_total{service="api"} 1
+    /// After:  requests_total 1
     /// ```
     ///
     /// Independent of [`unprefixed`](Self::unprefixed): a metric that opts out

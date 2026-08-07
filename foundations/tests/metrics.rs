@@ -3,10 +3,7 @@ use foundations::telemetry::metrics::{self, Counter, Family, metrics};
 use foundations::telemetry::settings::{MetricsSettings, ServiceNameFormat, TelemetrySettings};
 use foundations::telemetry::{TelemetryConfig, TelemetryContext};
 
-#[cfg(not(feature = "foundations-metrics-backend"))]
 const ONE: &str = "1";
-#[cfg(feature = "foundations-metrics-backend")]
-const ONE: &str = "1.0";
 
 #[metrics]
 mod regular {
@@ -86,7 +83,7 @@ undefined_encode_error_valid 1
 
     #[cfg(feature = "foundations-metrics-backend")]
     let expected_output = "# TYPE undefined_encode_error_valid counter
-undefined_encode_error_valid 1.0
+undefined_encode_error_valid 1
 ";
 
     let settings = MetricsSettings {
