@@ -5,7 +5,7 @@ use crate::{EncodeMetric, MetricFamily, value::EncodeMetricValue};
 /// Storage types (`Counter`, `Gauge`, ...) hold only their value and encode
 /// themselves with relative names (a suffix such as `""`, `_min`, or `_max`).
 /// `NamedMetric` supplies the registered base name and help text, bridging the
-/// internal `EncodeMetricValue` storage trait to the public
+/// [`EncodeMetricValue`] storage trait to the
 /// [`EncodeMetric`] registry trait.
 pub struct NamedMetric<M> {
     name: &'static str,

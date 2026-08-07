@@ -59,6 +59,7 @@ pub fn collect(options: CollectionOptions) -> Vec<MetricFamily> {
                 service_name,
                 options.service_name_format,
                 metadata.unprefixed,
+                metadata.unlabeled,
             );
         }
 
@@ -75,6 +76,7 @@ fn apply_service_name(
     service_name: &str,
     format: ServiceNameFormat<'_>,
     unprefixed: bool,
+    unlabeled: bool,
 ) {
     match format {
         ServiceNameFormat::MetricPrefix if !unprefixed => {
@@ -85,10 +87,10 @@ fn apply_service_name(
                 }
             }
         }
-        ServiceNameFormat::LabelWithName(label_name) => {
+        ServiceNameFormat::LabelWithName(label_name) if !unlabeled => {
             apply_service_label(families, label_name, service_name);
         }
-        ServiceNameFormat::MetricPrefix => {}
+        ServiceNameFormat::MetricPrefix | ServiceNameFormat::LabelWithName(_) => {}
     }
 }
 
