@@ -38,7 +38,7 @@ pub struct TracingSettings {
     pub sampling_strategy: SamplingStrategy,
 
     /// Enable liveness tracking of all generated spans. Even if the spans are
-    /// unsampled. This can be useful for debugging potential hangs cause by
+    /// unsampled. This can be useful for debugging potential hangs caused by
     /// some objects remaining in memory.  The default value is false, meaning
     /// only sampled spans are tracked.
     ///
