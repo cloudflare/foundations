@@ -4,7 +4,9 @@ use foundations_metrics_registry::proto::{Exemplar, LabelPair, Metric, MetricFam
 
 use crate::diagnostics::report_collect_error;
 
-pub(crate) const NAME_REQUIREMENT: &str = "a non-empty UTF-8 string without NUL bytes";
+/// Describes what [`is_valid_name`] accepts, for use in diagnostics.
+pub const NAME_REQUIREMENT: &str = "a non-empty UTF-8 string without NUL bytes";
+
 pub(crate) const EXEMPLAR_SERIALIZATION_ERROR_LABEL: &str =
     "\0foundations_metrics_exemplar_serialization_error";
 
@@ -25,7 +27,18 @@ impl ValidationContext {
     }
 }
 
-pub(crate) fn is_valid_name(name: &str) -> bool {
+/// Whether a metric or label name can be represented at all.
+///
+/// Only the two cases that no encoder can express are rejected: an empty name
+/// has no rendering, and a NUL byte both breaks the text format and collides
+/// with the `EXEMPLAR_SERIALIZATION_ERROR_LABEL` sentinel, which relies on being
+/// unrepresentable to stay distinguishable from a real label.
+///
+/// Exposed so a name taken from configuration can be rejected where it is read
+/// rather than at the first scrape, which is all
+/// [`collect`](crate::collect()) can do with it. [`NAME_REQUIREMENT`] describes the
+/// rule for the resulting diagnostic.
+pub fn is_valid_name(name: &str) -> bool {
     !name.is_empty() && !name.contains('\0')
 }
 
