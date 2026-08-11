@@ -45,7 +45,6 @@ impl SharedSpanHandle {
     ///
     /// A no-op for inactive spans: there is nothing to mutate, and unlike [`Self::with_read`] we
     /// can't substitute a shared placeholder.
-    #[cfg(feature = "user-tracing")]
     pub(crate) fn with_write(&self, f: impl FnOnce(&mut Span)) {
         match self {
             SharedSpanHandle::Tracked(handle) => f(&mut handle.write()),
@@ -103,18 +102,14 @@ pub(crate) fn user_shared_span(span: Span) -> SharedSpan {
 }
 
 pub fn write_current_span(write_fn: impl FnOnce(&mut Span)) {
+    // Check the cached flag before touching the lock. Writing to an unsampled span is a no-op
+    // anyway, so this only avoids taking a write guard for nothing.
     let span = match current_span() {
         Some(span) if span.is_sampled => span,
         _ => return,
     };
 
-    let mut span_guard = match &span.inner {
-        SharedSpanHandle::Tracked(handle) => handle.write(),
-        SharedSpanHandle::Untracked(rw_lock) => rw_lock.write(),
-        SharedSpanHandle::Inactive => unreachable!("inactive spans can't be sampled"),
-    };
-
-    write_fn(&mut span_guard);
+    span.inner.with_write(write_fn);
 }
 
 pub(crate) fn create_span(name: impl Into<Cow<'static, str>>) -> SharedSpan {
@@ -198,13 +193,7 @@ pub fn write_current_user_span(write_fn: impl FnOnce(&mut Span)) {
         _ => return,
     };
 
-    let mut span_guard = match &span.inner {
-        SharedSpanHandle::Tracked(handle) => handle.write(),
-        SharedSpanHandle::Untracked(rw_lock) => rw_lock.write(),
-        SharedSpanHandle::Inactive => unreachable!("inactive spans can't be sampled"),
-    };
-
-    write_fn(&mut span_guard);
+    span.inner.with_write(write_fn);
 }
 
 /// Starts a root user span on the user harness, optionally continuing the inbound W3C trace.
