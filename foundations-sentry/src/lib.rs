@@ -27,7 +27,7 @@
 //!
 //! ```rust
 //! fn main() {
-//!     let mut client_opts = sentry_core::ClientOptions::default();
+//!     let mut client_opts = foundations_sentry::ClientOptions::default();
 //!     let sentry_settings = foundations_sentry::SentrySettings::default();
 //!     foundations_sentry::install_hook_with_settings(&mut client_opts, &sentry_settings);
 //!     // sentry::init(client_opts);
@@ -42,3 +42,4 @@ mod settings;
 
 pub use self::hook::install_hook_with_settings;
 pub use self::settings::SentrySettings;
+pub use sentry_core::{self, ClientOptions};
