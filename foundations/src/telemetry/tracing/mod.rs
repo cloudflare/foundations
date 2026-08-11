@@ -25,9 +25,11 @@ mod output_otlp_uds;
 mod traceparent;
 
 use self::init::TracingHarness;
-#[cfg(feature = "user-tracing")]
-use self::internal::current_user_span;
 use self::internal::{SharedSpan, create_span, current_span, shared_span, span_trace_id};
+#[cfg(feature = "user-tracing")]
+use self::internal::{
+    SharedSpanHandle, child_user_span, current_user_span, start_user_trace, user_shared_span,
+};
 use super::TelemetryContext;
 use super::scope::Scope;
 use std::borrow::Cow;
@@ -36,7 +38,7 @@ use std::sync::Arc;
 #[cfg(any(test, feature = "testing"))]
 pub use self::testing::{TestSpan, TestTrace, TestTraceIterator, TestTraceOptions};
 
-pub use cf_rustracing::tag::TagValue;
+pub use cf_rustracing::tag::{Tag, TagValue};
 pub use cf_rustracing_jaeger::span::{Span, SpanContextState as SerializableTraceState, TraceId};
 
 #[cfg(feature = "user-tracing")]
@@ -263,6 +265,125 @@ impl UserSpanScope {
 
         ctx
     }
+}
+
+/// An owned handle to a user-tracing span, detached from the scope stack.
+///
+/// Unlike [`UserSpanScope`], this is `Send` and can be stored in a struct and held across `await`
+/// points. That is what a per-request span needs in a service whose request pipeline is a state
+/// machine of separate callbacks rather than a call tree: the span outlives every individual
+/// callback, so there is no lexical scope for it to live in.
+///
+/// The span is reported when the handle is dropped.
+///
+/// A handle is always usable. When no user trace is active, or the trace wasn't sampled, or no
+/// user-tracing pipeline is configured, the handle is *inactive*: tagging does nothing, children
+/// are inactive in turn, and nothing is reported. Callers never have to unwrap an [`Option`] or
+/// branch on whether tracing is switched on.
+#[cfg(feature = "user-tracing")]
+#[derive(Debug)]
+#[must_use]
+pub struct UserSpan {
+    span: SharedSpan,
+}
+
+#[cfg(feature = "user-tracing")]
+impl UserSpan {
+    #[inline]
+    pub(crate) fn from_shared(span: SharedSpan) -> Self {
+        Self { span }
+    }
+
+    /// Creates a handle that records nothing.
+    ///
+    /// Useful as a placeholder before a trace has been started, and as the resting state for a
+    /// span slot that has been finished.
+    pub const fn inactive() -> Self {
+        Self {
+            span: SharedSpan {
+                inner: SharedSpanHandle::Inactive,
+                is_sampled: false,
+            },
+        }
+    }
+
+    /// Starts a root user span, continuing the inbound W3C trace from `inbound` when given.
+    ///
+    /// `routing` is attached at construction and inherited by child spans. The result is inactive
+    /// if the trace wasn't sampled or no user-tracing pipeline is configured, which
+    /// [`is_sampled`](Self::is_sampled) reports.
+    pub fn start_trace(
+        name: impl Into<Cow<'static, str>>,
+        routing: impl RoutingMetadata + 'static,
+        inbound: Option<TraceparentContext>,
+    ) -> Self {
+        Self::from_shared(user_shared_span(start_user_trace(
+            name,
+            Arc::new(routing),
+            inbound,
+        )))
+    }
+
+    /// Creates a child of this span, inheriting its routing metadata.
+    ///
+    /// The parent is named explicitly rather than taken from the scope stack, because spans in a
+    /// callback-driven pipeline overlap without nesting: a span can still be unfinished while
+    /// work that is not part of it is running.
+    ///
+    /// Children of an inactive span are inactive.
+    pub fn child(&self, name: impl Into<Cow<'static, str>>) -> Self {
+        Self::from_shared(child_user_span(&self.span, name))
+    }
+
+    /// Adds tags to this span, replacing any existing tag of the same name.
+    ///
+    /// `f` isn't called when the span is inactive, so it's the right place to put work that only
+    /// exists to produce tags.
+    pub fn set_tags<F, I>(&self, f: F)
+    where
+        F: FnOnce() -> I,
+        I: IntoIterator<Item = Tag>,
+    {
+        self.span.inner.with_write(|span| span.set_tags(f));
+    }
+
+    /// Whether this span is being recorded.
+    ///
+    /// Cheap: reads a flag rather than taking the span lock.
+    pub fn is_sampled(&self) -> bool {
+        self.span.is_sampled
+    }
+
+    /// W3C `traceparent` for this span, for outbound propagation to the next hop.
+    ///
+    /// The parent-id is this span's own id, so spans created by the next hop become its children.
+    /// `None` when the span is inactive.
+    pub fn w3c_traceparent(&self) -> Option<String> {
+        self.span.inner.with_read(|s| {
+            let state = s.context()?.state();
+
+            Some(format!(
+                "00-{:0>16x}{:0>16x}-{:0>16x}-{:0>2x}",
+                state.trace_id().high,
+                state.trace_id().low,
+                state.span_id(),
+                state.flags()
+            ))
+        })
+    }
+
+    /// Makes this span current for the lifetime of the returned scope, so the ambient helpers in
+    /// [`user_tracing`] target it.
+    ///
+    /// The returned scope is `!Send` and must not be held across an `await` point.
+    pub fn enter(&self) -> UserSpanScope {
+        UserSpanScope::new(self.span.clone())
+    }
+
+    /// Finishes and reports the span.
+    ///
+    /// Identical to dropping the handle; this only names the intent at the call site.
+    pub fn finish(self) {}
 }
 
 /// A span recorded in both the internal and user traces, produced by [`dual_span`].
@@ -511,24 +632,26 @@ pub fn start_trace(
 /// it. To record a span in both traces at once, use [`dual_span`].
 #[cfg(feature = "user-tracing")]
 pub mod user_tracing {
-    use super::internal::{self, create_user_span, current_user_span, user_shared_span};
+    use super::internal::{create_user_span, current_user_span};
     use super::{RoutingMetadata, TraceparentContext, UserSpanScope};
     use std::borrow::Cow;
+
+    #[doc(inline)]
+    pub use super::UserSpan;
 
     /// Starts a root user span (per-request activation), optionally continuing the inbound W3C
     /// trace from `inbound`. `routing` is attached at construction and inherited by child spans.
     ///
     /// Without an active root, `span`, `dual_span`, and `add_span_tags!` are no-ops.
+    ///
+    /// Returns a scope-stack handle. Use [`UserSpan::start_trace`] instead when the span has to
+    /// outlive the enclosing function, such as a per-request span in a callback-driven pipeline.
     pub fn start_trace(
         name: impl Into<Cow<'static, str>>,
         routing: impl RoutingMetadata + 'static,
         inbound: Option<TraceparentContext>,
     ) -> UserSpanScope {
-        UserSpanScope::new(user_shared_span(internal::start_user_trace(
-            name,
-            std::sync::Arc::new(routing),
-            inbound,
-        )))
+        UserSpan::start_trace(name, routing, inbound).enter()
     }
 
     /// Creates a user span as a child of the current user span, or inactive when no user trace is
@@ -540,17 +663,7 @@ pub mod user_tracing {
     /// W3C `traceparent` for the current user span, for outbound propagation to the next hop.
     /// Span-derived (parent-id is the current user span); `None` when no user trace is active.
     pub fn w3c_traceparent() -> Option<String> {
-        current_user_span()?.inner.with_read(|s| {
-            let state = s.context()?.state();
-
-            Some(format!(
-                "00-{:0>16x}{:0>16x}-{:0>16x}-{:0>2x}",
-                state.trace_id().high,
-                state.trace_id().low,
-                state.span_id(),
-                state.flags()
-            ))
-        })
+        UserSpan::from_shared(current_user_span()?).w3c_traceparent()
     }
 
     #[doc(inline)]
@@ -1142,8 +1255,8 @@ pub use __test_trace as test_trace;
 #[cfg(all(test, feature = "user-tracing", feature = "testing"))]
 mod user_tracing_tests {
     use super::{
-        RoutingMetadata, StartTraceOptions, TraceparentContext, dual_span, span, start_trace,
-        test_trace, user_tracing,
+        RoutingMetadata, StartTraceOptions, TraceparentContext, UserSpan, dual_span, span,
+        start_trace, test_trace, user_tracing,
     };
     use crate::telemetry::TelemetryContext;
     use crate::telemetry::tracing::{Span, TestTraceOptions};
@@ -1616,6 +1729,229 @@ mod user_tracing_tests {
         assert_eq!(
             ctx.user_traces(Default::default()),
             vec![test_trace! { "request" => { "user_fn" } }]
+        );
+    }
+
+    // --- Owned `UserSpan` handles ---
+
+    fn assert_send<T: Send>() {}
+
+    // The property the whole type exists for: `UserSpanScope` is deliberately `!Send`, so it
+    // can't be stored in a struct or held across an await point. This can.
+    #[test]
+    fn handle_is_send() {
+        assert_send::<UserSpan>();
+    }
+
+    #[test]
+    fn handle_creation_and_nesting() {
+        let ctx = TelemetryContext::test();
+        let _scope = ctx.scope();
+
+        {
+            let root = UserSpan::start_trace("request", routing(), None);
+            let child = root.child("child");
+            let _grandchild = child.child("grandchild");
+        }
+
+        assert_eq!(
+            ctx.user_traces(Default::default()),
+            vec![test_trace! { "request" => { "child" => { "grandchild" } } }]
+        );
+        // User spans must not leak into the internal pipeline.
+        assert!(ctx.traces(Default::default()).is_empty());
+    }
+
+    // Parents are named rather than inferred, so two children of the same span are siblings even
+    // though the first is still unfinished when the second starts. A scope stack would nest them.
+    #[test]
+    fn siblings_from_explicit_parent() {
+        let ctx = TelemetryContext::test();
+        let _scope = ctx.scope();
+
+        {
+            let root = UserSpan::start_trace("request", routing(), None);
+            let first = root.child("first");
+            let second = root.child("second");
+
+            drop(first);
+            drop(second);
+        }
+
+        assert_eq!(
+            ctx.user_traces(Default::default()),
+            vec![test_trace! { "request" => { "first", "second" } }]
+        );
+    }
+
+    #[test]
+    fn inactive_handle_is_inert() {
+        let ctx = TelemetryContext::test();
+        let _scope = ctx.scope();
+
+        {
+            let span = UserSpan::inactive();
+
+            assert!(!span.is_sampled());
+            assert!(span.w3c_traceparent().is_none());
+            span.set_tags(|| vec![Tag::new("k", "v")]);
+
+            // Children of an inactive span are inactive in turn.
+            let child = span.child("child");
+
+            assert!(!child.is_sampled());
+            assert!(child.w3c_traceparent().is_none());
+            child.set_tags(|| vec![Tag::new("k", "v")]);
+        }
+
+        assert!(ctx.user_traces(Default::default()).is_empty());
+    }
+
+    #[test]
+    fn handle_set_tags() {
+        let ctx = TelemetryContext::test();
+        let _scope = ctx.scope();
+
+        {
+            let root = UserSpan::start_trace("request", routing(), None);
+
+            assert!(root.is_sampled());
+            root.set_tags(|| vec![Tag::new("cache.status", "HIT")]);
+        }
+
+        let traces = ctx.user_traces(TestTraceOptions {
+            include_tags: true,
+            ..Default::default()
+        });
+
+        assert!(
+            traces[0]
+                .0
+                .tags
+                .contains(&("cache.status".to_string(), TagValue::String("HIT".into())))
+        );
+    }
+
+    // `enter()` is the bridge back to the ambient API, for callers that prefer it within a single
+    // function.
+    #[test]
+    fn handle_enter_feeds_ambient_helpers() {
+        let ctx = TelemetryContext::test();
+        let _scope = ctx.scope();
+
+        {
+            let root = UserSpan::start_trace("request", routing(), None);
+            {
+                let _entered = root.enter();
+
+                user_tracing::add_span_tags!("entered" => true);
+                let _ambient_child = user_tracing::span("ambient_child");
+            }
+        }
+
+        let traces = ctx.user_traces(TestTraceOptions {
+            include_tags: true,
+            ..Default::default()
+        });
+
+        assert_eq!(traces[0].0.children[0].name, "ambient_child");
+        assert!(
+            traces[0]
+                .0
+                .tags
+                .contains(&("entered".to_string(), TagValue::Boolean(true)))
+        );
+    }
+
+    #[test]
+    fn handle_continues_inbound_trace() {
+        let ctx = TelemetryContext::test();
+        let _scope = ctx.scope();
+
+        let inbound =
+            TraceparentContext::parse(b"00-11223344556677889900aabbccddeeff-a1b2c3d4e5f60718-01")
+                .unwrap();
+        let root = UserSpan::start_trace("request", routing(), Some(inbound));
+
+        let root_tp = root.w3c_traceparent().expect("root traceparent");
+        assert!(root_tp.starts_with("00-11223344556677889900aabbccddeeff-"));
+
+        // A child keeps the 128-bit trace id but reports its own span id, so the next hop parents
+        // under whichever span injected the header.
+        let child_tp = root.child("child").w3c_traceparent().expect("child");
+
+        assert_eq!(&root_tp[..35], &child_tp[..35]);
+        assert_ne!(root_tp, child_tp);
+    }
+
+    // Routing is set once at the root and has to reach every descendant: the OTLP exporter groups
+    // by it and silently drops spans that arrive without it. `Span::child` inherits routing while
+    // `SpanHandle::child` deliberately doesn't, so this pins which of the two `child` uses.
+    //
+    // Driven through a raw tracer because routing lives on `FinishedSpan`, which the test harness
+    // doesn't surface.
+    #[tokio::test]
+    async fn child_inherits_routing() {
+        use super::channel::{PipelineType, unbounded_channel};
+        use super::internal::{child_user_span, user_shared_span};
+        use cf_rustracing::Tracer;
+        use cf_rustracing::sampler::AllSampler;
+        use std::sync::Arc;
+
+        let (sender, span_rx) = unbounded_channel(PipelineType::User);
+
+        {
+            let tracer = Tracer::with_consumer(AllSampler, sender);
+            let root =
+                user_shared_span(tracer.span("request").routing(Arc::new(routing())).start());
+
+            let _child = child_user_span(&root, "child");
+        }
+
+        let mut finished = Vec::new();
+        span_rx.recv_many(&mut finished, 8).await;
+
+        assert_eq!(finished.len(), 2, "expected the root and its child");
+        for span in &finished {
+            assert_eq!(
+                span.routing().map(|r| r.encode()).as_deref(),
+                Some("zone=1;account=2"),
+                "a span reached the exporter without routing and would be dropped"
+            );
+        }
+    }
+
+    // The motivating case: a handle created in one callback, moved onto another task, mutated
+    // after an await point, and finished there.
+    #[tokio::test]
+    async fn handle_survives_await_and_thread_move() {
+        let ctx = TelemetryContext::test();
+        let _scope = ctx.scope();
+
+        {
+            let root = UserSpan::start_trace("request", routing(), None);
+            let child = root.child("child");
+
+            tokio::spawn(async move {
+                tokio::task::yield_now().await;
+
+                child.set_tags(|| vec![Tag::new("moved", true)]);
+                child.finish();
+            })
+            .await
+            .unwrap();
+        }
+
+        let traces = ctx.user_traces(TestTraceOptions {
+            include_tags: true,
+            ..Default::default()
+        });
+
+        assert_eq!(traces[0].0.children[0].name, "child");
+        assert!(
+            traces[0].0.children[0]
+                .tags
+                .contains(&("moved".to_string(), TagValue::Boolean(true)))
         );
     }
 }

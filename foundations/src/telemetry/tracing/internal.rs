@@ -40,6 +40,19 @@ impl SharedSpanHandle {
             SharedSpanHandle::Inactive => f(&INACTIVE),
         }
     }
+
+    /// Runs `f` against the span for mutation, taking a write lock for the duration.
+    ///
+    /// A no-op for inactive spans: there is nothing to mutate, and unlike [`Self::with_read`] we
+    /// can't substitute a shared placeholder.
+    #[cfg(feature = "user-tracing")]
+    pub(crate) fn with_write(&self, f: impl FnOnce(&mut Span)) {
+        match self {
+            SharedSpanHandle::Tracked(handle) => f(&mut handle.write()),
+            SharedSpanHandle::Untracked(rw_lock) => f(&mut rw_lock.write()),
+            SharedSpanHandle::Inactive => {}
+        }
+    }
 }
 
 impl From<SharedSpanHandle> for Arc<RwLock<Span>> {
@@ -163,9 +176,19 @@ pub(crate) fn current_user_span() -> Option<SharedSpan> {
 #[cfg(feature = "user-tracing")]
 pub(crate) fn create_user_span(name: impl Into<Cow<'static, str>>) -> SharedSpan {
     match current_user_span() {
-        Some(parent) => user_shared_span(parent.inner.with_read(|s| s.child(name, |o| o.start()))),
+        Some(parent) => child_user_span(&parent, name),
         None => user_shared_span(Span::inactive()),
     }
+}
+
+/// Child of an explicitly given user span. Inactive when `parent` is, since an inactive span's
+/// children are inactive.
+#[cfg(feature = "user-tracing")]
+pub(crate) fn child_user_span(
+    parent: &SharedSpan,
+    name: impl Into<Cow<'static, str>>,
+) -> SharedSpan {
+    user_shared_span(parent.inner.with_read(|s| s.child(name, |o| o.start())))
 }
 
 #[cfg(feature = "user-tracing")]
