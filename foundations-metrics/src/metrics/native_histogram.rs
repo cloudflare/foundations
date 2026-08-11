@@ -15,13 +15,17 @@ use crate::{MetricFamily, value::EncodeMetricValue};
 
 use super::MetricConstructor;
 use super::exemplar::{Exemplar, ExemplarStorage, StoredExemplar, WithExemplar, finish_exemplar};
+use super::histogram::{HistogramTimer, ObserveNanos, seconds};
 
 /// A native (exponential-bucket) histogram.
 ///
 /// Unlike a classic [`Histogram`](super::Histogram), whose buckets are a fixed
 /// list of upper bounds, a native histogram places observations into
 /// exponentially sized buckets whose resolution is chosen by a growth factor.
-/// Native histograms require the Prometheus protobuf exposition format.
+/// Native-only histograms require the Prometheus protobuf exposition format.
+/// Use [`NativeHistogram::new_classic_and_native`] or
+/// [`NativeHistogramBuilder::with_classic_buckets`] to retain classic buckets
+/// for text exposition.
 ///
 /// Clones share the same storage.
 ///
@@ -53,6 +57,26 @@ impl NativeHistogram {
     #[track_caller]
     pub fn new(factor: f64) -> Self {
         NativeHistogramBuilder::new(factor).new_metric()
+    }
+
+    /// Creates a histogram with both classic and native buckets.
+    ///
+    /// Classic bucket bounds are sorted ascending.
+    ///
+    /// Protobuf exposition includes both representations. Text exposition uses
+    /// the classic buckets as a fallback.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `factor` is not greater than `1.0`.
+    #[track_caller]
+    pub fn new_classic_and_native(buckets: impl IntoIterator<Item = f64>, factor: f64) -> Self {
+        Self {
+            inner: PrometheusHistogram::new_classic_and_native(
+                sorted_buckets(buckets),
+                NativeHistogramBuilder::new(factor).config(),
+            ),
+        }
     }
 
     /// Records an observed value.
@@ -93,6 +117,86 @@ impl<S> WithExemplar<NativeHistogram, S> {
     }
 }
 
+/// A native (exponential-bucket) histogram for tracking time.
+///
+/// This is the native-bucket counterpart to [`TimeHistogram`](super::TimeHistogram):
+/// it records durations in nanoseconds and exposes [`start_timer`] for
+/// measuring a scope. Unlike `TimeHistogram`, whose resolution is fixed by its
+/// bucket list, resolution here follows the growth factor and the observed
+/// range, so a latency distribution does not have to be bounded in advance.
+///
+/// Durations are converted to seconds before bucketing, matching the
+/// Prometheus convention and [`TimeHistogram`](super::TimeHistogram).
+///
+/// Clones share the same storage.
+///
+/// [`start_timer`]: NativeTimeHistogram::start_timer
+///
+/// # Examples
+///
+/// ```
+/// use foundations_metrics::NativeTimeHistogram;
+///
+/// let request_latency = NativeTimeHistogram::new(1.1);
+/// request_latency.observe(1_500_000);
+///
+/// let timer = request_latency.start_timer();
+/// // ... work being measured ...
+/// drop(timer);
+/// ```
+#[derive(Clone, Debug)]
+pub struct NativeTimeHistogram {
+    inner: NativeHistogram,
+}
+
+impl NativeTimeHistogram {
+    /// Creates a native time histogram with the given bucket growth `factor`.
+    ///
+    /// The factor bounds the ratio between adjacent bucket boundaries; a
+    /// smaller factor gives finer resolution. Use [`NativeHistogramBuilder`]
+    /// for full control.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `factor` is not greater than `1.0`.
+    #[track_caller]
+    pub fn new(factor: f64) -> Self {
+        NativeHistogramBuilder::new(factor).new_metric()
+    }
+
+    /// Starts a timer that records its duration when stopped or dropped.
+    pub fn start_timer(&self) -> HistogramTimer<Self> {
+        HistogramTimer::start(self.clone())
+    }
+
+    /// Records an observed duration in nanoseconds.
+    #[inline]
+    pub fn observe(&self, nanos: u64) {
+        self.inner.observe(seconds(nanos));
+    }
+}
+
+impl ObserveNanos for NativeTimeHistogram {
+    #[inline]
+    fn observe_nanos(&self, nanos: u64) {
+        self.observe(nanos);
+    }
+}
+
+impl EncodeMetricValue for NativeTimeHistogram {
+    fn encode_metric_value(&self) -> Vec<MetricFamily> {
+        self.inner.encode_metric_value()
+    }
+}
+
+impl MetricConstructor<NativeTimeHistogram> for NativeHistogramBuilder {
+    fn new_metric(&self) -> NativeTimeHistogram {
+        NativeTimeHistogram {
+            inner: self.new_metric(),
+        }
+    }
+}
+
 /// Constructs [`NativeHistogram`]s with a fixed configuration.
 ///
 /// Use this with [`Family`](crate::Family) or a metric's `#[ctor = ...]` when a
@@ -109,12 +213,20 @@ impl<S> WithExemplar<NativeHistogram, S> {
 ///     method: &'static str,
 /// }
 ///
-/// let builder = NativeHistogramBuilder::new(1.1).with_max_buckets(160);
+/// let builder = NativeHistogramBuilder::new(1.1)
+///     .with_classic_buckets(&[0.1, 0.5, 1.0])
+///     .with_max_buckets(160);
 /// let latencies = Family::<Labels, NativeHistogram, _>::new_with_constructor(builder);
 /// latencies.get_or_create(&Labels { method: "GET" }).observe(0.5);
 /// ```
 #[derive(Clone, Copy, Debug)]
 pub struct NativeHistogramBuilder {
+    /// Optional upper bounds for classic histogram buckets.
+    ///
+    /// When present, each observation updates both the classic and native
+    /// representations so that text exposition can use the classic buckets.
+    pub classic_buckets: Option<&'static [f64]>,
+
     /// Bucket growth factor; must be greater than `1.0`. Smaller factors give
     /// finer resolution.
     pub bucket_factor: f64,
@@ -137,10 +249,22 @@ impl NativeHistogramBuilder {
     /// threshold, and an unbounded number of buckets.
     pub fn new(factor: f64) -> Self {
         Self {
+            classic_buckets: None,
             bucket_factor: factor,
             zero_threshold: 0.0,
             max_buckets: 0,
         }
+    }
+
+    /// Adds classic buckets as a fallback for text exposition.
+    ///
+    /// Bucket bounds are sorted ascending when the histogram is constructed.
+    ///
+    /// Each observation updates both the classic and native representations,
+    /// and protobuf exposition includes both.
+    pub fn with_classic_buckets(mut self, buckets: &'static [f64]) -> Self {
+        self.classic_buckets = Some(buckets);
+        self
     }
 
     /// Sets the zero-bucket threshold.
@@ -191,8 +315,15 @@ impl NativeHistogramBuilder {
 impl MetricConstructor<NativeHistogram> for NativeHistogramBuilder {
     #[track_caller]
     fn new_metric(&self) -> NativeHistogram {
+        let config = self.config();
         NativeHistogram {
-            inner: PrometheusHistogram::new_native(self.config()),
+            inner: match self.classic_buckets {
+                Some(buckets) => PrometheusHistogram::new_classic_and_native(
+                    sorted_buckets(buckets.iter().copied()),
+                    config,
+                ),
+                None => PrometheusHistogram::new_native(config),
+            },
         }
     }
 }
@@ -201,6 +332,12 @@ impl<S> MetricConstructor<WithExemplar<NativeHistogram, S>> for NativeHistogramB
     fn new_metric(&self) -> WithExemplar<NativeHistogram, S> {
         WithExemplar::new(NativeHistogramBuilder::new_metric(self))
     }
+}
+
+fn sorted_buckets(buckets: impl IntoIterator<Item = f64>) -> Vec<f64> {
+    let mut buckets: Vec<_> = buckets.into_iter().collect();
+    buckets.sort_by(f64::total_cmp);
+    buckets
 }
 
 impl EncodeMetricValue for NativeHistogram {
@@ -337,10 +474,11 @@ fn convert_native_span(span: prometheus_proto::BucketSpan) -> BucketSpan {
 #[cfg(test)]
 mod tests {
     use foundations_metrics_registry::proto::{self, MetricType};
+    use prost::Message;
     use serde::Serialize;
 
     use super::*;
-    use crate::{EncodeMetric, Family, NamedMetric};
+    use crate::{EncodeMetric, Family, NamedMetric, encode_to_protobuf, encode_to_text};
 
     fn encoded_histogram(families: &[MetricFamily]) -> &proto::Histogram {
         assert_eq!(families.len(), 1);
@@ -411,6 +549,69 @@ mod tests {
         let encoded = encoded_histogram(&families);
         assert_eq!(encoded.sample_count, Some(1));
         assert_eq!(encoded.zero_threshold, Some(0.001));
+    }
+
+    #[test]
+    fn classic_and_native_histogram_uses_each_exposition_format() {
+        let histogram: NativeHistogram = NativeHistogramBuilder::new(2.0)
+            .with_classic_buckets(&[1.0, 2.0])
+            .new_metric();
+        histogram.observe(0.5);
+        histogram.observe(1.5);
+        histogram.observe(3.0);
+
+        let families =
+            NamedMetric::new("request_latency_seconds", "Request latency.", histogram).encode();
+        let encoded = encoded_histogram(&families);
+
+        assert_eq!(encoded.sample_count, Some(3));
+        assert_eq!(encoded.bucket.len(), 3);
+        assert_eq!(encoded.bucket[0].cumulative_count, Some(1));
+        assert_eq!(encoded.bucket[1].cumulative_count, Some(2));
+        assert_eq!(encoded.bucket[2].cumulative_count, Some(3));
+        assert!(encoded.schema.is_some());
+        assert!(!encoded.positive_span.is_empty());
+
+        let text = encode_to_text(&families);
+        assert!(text.contains("request_latency_seconds_bucket{le=\"1.0\"} 1\n"));
+        assert!(text.contains("request_latency_seconds_bucket{le=\"2.0\"} 2\n"));
+        assert!(text.contains("request_latency_seconds_bucket{le=\"+Inf\"} 3\n"));
+
+        let payload = encode_to_protobuf(&families);
+        let mut payload = payload.as_slice();
+        let decoded = MetricFamily::decode_length_delimited(&mut payload)
+            .expect("combined histogram protobuf should decode");
+        assert!(payload.is_empty());
+
+        let decoded = decoded.metric[0]
+            .histogram
+            .as_ref()
+            .expect("decoded histogram is present");
+        assert_eq!(decoded.bucket.len(), 3);
+        assert!(decoded.schema.is_some());
+        assert!(!decoded.positive_span.is_empty());
+    }
+
+    #[test]
+    fn classic_and_native_constructor_uses_the_default_native_configuration() {
+        let histogram = NativeHistogram::new_classic_and_native([2.0, 1.0], 2.0);
+        histogram.observe(1.5);
+
+        let families = histogram.encode_metric_value();
+        let encoded = encoded_histogram(&families);
+        assert_eq!(
+            encoded
+                .bucket
+                .iter()
+                .map(|bucket| (bucket.upper_bound, bucket.cumulative_count))
+                .collect::<Vec<_>>(),
+            vec![
+                (Some(1.0), Some(0)),
+                (Some(2.0), Some(1)),
+                (Some(f64::MAX), Some(1)),
+            ]
+        );
+        assert!(encoded.schema.is_some());
     }
 
     #[test]
@@ -490,5 +691,117 @@ mod tests {
             "reported file: {file}"
         );
         assert_eq!(line, expected_line);
+    }
+
+    #[test]
+    fn time_histogram_records_nanos_as_seconds() {
+        let histogram = NativeTimeHistogram::new(1.1);
+        histogram.observe(1_500_000);
+
+        let families = histogram.encode_metric_value();
+        let encoded = encoded_histogram(&families);
+        assert_eq!(encoded.sample_count, Some(1));
+        assert_eq!(encoded.sample_sum, Some(0.0015));
+    }
+
+    // The whole point of the wrapper is that it changes the input unit and
+    // nothing else, so the encoded output must be indistinguishable from
+    // driving a `NativeHistogram` with the equivalent value in seconds.
+    #[test]
+    fn time_histogram_buckets_identically_to_native_histogram() {
+        let nanos = [1_000u64, 250_000, 1_500_000, 40_000_000, 2_500_000_000];
+
+        let timed = NativeTimeHistogram::new(1.1);
+        let plain = NativeHistogram::new(1.1);
+        for value in nanos {
+            timed.observe(value);
+            plain.observe(value as f64 * 1e-9);
+        }
+
+        let timed = timed.encode_metric_value();
+        let plain = plain.encode_metric_value();
+        let timed = encoded_histogram(&timed);
+        let plain = encoded_histogram(&plain);
+
+        assert_eq!(timed.sample_count, plain.sample_count);
+        assert_eq!(timed.sample_sum, plain.sample_sum);
+        assert_eq!(timed.schema, plain.schema);
+        assert_eq!(timed.zero_threshold, plain.zero_threshold);
+        assert_eq!(timed.zero_count, plain.zero_count);
+        assert_eq!(timed.positive_span, plain.positive_span);
+        assert_eq!(timed.positive_delta, plain.positive_delta);
+        assert_eq!(timed.negative_span, plain.negative_span);
+        assert_eq!(timed.negative_delta, plain.negative_delta);
+    }
+
+    #[test]
+    fn time_histogram_clones_share_storage() {
+        let histogram = NativeTimeHistogram::new(1.1);
+        let clone = histogram.clone();
+
+        histogram.observe(1_000_000);
+        clone.observe(3_000_000);
+
+        let families = histogram.encode_metric_value();
+        let encoded = encoded_histogram(&families);
+        assert_eq!(encoded.sample_count, Some(2));
+        assert_eq!(encoded.sample_sum, Some(0.004));
+    }
+
+    #[test]
+    fn time_histogram_timer_records_on_drop() {
+        let histogram = NativeTimeHistogram::new(1.1);
+        drop(histogram.start_timer());
+
+        let families = histogram.encode_metric_value();
+        assert_eq!(encoded_histogram(&families).sample_count, Some(1));
+    }
+
+    #[test]
+    fn time_histogram_timer_can_be_discarded() {
+        let histogram = NativeTimeHistogram::new(1.1);
+        histogram.start_timer().stop_and_discard();
+
+        let families = histogram.encode_metric_value();
+        assert_eq!(encoded_histogram(&families).sample_count, Some(0));
+    }
+
+    #[test]
+    fn time_histogram_timer_records_once_when_stopped_then_dropped() {
+        let histogram = NativeTimeHistogram::new(1.1);
+        let timer = histogram.start_timer();
+        let _ = timer.stop_and_record();
+
+        let families = histogram.encode_metric_value();
+        assert_eq!(encoded_histogram(&families).sample_count, Some(1));
+    }
+
+    #[test]
+    fn time_histogram_timer_excludes_paused_time() {
+        let histogram = NativeTimeHistogram::new(1.1);
+
+        let mut timer = histogram.start_timer();
+        timer.pause();
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        timer.resume();
+        let elapsed = timer.stop_and_record();
+
+        assert!(
+            elapsed < std::time::Duration::from_millis(50),
+            "paused time must not be counted, measured {elapsed:?}"
+        );
+    }
+
+    #[test]
+    fn time_histogram_is_constructible_from_the_builder() {
+        let histogram: NativeTimeHistogram = NativeHistogramBuilder::new(2.0)
+            .with_zero_threshold(0.001)
+            .new_metric();
+        histogram.observe(2_000_000_000);
+
+        let families = histogram.encode_metric_value();
+        let encoded = encoded_histogram(&families);
+        assert_eq!(encoded.sample_count, Some(1));
+        assert_eq!(encoded.zero_threshold, Some(0.001));
     }
 }

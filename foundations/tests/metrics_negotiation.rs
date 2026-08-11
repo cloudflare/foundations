@@ -10,6 +10,8 @@
 use std::future::IntoFuture;
 use std::net::{Ipv4Addr, SocketAddr};
 
+#[cfg(target_os = "linux")]
+use foundations::telemetry::settings::{MetricsSettings, ServiceNameFormat};
 use foundations::telemetry::settings::{TelemetryServerSettings, TelemetrySettings};
 use foundations::telemetry::{TelemetryConfig, TelemetryContext};
 
@@ -21,6 +23,9 @@ const PROTOBUF_ACCEPT: &str = "application/vnd.google.protobuf;\
 
 const TEXT_ACCEPT: &str = "application/openmetrics-text;version=1.0.0;q=0.5,\
                            text/plain;version=0.0.4;q=0.4,*/*;q=0.1";
+
+#[cfg(target_os = "linux")]
+const PROCESS_CPU: &str = "process_cpu_seconds_total";
 
 #[tokio::test]
 async fn metrics_endpoint_serves_the_negotiated_format() {
@@ -84,6 +89,12 @@ async fn metrics_endpoint_serves_the_negotiated_format() {
         !body.ends_with(b"# EOF\n"),
         "protobuf response carries the text terminator"
     );
+    #[cfg(target_os = "linux")]
+    assert!(
+        body.windows(PROCESS_CPU.len())
+            .any(|window| window == PROCESS_CPU.as_bytes()),
+        "protobuf response is missing {PROCESS_CPU}"
+    );
 
     let (content_type, body) = scrape(TEXT_ACCEPT).await;
 
@@ -96,4 +107,26 @@ async fn metrics_endpoint_serves_the_negotiated_format() {
 
     assert!(text.contains("# TYPE"), "text response was: {text}");
     assert!(text.ends_with("# EOF\n"), "text response was: {text}");
+
+    #[cfg(target_os = "linux")]
+    {
+        assert!(
+            text.lines()
+                .any(|line| line.starts_with(&format!("{PROCESS_CPU} "))),
+            "text response is missing unprefixed {PROCESS_CPU}: {text}"
+        );
+
+        let label_settings = MetricsSettings {
+            service_name_format: ServiceNameFormat::LabelWithName("service".to_owned()),
+            report_optional: false,
+        };
+        let labelled = foundations::telemetry::metrics::collect(&label_settings).unwrap();
+
+        assert!(
+            labelled
+                .lines()
+                .any(|line| line.starts_with(&format!("{PROCESS_CPU} "))),
+            "service labels should not be added to {PROCESS_CPU}: {labelled}"
+        );
+    }
 }

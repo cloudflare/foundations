@@ -28,6 +28,8 @@ use std::sync::OnceLock;
 
 #[cfg(not(feature = "foundations-metrics-backend"))]
 mod gauge;
+#[cfg(all(feature = "foundations-metrics-backend", target_os = "linux"))]
+mod process;
 #[cfg(not(feature = "foundations-metrics-backend"))]
 mod rewind;
 
@@ -49,8 +51,8 @@ use internal::{ErasedInfoMetric, Registries};
 mod backend {
     pub use foundations_metrics::{
         Counter, Family, Gauge, GaugeGuard, Histogram, HistogramTimer, InfoMetric,
-        MetricConstructor, NativeHistogram, NativeHistogramBuilder, RangeGauge, TimeHistogram,
-        WithExemplar,
+        MetricConstructor, NativeHistogram, NativeHistogramBuilder, NativeTimeHistogram,
+        ObserveNanos, RangeGauge, TimeHistogram, WithExemplar,
     };
 
     // Everything needed to define, register, and label a custom metric. The
@@ -97,6 +99,16 @@ fn collection_options(settings: &MetricsSettings) -> foundations_metrics::Collec
     }
 }
 
+#[cfg(feature = "foundations-metrics-backend")]
+fn collect_registered_metrics(
+    settings: &MetricsSettings,
+) -> Vec<foundations_metrics::MetricFamily> {
+    #[cfg(target_os = "linux")]
+    process::register();
+
+    foundations_metrics::collect(collection_options(settings))
+}
+
 /// Collects all metrics in [Prometheus text format].
 ///
 /// [Prometheus text format]: https://prometheus.io/docs/instrumenting/exposition_formats/#text-based-format
@@ -111,7 +123,7 @@ pub fn collect(settings: &MetricsSettings) -> Result<String> {
 
     #[cfg(feature = "foundations-metrics-backend")]
     {
-        let families = foundations_metrics::collect(collection_options(settings));
+        let families = collect_registered_metrics(settings);
 
         buffer.extend_from_slice(foundations_metrics::encode_to_text(&families).as_bytes());
 
@@ -297,7 +309,7 @@ pub fn collect_negotiated(
         // Protobuf is only reachable with no extra producers registered, so the
         // registry holds everything and skipping them here loses nothing.
         if format == ScrapeFormat::Protobuf {
-            let families = foundations_metrics::collect(collection_options(settings));
+            let families = collect_registered_metrics(settings);
 
             return Ok((
                 format.content_type(),

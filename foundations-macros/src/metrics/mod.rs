@@ -291,11 +291,9 @@ fn metric_init(
 
     let optional = format_ident!("{optional}");
 
-    // Validate histogram buckets at compile time if this is a HistogramBuilder
+    // Validate classic buckets at compile time when the constructor exposes them.
     if let Some(ctor) = ctor
-        && let Some(path) = ctor.path.get_ident()
-        && path == "HistogramBuilder"
-        && let Err(err) = validation::validate_histogram_buckets(ctor)
+        && let Err(err) = validate_histogram_ctor(ctor)
     {
         return err.to_compile_error();
     }
@@ -331,6 +329,20 @@ fn metric_init(
 
             metric
         }
+    }
+}
+
+fn validate_histogram_ctor(ctor: &ExprStruct) -> syn::Result<()> {
+    let Some(name) = ctor.path.get_ident() else {
+        return Ok(());
+    };
+
+    if name == "HistogramBuilder" {
+        validation::validate_histogram_buckets(ctor)
+    } else if name == "NativeHistogramBuilder" {
+        validation::validate_native_histogram_buckets(ctor)
+    } else {
+        Ok(())
     }
 }
 
@@ -1067,5 +1079,47 @@ mod tests {
         };
 
         assert!(validation::validate_histogram_buckets(&expr).is_ok());
+    }
+
+    #[test]
+    fn test_qualified_custom_histogram_builder_is_not_rejected() {
+        let custom: ExprStruct = parse_quote! {
+            metrics::HistogramBuilder { limits: &[0.2, 0.1] }
+        };
+        let native: ExprStruct = parse_quote! {
+            NativeHistogramBuilder {
+                classic_buckets: None,
+                bucket_factor: 1.1,
+                zero_threshold: 0.0,
+                max_buckets: 0,
+            }
+        };
+
+        assert!(validate_histogram_ctor(&custom).is_ok());
+        assert!(validate_histogram_ctor(&native).is_ok());
+    }
+
+    #[test]
+    fn test_invalid_classic_and_native_buckets_are_rejected() {
+        let expr: ExprStruct = parse_quote! {
+            NativeHistogramBuilder {
+                classic_buckets: Some(&[0.2, 0.1]),
+                ..NativeHistogramBuilder::new(1.1)
+            }
+        };
+
+        assert!(validate_histogram_ctor(&expr).is_err());
+    }
+
+    #[test]
+    fn test_decreasing_negative_native_buckets_are_rejected() {
+        let expr: ExprStruct = parse_quote! {
+            NativeHistogramBuilder {
+                classic_buckets: Some(&[-1.0, -2.0]),
+                ..NativeHistogramBuilder::new(1.1)
+            }
+        };
+
+        assert!(validate_histogram_ctor(&expr).is_err());
     }
 }
