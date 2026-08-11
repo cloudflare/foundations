@@ -66,13 +66,15 @@ crate's collectors — [`IntoMetrics`](https://docs.rs/foundations-metrics-regis
 is sealed over `EncodeMetric` — so they have to be reimplemented against the
 traits above rather than handed over as they are.
 
-On Linux this includes the process collector, which that crate registers on its
-own and which no longer has an equivalent here:
+On Linux, `foundations` preserves the process collector metrics that the legacy
+backend exposed:
 `process_cpu_seconds_total`, `process_resident_memory_bytes`,
 `process_virtual_memory_bytes`, `process_open_fds`, `process_max_fds`,
-`process_start_time_seconds`, and `process_threads`. Nothing registers these
-after the switch, so alerts and dashboards reading them need either a
-reimplementation or another source such as `node_exporter` or cAdvisor.
+`process_start_time_seconds`, and `process_threads`. These are registered in the
+new structured registry without a service prefix or label, so existing queries,
+alerts, and dashboards continue to work. This compatibility applies only to the
+built-in process collector; other metrics registered solely through the
+`prometheus` crate still require migration.
 
 For further guidance, each deprecated item names its own replacement in the
 [`foundations` API docs](https://docs.rs/foundations/), and the traits above are
