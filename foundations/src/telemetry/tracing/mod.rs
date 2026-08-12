@@ -274,7 +274,10 @@ impl UserSpanScope {
 /// machine of separate callbacks rather than a call tree: the span outlives every individual
 /// callback, so there is no lexical scope for it to live in.
 ///
-/// The span is reported when the handle is dropped.
+/// The span is reported when the *last* reference to it drops, which is normally this handle.
+/// [`enter`](Self::enter) clones the underlying span rather than borrowing it, so a live
+/// [`UserSpanScope`] — and any `TelemetryContext` built from one — keeps the span open on its own.
+/// That is what lets work outliving the handle carry on recording into it.
 ///
 /// A handle is always usable. When no user trace is active, or the trace wasn't sampled, or no
 /// user-tracing pipeline is configured, the handle is *inactive*: tagging does nothing, children
@@ -375,12 +378,15 @@ impl UserSpan {
     /// Makes this span current for the lifetime of the returned scope, so the ambient helpers in
     /// [`user_tracing`] target it.
     ///
+    /// The scope takes its own reference to the span, so it holds the span open even if this
+    /// handle is dropped first, and the span is reported only once both are gone.
+    ///
     /// The returned scope is `!Send` and must not be held across an `await` point.
     pub fn enter(&self) -> UserSpanScope {
         UserSpanScope::new(self.span.clone())
     }
 
-    /// Finishes and reports the span.
+    /// Releases this handle, reporting the span unless a scope or context still holds it open.
     ///
     /// Identical to dropping the handle; this only names the intent at the call site.
     pub fn finish(self) {}
@@ -1760,6 +1766,29 @@ mod user_tracing_tests {
         );
         // User spans must not leak into the internal pipeline.
         assert!(ctx.traces(Default::default()).is_empty());
+    }
+
+    // `enter` clones the underlying span rather than borrowing the handle, so a live scope keeps
+    // the span open. Reporting is driven by the last reference, not by the owned handle.
+    #[test]
+    fn live_scope_outlives_the_handle() {
+        let ctx = TelemetryContext::test();
+        let _scope = ctx.scope();
+
+        let root = UserSpan::start_trace("request", routing(), None);
+        let entered = root.enter();
+
+        root.finish();
+        assert!(
+            ctx.user_traces(Default::default()).is_empty(),
+            "the live scope should still hold the span open"
+        );
+
+        drop(entered);
+        assert_eq!(
+            ctx.user_traces(Default::default()),
+            vec![test_trace! { "request" }]
+        );
     }
 
     // Parents are named rather than inferred, so two children of the same span are siblings even
