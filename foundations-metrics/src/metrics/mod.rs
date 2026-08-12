@@ -46,7 +46,7 @@ pub use exemplar::WithExemplar;
 pub use family::{Family, FamilyMetricGuard, MetricConstructor};
 pub use gauge::{Gauge, GaugeAtomic, GaugeGuard, RangeGauge};
 pub use histogram::{
-    Histogram, HistogramBuilder, HistogramSnapshot, HistogramTimer, ObserveNanos, TimeHistogram,
+    Histogram, HistogramBuilder, HistogramSnapshot, HistogramTimer, TimeHistogram,
 };
 pub use native_histogram::{NativeHistogram, NativeHistogramBuilder, NativeTimeHistogram};
 

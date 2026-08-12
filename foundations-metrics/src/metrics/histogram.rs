@@ -245,8 +245,9 @@ mod private {
 /// [`TimeHistogram`] or an exponential-bucket
 /// [`NativeTimeHistogram`](super::NativeTimeHistogram).
 ///
-/// This trait is sealed and cannot be implemented outside this crate.
-pub trait ObserveNanos: private::Sealed + Clone {
+/// This trait is an implementation detail: it is neither exported nor
+/// implementable outside this crate.
+pub trait ObserveNanos: private::Sealed {
     /// Records an observed duration in nanoseconds.
     fn observe_nanos(&self, nanos: u64);
 }

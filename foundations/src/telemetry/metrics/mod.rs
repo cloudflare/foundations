@@ -52,7 +52,7 @@ mod backend {
     pub use foundations_metrics::{
         Counter, Family, Gauge, GaugeGuard, Histogram, HistogramTimer, InfoMetric,
         MetricConstructor, NativeHistogram, NativeHistogramBuilder, NativeTimeHistogram,
-        ObserveNanos, RangeGauge, TimeHistogram, WithExemplar,
+        RangeGauge, TimeHistogram, WithExemplar,
     };
 
     // Everything needed to define, register, and label a custom metric. The
