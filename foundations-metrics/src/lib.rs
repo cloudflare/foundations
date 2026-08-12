@@ -6,8 +6,10 @@
 //! data model.
 //!
 //! `foundations` currently re-exports these APIs from
-//! `foundations::telemetry::metrics`. New code should depend on this crate
-//! directly; see the crate README for migration instructions.
+//! `foundations::telemetry::metrics`. Libraries can depend on this crate
+//! directly, to maximize compatibility with foundations' versions. However,
+//! binaries which use foundations should still use the top-level `foundations`
+//! crate. See the crate README for migration instructions.
 #![warn(missing_docs)]
 
 mod collect;

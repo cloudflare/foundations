@@ -10,8 +10,7 @@ readme = "README.md"
 categories = ["development-tools", "encoding"]
 keywords = ["foundations"]
 # Regenerating the model is a repo-development check whose result depends on the
-# exact `prost-build` in use. Publishing it would hand consumers a test that can
-# fail, and then rewrite its own source, for reasons they cannot act on.
+# exact `prost-build` in use. Don't publish it.
 exclude = ["tests/proto_codegen.rs"]
 
 [package.metadata.release]
