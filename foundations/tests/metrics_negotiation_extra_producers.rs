@@ -125,4 +125,16 @@ async fn extra_producers_withhold_protobuf() {
         content_type.starts_with("application/openmetrics-text"),
         "unsatisfiable Accept should fall back to text, got: {content_type}"
     );
+
+    // Collecting directly bypasses negotiation, so the encoder refuses instead
+    // of silently dropping the producer's series.
+    assert!(!foundations::telemetry::metrics::allow_protobuf());
+    assert!(
+        foundations::telemetry::metrics::collect_format(
+            foundations::telemetry::metrics::ScrapeFormat::Protobuf,
+            &settings.metrics,
+        )
+        .is_err(),
+        "protobuf collection should fail while an extra producer is registered"
+    );
 }

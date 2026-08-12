@@ -244,9 +244,6 @@ mod private {
 /// This is what lets a [`HistogramTimer`] drive either a fixed-bucket
 /// [`TimeHistogram`] or an exponential-bucket
 /// [`NativeTimeHistogram`](super::NativeTimeHistogram).
-///
-/// This trait is an implementation detail: it is neither exported nor
-/// implementable outside this crate.
 pub trait ObserveNanos: private::Sealed {
     /// Records an observed duration in nanoseconds.
     fn observe_nanos(&self, nanos: u64);

@@ -124,8 +124,15 @@ impl Routes {
                     .and_then(|v| v.to_str().ok())
                     .map(str::to_owned);
                 async move {
-                    match metrics::collect_negotiated(accept.as_deref(), &settings.metrics) {
-                        Ok((content_type, body)) => into_response(content_type, Ok(body)),
+                    // The format is settled before anything is encoded, so the
+                    // content type served always describes the body served.
+                    let format = metrics::negotiate_or_fallback(
+                        accept.as_deref(),
+                        metrics::allow_protobuf(),
+                    );
+
+                    match metrics::collect_format(format, &settings.metrics) {
+                        Ok(body) => into_response(format.content_type(), Ok(body)),
                         Err(err) => into_response("text/plain", Err::<Vec<u8>, _>(err)),
                     }
                 }

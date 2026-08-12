@@ -6,11 +6,14 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use foundations::telemetry::metrics::proto::{Gauge, Metric, MetricType};
 use foundations::telemetry::metrics::{
-    self, EncodeMetric, EncodeMetricValue, Family, MetricFamily, NamedMetric, RegistrationMetadata,
+    EncodeMetric, EncodeMetricValue, Family, MetricFamily, NamedMetric, RegistrationMetadata,
     register,
 };
 use foundations::telemetry::settings::{MetricsSettings, ServiceNameFormat};
 use serde::Serialize;
+
+mod common;
+use common::collect_text;
 
 #[derive(Clone, Eq, Hash, PartialEq, Serialize)]
 struct Labels {
@@ -58,7 +61,7 @@ fn a_custom_metric_is_exposed_through_the_facade() {
         service_name_format: ServiceNameFormat::MetricPrefix,
         report_optional: false,
     };
-    let text = metrics::collect(&settings).expect("metrics should be collectable");
+    let text = collect_text(&settings);
 
     // Telemetry is never initialised here, so the service name prefix is the
     // `UNINITIALISED_SERVICE_NAME` sentinel from `telemetry::metrics::init`

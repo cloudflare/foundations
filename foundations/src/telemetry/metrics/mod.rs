@@ -4,7 +4,7 @@
 //! - Use [`metrics`] macro to define regular metrics.
 //! - Use [`report_info`] function to register service information metrics (metrics, whose value is
 //!   persistent during the service lifetime, e.g. software version).
-//! - Use [`collect`] method to obtain metrics report programmatically.
+//! - Use [`collect_format`] method to obtain metrics report programmatically.
 //! - Use [telemetry server] to expose a metrics endpoint.
 //!
 //! [Prometheus]: https://prometheus.io/
@@ -28,6 +28,7 @@ use std::sync::OnceLock;
 
 #[cfg(not(feature = "foundations-metrics-backend"))]
 mod gauge;
+mod negotiation;
 #[cfg(all(feature = "foundations-metrics-backend", target_os = "linux"))]
 mod process;
 #[cfg(not(feature = "foundations-metrics-backend"))]
@@ -50,9 +51,9 @@ use internal::{ErasedInfoMetric, Registries};
 #[cfg(feature = "foundations-metrics-backend")]
 mod backend {
     pub use foundations_metrics::{
-        Counter, Family, Gauge, GaugeGuard, Histogram, HistogramTimer, InfoMetric,
-        MetricConstructor, NativeHistogram, NativeHistogramBuilder, NativeTimeHistogram,
-        RangeGauge, TimeHistogram, WithExemplar,
+        Counter, Family, Gauge, GaugeGuard, Histogram, HistogramBuilder, HistogramTimer,
+        InfoMetric, MetricConstructor, NativeHistogram, NativeHistogramBuilder,
+        NativeTimeHistogram, RangeGauge, TimeHistogram, WithExemplar,
     };
 
     // Everything needed to define, register, and label a custom metric. The
@@ -76,6 +77,8 @@ mod backend {
 }
 
 pub use backend::*;
+
+pub use negotiation::{ScrapeFormat, negotiate, negotiate_or_fallback};
 
 /// Translates telemetry settings into collection options.
 ///
@@ -112,7 +115,53 @@ fn collect_registered_metrics(
 /// Collects all metrics in [Prometheus text format].
 ///
 /// [Prometheus text format]: https://prometheus.io/docs/instrumenting/exposition_formats/#text-based-format
+#[deprecated = "Only ever produces text. Use `collect_format` instead, serving the body it returns with the matching `ScrapeFormat::content_type`."]
 pub fn collect(settings: &MetricsSettings) -> Result<String> {
+    collect_text(settings)
+}
+
+/// Collects all metrics encoded as `format`.
+///
+/// Content negotiation is a separate concern: pass the format chosen by
+/// [`negotiate`], and serve the returned body with that format's
+/// [`ScrapeFormat::content_type`] so a response cannot advertise something it
+/// did not encode.
+///
+/// # Errors
+///
+/// Fails when `format` cannot represent everything this process exposes.
+/// [`ScrapeFormat::Protobuf`] requires the `foundations-metrics-backend`
+/// feature, and cannot carry the output of a registered extra producer, which is
+/// opaque text; [`allow_protobuf`] reports whether it may be asked for.
+/// [`ScrapeFormat::fallback`] never fails for this reason.
+pub fn collect_format(format: ScrapeFormat, settings: &MetricsSettings) -> Result<Vec<u8>> {
+    match format {
+        ScrapeFormat::Protobuf => collect_protobuf(settings),
+        ScrapeFormat::Text { .. } => Ok(collect_text(settings)?.into_bytes()),
+    }
+}
+
+/// Collects all metrics as protobuf, which only the new backend can encode.
+#[cfg(feature = "foundations-metrics-backend")]
+fn collect_protobuf(settings: &MetricsSettings) -> Result<Vec<u8>> {
+    if !allow_protobuf() {
+        return Err(
+            "metrics cannot be encoded as protobuf while an extra producer is registered".into(),
+        );
+    }
+
+    let families = collect_registered_metrics(settings);
+
+    Ok(foundations_metrics::encode_to_protobuf(&families))
+}
+
+#[cfg(not(feature = "foundations-metrics-backend"))]
+fn collect_protobuf(_settings: &MetricsSettings) -> Result<Vec<u8>> {
+    Err("metrics can only be encoded as protobuf with the `foundations-metrics-backend` feature enabled".into())
+}
+
+/// Collects all metrics as OpenMetrics text, which every backend can encode.
+fn collect_text(settings: &MetricsSettings) -> Result<String> {
     let mut buffer: Vec<u8> = Vec::with_capacity(128);
 
     #[cfg(not(feature = "foundations-metrics-backend"))]
@@ -149,203 +198,30 @@ pub fn collect(settings: &MetricsSettings) -> Result<String> {
     Ok(metrics_str)
 }
 
-const LEGACY_CONTENT_TYPE: &str = "application/openmetrics-text; version=1.0.0; charset=utf-8";
-
-/// Wire format a scraper asked for.
-#[cfg(feature = "foundations-metrics-backend")]
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum ScrapeFormat {
-    /// Length-delimited Prometheus protobuf, the only format able to carry
-    /// native histograms.
-    Protobuf,
-
-    /// OpenMetrics text, optionally permitted to quote UTF-8 names.
-    Text { utf8_names: bool },
-}
-
-#[cfg(feature = "foundations-metrics-backend")]
-impl ScrapeFormat {
-    /// The format assumed when a scraper expresses no usable preference.
-    const fn fallback() -> Self {
-        Self::Text { utf8_names: false }
-    }
-
-    /// Content type describing what this format produces.
-    ///
-    /// Each string is owned by the encoder that emits it, so that what is
-    /// advertised cannot drift from what is produced.
-    fn content_type(self) -> &'static str {
-        match self {
-            Self::Protobuf => foundations_metrics::PROTOBUF_CONTENT_TYPE,
-            Self::Text { utf8_names: true } => foundations_metrics::OPENMETRICS_CONTENT_TYPE,
-            Self::Text { utf8_names: false } => LEGACY_CONTENT_TYPE,
-        }
-    }
-}
-
-/// Chooses the most preferred format that the active encoder can produce, given
-/// the value of a request's `Accept` header.
-///
-/// `None` means the header ruled out every format this server can produce. An
-/// absent header expresses no preference and yields the fallback instead.
-#[cfg(feature = "foundations-metrics-backend")]
-fn negotiate(accept: Option<&str>, protobuf_available: bool) -> Option<ScrapeFormat> {
-    let Some(accept) = accept else {
-        return Some(ScrapeFormat::fallback());
-    };
-
-    let mut best: Option<(f32, ScrapeFormat)> = None;
-
-    for range in accept.split(',') {
-        let mut parts = range.split(';').map(str::trim);
-        let Some(media_type) = parts.next().filter(|media| !media.is_empty()) else {
-            continue;
-        };
-
-        let mut quality = 1.0f32;
-        let (mut escaping, mut proto, mut encoding) = (None, None, None);
-
-        for parameter in parts {
-            let Some((name, value)) = parameter.split_once('=') else {
-                continue;
-            };
-
-            let value = value.trim().trim_matches('"');
-            let name = name.trim();
-
-            if name.eq_ignore_ascii_case("q") {
-                quality = match value.parse::<f32>() {
-                    Ok(parsed) if (0.0..=1.0).contains(&parsed) => parsed,
-                    _ => 0.0,
-                };
-            } else if name.eq_ignore_ascii_case("escaping") {
-                escaping = Some(value);
-            } else if name.eq_ignore_ascii_case("proto") {
-                proto = Some(value);
-            } else if name.eq_ignore_ascii_case("encoding") {
-                encoding = Some(value);
-            }
-        }
-
-        // `q=0` refuses a format outright rather than ranking it last.
-        if quality <= 0.0 {
-            continue;
-        }
-
-        let format = if media_type.eq_ignore_ascii_case("application/vnd.google.protobuf") {
-            // Only delimited streams of this message type are produced, and only
-            // when protobuf can carry the whole exposition.
-            if protobuf_available
-                && proto.is_some_and(|proto| proto == "io.prometheus.client.MetricFamily")
-                && encoding.is_some_and(|encoding| encoding.eq_ignore_ascii_case("delimited"))
-            {
-                ScrapeFormat::Protobuf
-            } else {
-                continue;
-            }
-        } else if media_type.eq_ignore_ascii_case("application/openmetrics-text") {
-            ScrapeFormat::Text {
-                utf8_names: escaping
-                    .is_some_and(|escaping| escaping.eq_ignore_ascii_case("allow-utf-8")),
-            }
-        } else if media_type.eq_ignore_ascii_case("text/plain") || media_type == "*/*" {
-            ScrapeFormat::Text { utf8_names: false }
-        } else {
-            continue;
-        };
-
-        // Highest quality wins; ties keep the earliest listed.
-        if best.is_none_or(|(best_quality, _)| quality > best_quality) {
-            best = Some((quality, format));
-        }
-    }
-
-    best.map(|(_, format)| format)
-}
-
 /// Reports whether protobuf can represent everything this process exposes.
 ///
-/// Extra producers hand over opaque text, which cannot be transcoded into the
-/// protobuf data model, so serving protobuf while any are registered would
-/// silently drop every series they emit.
+/// Pass the result to [`negotiate`] as `allow_protobuf`. It is `false` without
+/// the `foundations-metrics-backend` feature, which has no protobuf encoder, and
+/// `false` while any extra producer is registered: those hand over opaque text,
+/// which cannot be transcoded into the protobuf data model, so serving protobuf
+/// would silently drop every series they emit.
 ///
-/// Evaluated per scrape because producers may be registered at any point.
+/// Evaluate it per scrape, because producers may be registered at any point.
 #[cfg(feature = "foundations-metrics-backend")]
 #[allow(deprecated)]
-fn protobuf_available() -> bool {
+pub fn allow_protobuf() -> bool {
     EXTRA_PRODUCERS
         .get()
         .is_none_or(|producers| producers.read().is_empty())
 }
 
-/// Collects metrics in the format a scraper asked for through its `Accept` header.
+/// Reports whether protobuf can represent everything this process exposes.
 ///
-/// The content type is returned alongside the body so that the two cannot
-/// disagree; deriving one separately from the other is how a response ends up
-/// declaring a format it did not encode.
-///
-/// An `Accept` header that rules out every available format is served the
-/// fallback text format, after logging a warning.
-///
-/// The negotiated escaping is currently reported rather than enforced: the text
-/// encoder quotes a name whenever that name requires it, regardless of what the
-/// scraper asked for.
-pub fn collect_negotiated(
-    accept: Option<&str>,
-    settings: &MetricsSettings,
-) -> Result<(&'static str, Vec<u8>)> {
-    #[cfg(feature = "foundations-metrics-backend")]
-    {
-        let format = negotiate(accept, protobuf_available()).unwrap_or_else(|| {
-            let fallback = ScrapeFormat::fallback();
-
-            // Only a header that was present can rule everything out, so the
-            // default here stands in for a case `negotiate` never reports.
-            report_unsatisfiable_accept(accept.unwrap_or_default(), fallback.content_type());
-
-            fallback
-        });
-
-        // Protobuf is only reachable with no extra producers registered, so the
-        // registry holds everything and skipping them here loses nothing.
-        if format == ScrapeFormat::Protobuf {
-            let families = collect_registered_metrics(settings);
-
-            return Ok((
-                format.content_type(),
-                foundations_metrics::encode_to_protobuf(&families),
-            ));
-        }
-
-        Ok((format.content_type(), collect(settings)?.into_bytes()))
-    }
-
-    #[cfg(not(feature = "foundations-metrics-backend"))]
-    {
-        let _ = accept;
-
-        Ok((LEGACY_CONTENT_TYPE, collect(settings)?.into_bytes()))
-    }
-}
-
-/// Warns that a scrape's `Accept` header ruled out every available format.
-///
-/// Not routed through [`report_nonfatal_collect_error`], because collection
-/// itself succeeded and the actionable detail is the header.
-#[cfg(feature = "foundations-metrics-backend")]
-fn report_unsatisfiable_accept(accept: &str, served: &str) {
-    #[cfg(feature = "logging")]
-    crate::telemetry::log::warn!(
-        "no requested metrics format can be served, responding with the fallback instead";
-        "accept" => accept,
-        "served" => served,
-    );
-
-    #[cfg(not(feature = "logging"))]
-    eprintln!(
-        "no requested metrics format can be served, responding with the fallback instead: \
-         accept={accept:?} served={served:?}"
-    );
+/// Always `false` here: encoding protobuf needs the
+/// `foundations-metrics-backend` feature.
+#[cfg(not(feature = "foundations-metrics-backend"))]
+pub fn allow_protobuf() -> bool {
+    false
 }
 
 /// Removes the trailing OpenMetrics terminator, if present.
@@ -397,7 +273,7 @@ fn report_nonfatal_collect_error(err: &dyn Display) {
 /// ```
 ///
 /// The metrics associated with the functions are automatically registered in a global
-/// registry, and they can be collected with the [`collect`] function.
+/// registry, and they can be collected with the [`collect_format`] function.
 ///
 /// # Metric attributes
 ///
@@ -411,8 +287,8 @@ fn report_nonfatal_collect_error(err: &dyn Display) {
 /// ## `#[optional]`
 ///
 /// Metrics marked with `#[optional]` are collected in a separate registry and reported only if
-/// `collect_optional` argument of [`collect`] is set to `true`, or, in case the [telemetry server]
-/// is used, if [`MetricsSettings::report_optional`] is set to `true`.
+/// [`MetricsSettings::report_optional`] is set to `true`, whether they are collected through
+/// [`collect_format`] or the [telemetry server].
 ///
 /// Can be used for heavy-weight metrics (e.g. with high cardinality) that don't need to be reported
 /// on a regular basis.
@@ -719,12 +595,14 @@ where
 /// }
 /// # }
 /// ```
+#[cfg(not(feature = "foundations-metrics-backend"))]
 #[derive(Clone)]
 pub struct HistogramBuilder {
     /// The buckets of the histogram to be built.
     pub buckets: &'static [f64],
 }
 
+#[cfg(not(feature = "foundations-metrics-backend"))]
 impl MetricConstructor<Histogram> for HistogramBuilder {
     fn new_metric(&self) -> Histogram {
         Histogram::new(self.buckets.iter().cloned())
@@ -738,16 +616,7 @@ impl<S> MetricConstructor<HistogramWithExemplars<S>> for HistogramBuilder {
     }
 }
 
-// The `foundations-metrics` backend replaces the per-type exemplar wrappers
-// with a single generic `WithExemplar<T, S>`, so the builder constructs that
-// instead.
-#[cfg(feature = "foundations-metrics-backend")]
-impl<S> MetricConstructor<WithExemplar<Histogram, S>> for HistogramBuilder {
-    fn new_metric(&self) -> WithExemplar<Histogram, S> {
-        WithExemplar::new(MetricConstructor::<Histogram>::new_metric(self))
-    }
-}
-
+#[cfg(not(feature = "foundations-metrics-backend"))]
 impl MetricConstructor<TimeHistogram> for HistogramBuilder {
     fn new_metric(&self) -> TimeHistogram {
         TimeHistogram::new(self.buckets.iter().cloned())
@@ -844,215 +713,5 @@ where
 {
     fn produce(&self, buffer: &mut Vec<u8>) {
         self(buffer)
-    }
-}
-
-#[cfg(all(test, feature = "foundations-metrics-backend"))]
-mod negotiation_tests {
-    use super::*;
-
-    const TEXT: Option<ScrapeFormat> = Some(ScrapeFormat::Text { utf8_names: false });
-    const TEXT_UTF8: Option<ScrapeFormat> = Some(ScrapeFormat::Text { utf8_names: true });
-    const PROTOBUF: Option<ScrapeFormat> = Some(ScrapeFormat::Protobuf);
-
-    /// What Prometheus sends unless configured to prefer protobuf.
-    const PROMETHEUS_DEFAULT: &str = "application/openmetrics-text;version=1.0.0;q=0.5,\
-                                      text/plain;version=0.0.4;q=0.4,*/*;q=0.1";
-
-    const PROTOBUF_PREFERRED: &str = "application/vnd.google.protobuf;\
-                                      proto=io.prometheus.client.MetricFamily;\
-                                      encoding=delimited;q=0.5,\
-                                      application/openmetrics-text;version=1.0.0;q=0.4";
-
-    /// Delimited protobuf and nothing else: no text range, no `*/*`.
-    const PROTOBUF_ONLY: &str = "application/vnd.google.protobuf;\
-                                 proto=io.prometheus.client.MetricFamily;encoding=delimited";
-
-    #[test]
-    fn absent_header_falls_back_to_legacy_text() {
-        assert_eq!(negotiate(None, true), TEXT);
-    }
-
-    #[test]
-    fn prometheus_default_accept_selects_text() {
-        assert_eq!(negotiate(Some(PROMETHEUS_DEFAULT), true), TEXT);
-    }
-
-    #[test]
-    fn utf8_escaping_is_detected() {
-        let accept =
-            "application/openmetrics-text;version=1.0.0;escaping=allow-utf-8;q=0.5,*/*;q=0.1";
-
-        assert_eq!(negotiate(Some(accept), true), TEXT_UTF8);
-    }
-
-    #[test]
-    fn delimited_protobuf_wins_when_preferred() {
-        assert_eq!(negotiate(Some(PROTOBUF_PREFERRED), true), PROTOBUF);
-    }
-
-    #[test]
-    fn protobuf_without_delimited_encoding_is_not_offered() {
-        let accept = "application/vnd.google.protobuf;\
-                      proto=io.prometheus.client.MetricFamily;q=0.9,text/plain;q=0.1";
-
-        assert_eq!(negotiate(Some(accept), true), TEXT);
-    }
-
-    #[test]
-    fn zero_quality_refuses_a_format() {
-        let accept = "application/openmetrics-text;escaping=allow-utf-8;q=0,text/plain;q=0.4";
-
-        assert_eq!(negotiate(Some(accept), true), TEXT);
-    }
-
-    #[test]
-    fn zero_quality_on_the_only_range_matches_nothing() {
-        assert_eq!(
-            negotiate(Some("application/openmetrics-text;q=0"), true),
-            None
-        );
-    }
-
-    #[test]
-    fn malformed_quality_refuses_a_format() {
-        let accept = "application/openmetrics-text;escaping=allow-utf-8;q=garbage,text/plain;q=0.4";
-
-        assert_eq!(negotiate(Some(accept), true), TEXT);
-    }
-
-    #[test]
-    fn parameters_tolerate_whitespace_case_and_quoting() {
-        let accept =
-            "  APPLICATION/OpenMetrics-Text ; Version=1.0.0 ; Escaping=\"Allow-UTF-8\" ; Q=0.7 ";
-
-        assert_eq!(negotiate(Some(accept), true), TEXT_UTF8);
-    }
-
-    #[test]
-    fn ties_keep_the_earliest_listed() {
-        let accept = "application/openmetrics-text;escaping=allow-utf-8;q=0.5,text/plain;q=0.5";
-
-        assert_eq!(negotiate(Some(accept), true), TEXT_UTF8);
-    }
-
-    #[test]
-    fn protobuf_is_withheld_when_unavailable() {
-        assert_eq!(negotiate(Some(PROTOBUF_PREFERRED), false), TEXT);
-    }
-
-    #[test]
-    fn withholding_protobuf_leaves_text_negotiation_untouched() {
-        let utf8 = "application/openmetrics-text;escaping=allow-utf-8;q=0.9,text/plain;q=0.1";
-
-        assert_eq!(negotiate(Some(utf8), false), TEXT_UTF8);
-        assert_eq!(negotiate(Some(PROMETHEUS_DEFAULT), false), TEXT);
-        assert_eq!(negotiate(None, false), TEXT);
-    }
-
-    #[test]
-    fn protobuf_only_matches_nothing_when_unavailable() {
-        assert_eq!(negotiate(Some(PROTOBUF_ONLY), false), None);
-    }
-
-    #[test]
-    fn protobuf_only_is_served_when_available() {
-        assert_eq!(negotiate(Some(PROTOBUF_ONLY), true), PROTOBUF);
-    }
-
-    #[test]
-    fn unservable_media_types_match_nothing() {
-        assert_eq!(negotiate(Some("application/json,text/html"), true), None);
-    }
-
-    #[test]
-    fn malformed_quality_on_the_only_range_matches_nothing() {
-        let accept = "application/vnd.google.protobuf;\
-                      proto=io.prometheus.client.MetricFamily;encoding=delimited;q=";
-
-        assert_eq!(negotiate(Some(accept), true), None);
-    }
-
-    #[test]
-    fn unrankable_quality_matches_nothing() {
-        for weight in [
-            "nan", "NaN", "+nan", "inf", "infinity", "-inf", "2", "1e3", "-0.5",
-        ] {
-            let accept = format!("application/openmetrics-text;q={weight}");
-
-            assert_eq!(
-                negotiate(Some(&accept), true),
-                None,
-                "q={weight} should invalidate the range"
-            );
-        }
-    }
-
-    #[test]
-    fn unrankable_quality_does_not_mask_a_later_range() {
-        let accept = format!("application/openmetrics-text;q=nan,{PROTOBUF_PREFERRED}");
-
-        assert_eq!(negotiate(Some(&accept), true), PROTOBUF);
-    }
-
-    #[test]
-    fn out_of_range_quality_does_not_outrank_the_maximum() {
-        let accept = "application/openmetrics-text;escaping=allow-utf-8;q=5,text/plain;q=1.0";
-
-        assert_eq!(negotiate(Some(accept), true), TEXT);
-    }
-
-    #[test]
-    fn quality_bounds_are_accepted() {
-        assert_eq!(
-            negotiate(Some("application/openmetrics-text;q=1.000"), true),
-            TEXT
-        );
-        assert_eq!(
-            negotiate(Some("application/openmetrics-text;q=0.001"), true),
-            TEXT
-        );
-    }
-}
-
-/// Covers the warning emitted when an `Accept` header cannot be satisfied.
-#[cfg(all(test, feature = "foundations-metrics-backend", feature = "logging"))]
-mod fallback_logging_tests {
-    use super::*;
-    use crate::telemetry::TelemetryContext;
-
-    /// Matches nothing on offer whether or not protobuf is available, so it
-    /// reaches the fallback in a test binary that has no extra producers.
-    const UNSERVABLE: &str = "application/json,text/html";
-
-    #[test]
-    fn unsatisfiable_accept_is_served_as_text_with_a_warning() {
-        let ctx = TelemetryContext::test();
-        let _scope = ctx.scope();
-
-        let (content_type, body) =
-            collect_negotiated(Some(UNSERVABLE), &MetricsSettings::default())
-                .expect("an unsatisfiable header should still produce a body");
-
-        assert_eq!(content_type, ScrapeFormat::fallback().content_type());
-        assert!(
-            body.ends_with(b"# EOF\n"),
-            "fallback body should be terminated text"
-        );
-
-        let records = ctx.log_records();
-        let warning = records
-            .iter()
-            .find(|record| record.message.contains("no requested metrics format"))
-            .unwrap_or_else(|| panic!("falling back should warn: {records:?}"));
-
-        assert_eq!(warning.level, slog::Level::Warning);
-        assert!(
-            warning
-                .fields
-                .contains(&("accept".to_owned(), UNSERVABLE.to_owned())),
-            "the warning should name the header that could not be satisfied: {:?}",
-            warning.fields
-        );
     }
 }

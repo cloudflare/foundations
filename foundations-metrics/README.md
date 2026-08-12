@@ -8,7 +8,7 @@ model.
 ## Migrating from `foundations::telemetry::metrics`
 
 `foundations` re-exports this crate's items through
-`foundations::telemetry::metrics` when its default `foundations-metrics-backend`
+`foundations::telemetry::metrics` when its opt-in `foundations-metrics-backend`
 feature is enabled. Existing counter, gauge, histogram, and family call sites
 therefore continue to compile. This compatibility is intended to ease migration
 and will be removed in the next major release. Code using exemplars must move to
