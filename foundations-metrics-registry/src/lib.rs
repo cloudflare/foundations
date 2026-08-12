@@ -4,7 +4,7 @@
 //! Most applications should use the sibling `foundations-metrics` crate, which
 //! provides metric types, encoders, label serialisation, and collection. Use
 //! this crate directly when you need to inspect registered metrics through
-//! [`iter`].
+//! [`iter()`].
 //!
 //! [`prometheus/client_model`]: https://github.com/prometheus/client_model
 #![warn(missing_docs)]
