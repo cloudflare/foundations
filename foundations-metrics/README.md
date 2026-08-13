@@ -10,21 +10,23 @@ model.
 `foundations` re-exports this crate's items through
 `foundations::telemetry::metrics` when its opt-in `foundations-metrics-backend`
 feature is enabled. Existing counter, gauge, histogram, and family call sites
-therefore continue to compile. This compatibility is intended to ease migration
-and will be removed in the next major release. Code using exemplars must move to
-the generic `WithExemplar` wrapper, and the deprecated items below require code
-changes.
+therefore continue to compile. This compatibility is intended to ease migration,
+but exposes users to more breaking changes via foundations' larger API surface.
+Code using exemplars must move to the generic `WithExemplar` wrapper, and the
+deprecated items below require code changes.
 
 `Counter` no longer exposes an underlying
 `prometheus_client::metrics::counter::Counter`. Code that previously accessed it
 through `counter.0` should call methods on `Counter` directly, such as `inc`,
 `inc_by`, or `get`.
 
-To migrate, depend on this crate directly and update the import path:
+Users that do not want any of the other features of foundations are encouraged to
+depend directly on `foundations-metrics` in the future. To migrate, update your
+`Cargo.toml` and import paths:
 
 ```toml
 [dependencies]
-foundations-metrics = "0.1"
+foundations-metrics = "0.1.0-beta.1"
 ```
 
 ```rust

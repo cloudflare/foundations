@@ -8,7 +8,7 @@ authors = { workspace = true }
 license = { workspace = true }
 readme = "README.md"
 categories = ["development-tools", "encoding"]
-keywords = ["foundations"]
+keywords = ["foundations", "metrics", "prometheus"]
 # Regenerating the model is a repo-development check whose result depends on the
 # exact `prost-build` in use. Don't publish it.
 exclude = ["tests/proto_codegen.rs"]
