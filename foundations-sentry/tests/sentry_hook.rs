@@ -36,8 +36,6 @@ fn sentry_hook_increments_metric_on_event() {
 
     const SERIES: &str = "sentry_events_total{level=\"error\"} ";
 
-    // `collect` rather than `collect_format`, which needs the new metrics
-    // backend; the `allow` covers the deprecation it carries there.
     #[allow(deprecated)]
     let metrics = foundations::telemetry::metrics::collect(&Default::default()).unwrap();
     let has_metric = metrics.lines().any(|line| {
