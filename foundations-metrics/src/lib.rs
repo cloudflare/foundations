@@ -1,9 +1,15 @@
-//! The evolving layer of the `foundations` metrics stack.
+//! Metric types, collection, and Prometheus encoders for `foundations`.
 //!
-//! This crate provides the concrete metric types ([`Counter`], [`Gauge`], ...)
-//! and the logic that encodes them into the Prometheus protobuf data model. It
-//! builds on the slow-moving `foundations-metrics-registry` crate, which owns the
-//! shared process-global registry and the stable wire format.
+//! This crate provides counters, gauges, histograms, metric families, and
+//! encoders for OpenMetrics text and Prometheus protobuf formats. It uses
+//! `foundations-metrics-registry` for the process-global registry and protobuf
+//! data model.
+//!
+//! `foundations` currently re-exports these APIs from
+//! `foundations::telemetry::metrics`. Libraries can depend on this crate
+//! directly, to maximize compatibility with foundations' versions. However,
+//! binaries which use foundations should still use the top-level `foundations`
+//! crate. See the crate README for migration instructions.
 #![warn(missing_docs)]
 
 mod collect;
