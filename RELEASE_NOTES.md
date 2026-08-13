@@ -1,4 +1,18 @@
 
+5.9.0
+- 2026-08-13 fix: Make ScrapeFormat non-exhaustive to allow future expansion
+- 2026-08-13 refactor(metrics): finalize public API for publishing (#253)
+- 2026-08-13 docs(metrics): prepare the new metrics crates for publishing (#249)
+- 2026-08-12 Correct the UserSpan lifetime docs
+- 2026-08-11 Collapse duplicate span write-lock matches onto with_write
+- 2026-08-11 Add an owned UserSpan handle for user tracing
+- 2026-08-11 feat(metrics): Add NativeTimeHistogram, new_classic_and_native method, and third-party linux process metrics from prometheus crate (#244)
+- 2026-08-10 feat(foundations): negotiate metrics scrape formats (#248)
+- 2026-08-09 Fix typo in tracing settings
+- 2026-08-07 feat(foundations): migrate the metrics facade to foundations-metrics (#247)
+- 2026-08-07 feat(metrics): add info and custom metrics (#245)
+- 2026-08-05 feat(metrics): Implement exemplar metrics (#239)
+
 5.8.1
 - 2026-08-03 Add pause syscall to seccomp SERVICE_BASICS allowlist (#241)
 - 2026-07-31 feat(metrics): add metric validation + UTF-8 support (#238)

@@ -302,8 +302,14 @@ fn report_nonfatal_collect_error(err: &dyn Display) {
 /// * [`Histogram`]
 /// * [`TimeHistogram`]
 ///
-/// To attach exemplars, wrap any of the above in [`WithExemplar<T, S>`], which
-/// derefs to the metric it wraps.
+#[cfg_attr(
+    feature = "foundations-metrics-backend",
+    doc = "To attach exemplars, wrap any of the above in [`WithExemplar<T, S>`], which derefs to the metric it wraps."
+)]
+#[cfg_attr(
+    not(feature = "foundations-metrics-backend"),
+    doc = "To attach exemplars, we provide [`CounterWithExemplar`] and [`HistogramWithExemplars`]."
+)]
 ///
 /// ```ignore
 /// let requests: WithExemplar<Counter, TraceLabels> = WithExemplar::default();
