@@ -20,6 +20,7 @@ const PROTOBUF_CONTENT_TYPE: &str =
     "application/vnd.google.protobuf; proto=io.prometheus.client.MetricFamily; encoding=delimited";
 
 /// Wire format a scraper asked for.
+#[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ScrapeFormat {
     /// Length-delimited Prometheus protobuf, the only format able to carry
