@@ -33,7 +33,7 @@ pre-release-hook = [
 
 [features]
 # Default set of features.
-default = ["platform-common-default", "security", "foundations-metrics-backend"]
+default = ["platform-common-default", "security"]
 
 # All non platform-specific features
 platform-common-default = [
@@ -216,8 +216,6 @@ telemetry-server-pattern-routing = []
 tracing-rs-compat = ["dep:tracing-slog"]
 
 # Selects the `foundations-metrics` implementation behind `telemetry::metrics`.
-# The `metrics` macro expands identically either way: it emits paths that this
-# crate resolves, so the macro needs no feature of its own.
 foundations-metrics-backend = ["dep:foundations-metrics", "dep:foundations-metrics-registry"]
 
 [package.metadata.docs.rs]

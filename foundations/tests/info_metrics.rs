@@ -4,7 +4,10 @@
 
 use foundations::ServiceInfo;
 use foundations::telemetry::settings::{MetricsSettings, ServiceNameFormat, TelemetrySettings};
-use foundations::telemetry::{TelemetryConfig, TelemetryContext, metrics};
+use foundations::telemetry::{TelemetryConfig, TelemetryContext};
+
+mod common;
+use common::collect_text;
 
 /// Returns the value of the sample line for `series`, if it was collected.
 fn sample_value(metrics: &str, series: &str) -> Option<f64> {
@@ -40,7 +43,7 @@ async fn init_reports_build_and_runtime_info_unprefixed() {
         service_name_format: ServiceNameFormat::MetricPrefix,
         report_optional: false,
     };
-    let text = metrics::collect(&settings).expect("metrics should be collectable");
+    let text = collect_text(&settings);
 
     assert_eq!(
         sample_value(&text, "build_info{version=\"4.5.6\"}"),

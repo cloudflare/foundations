@@ -18,6 +18,9 @@ use foundations::{
 use foundations_macros::with_test_telemetry;
 use slog::Level;
 
+mod common;
+use common::collect_text;
+
 fn simulate_panic() {
     let _ = std::panic::catch_unwind(|| panic!("oh no! 😱"));
 }
@@ -41,7 +44,7 @@ fn panic_hook_metrics_are_well_formed() {
 
     let expected = "panics_total 1";
 
-    let metrics = foundations::telemetry::metrics::collect(&Default::default()).unwrap();
+    let metrics = collect_text(&Default::default());
     let has_metric = metrics.lines().any(|line| line == expected);
     assert!(has_metric);
 }

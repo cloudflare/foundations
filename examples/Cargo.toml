@@ -10,7 +10,9 @@ release = false
 
 [dev-dependencies]
 anyhow = { workspace = true }
-foundations = { workspace = true, features = ["default"] }
+# The native histogram in `http_server` is only offered by the new backend, so
+# the example opts in to it explicitly.
+foundations = { workspace = true, features = ["default", "foundations-metrics-backend"] }
 futures-util = { workspace = true }
 http-body-util = { workspace = true }
 hyper = { workspace = true }

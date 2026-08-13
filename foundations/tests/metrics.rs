@@ -1,7 +1,10 @@
 use foundations::ServiceInfo;
-use foundations::telemetry::metrics::{self, Counter, Family, metrics};
+use foundations::telemetry::metrics::{Counter, Family, metrics};
 use foundations::telemetry::settings::{MetricsSettings, ServiceNameFormat, TelemetrySettings};
 use foundations::telemetry::{TelemetryConfig, TelemetryContext};
+
+mod common;
+use common::collect_text;
 
 const ONE: &str = "1";
 
@@ -51,7 +54,7 @@ fn metrics_unprefixed() {
         service_name_format: ServiceNameFormat::MetricPrefix,
         report_optional: false,
     };
-    let metrics = metrics::collect(&settings).expect("metrics should be collectable");
+    let metrics = collect_text(&settings);
 
     // Global prefix defaults to "undefined" if not initialized
     assert!(metrics.contains(&format!("\nundefined_regular_requests {ONE}\n")));
@@ -90,7 +93,7 @@ undefined_encode_error_valid 1
         service_name_format: ServiceNameFormat::MetricPrefix,
         report_optional: false,
     };
-    let metrics = metrics::collect(&settings).expect("metrics should be collectable");
+    let metrics = collect_text(&settings);
     dbg!(&metrics);
 
     // On some OSs, process metrics may be automatically registered.
@@ -129,7 +132,7 @@ async fn test_context_cooperates_with_init() {
     regular::requests().inc();
     library::calls().inc();
 
-    let metrics = metrics::collect(&settings.metrics).expect("metrics should be collectable");
+    let metrics = collect_text(&settings.metrics);
 
     // Metrics registry should be initialized with explicit ServiceInfo from `foundations::telemetry::init`
     assert!(metrics.contains(&format!("\nmy_bin_regular_requests {ONE}\n")));

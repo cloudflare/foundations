@@ -36,6 +36,7 @@ fn sentry_hook_increments_metric_on_event() {
 
     const SERIES: &str = "sentry_events_total{level=\"error\"} ";
 
+    #[allow(deprecated)]
     let metrics = foundations::telemetry::metrics::collect(&Default::default()).unwrap();
     let has_metric = metrics.lines().any(|line| {
         line.strip_prefix(SERIES)

@@ -15,6 +15,10 @@ use foundations::telemetry::settings::{MetricsSettings, ServiceNameFormat};
 use foundations::telemetry::settings::{TelemetryServerSettings, TelemetrySettings};
 use foundations::telemetry::{TelemetryConfig, TelemetryContext};
 
+mod common;
+#[cfg(target_os = "linux")]
+use common::collect_text;
+
 const PROTOBUF_ACCEPT: &str = "application/vnd.google.protobuf;\
                                proto=io.prometheus.client.MetricFamily;\
                                encoding=delimited;q=0.5,\
@@ -120,7 +124,7 @@ async fn metrics_endpoint_serves_the_negotiated_format() {
             service_name_format: ServiceNameFormat::LabelWithName("service".to_owned()),
             report_optional: false,
         };
-        let labelled = foundations::telemetry::metrics::collect(&label_settings).unwrap();
+        let labelled = collect_text(&label_settings);
 
         assert!(
             labelled
