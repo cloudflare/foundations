@@ -128,7 +128,10 @@ async fn extra_producers_withhold_protobuf() {
 
     // Collecting directly bypasses negotiation, so the encoder refuses instead
     // of silently dropping the producer's series.
-    assert!(!foundations::telemetry::metrics::allow_protobuf());
+    #[allow(deprecated)]
+    let allow_protobuf = foundations::telemetry::metrics::allow_protobuf();
+
+    assert!(!allow_protobuf);
     assert!(
         foundations::telemetry::metrics::collect_format(
             foundations::telemetry::metrics::ScrapeFormat::Protobuf,

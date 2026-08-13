@@ -128,10 +128,10 @@ impl Routes {
                     // content type served always describes the body served.
                     let format = metrics::negotiate_or_fallback(
                         accept.as_deref(),
-                        metrics::allow_protobuf(),
+                        metrics::protobuf_available(),
                     );
 
-                    match metrics::collect_format(format, &settings.metrics) {
+                    match metrics::collect_encoded(format, &settings.metrics) {
                         Ok(body) => into_response(format.content_type(), Ok(body)),
                         Err(err) => into_response("text/plain", Err::<Vec<u8>, _>(err)),
                     }

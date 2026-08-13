@@ -4,7 +4,14 @@
 //! - Use [`metrics`] macro to define regular metrics.
 //! - Use [`report_info`] function to register service information metrics (metrics, whose value is
 //!   persistent during the service lifetime, e.g. software version).
-//! - Use [`collect_format`] method to obtain metrics report programmatically.
+#![cfg_attr(
+    feature = "foundations-metrics-backend",
+    doc = "- Use [`collect_format`] method to obtain metrics report programmatically."
+)]
+#![cfg_attr(
+    not(feature = "foundations-metrics-backend"),
+    doc = "- Use [`collect`] method to obtain metrics report programmatically."
+)]
 //! - Use [telemetry server] to expose a metrics endpoint.
 //!
 //! [Prometheus]: https://prometheus.io/
@@ -115,7 +122,10 @@ fn collect_registered_metrics(
 /// Collects all metrics in [Prometheus text format].
 ///
 /// [Prometheus text format]: https://prometheus.io/docs/instrumenting/exposition_formats/#text-based-format
-#[deprecated = "Only ever produces text. Use `collect_format` instead, serving the body it returns with the matching `ScrapeFormat::content_type`."]
+#[cfg_attr(
+    feature = "foundations-metrics-backend",
+    deprecated = "Only ever produces text. Use `collect_format` instead, serving the body it returns with the matching `ScrapeFormat::content_type`."
+)]
 pub fn collect(settings: &MetricsSettings) -> Result<String> {
     collect_text(settings)
 }
@@ -130,13 +140,33 @@ pub fn collect(settings: &MetricsSettings) -> Result<String> {
 /// # Errors
 ///
 /// Fails when `format` cannot represent everything this process exposes.
-/// [`ScrapeFormat::Protobuf`] requires the `foundations-metrics-backend`
-/// feature, and cannot carry the output of a registered extra producer, which is
-/// opaque text; [`allow_protobuf`] reports whether it may be asked for.
-/// [`ScrapeFormat::fallback`] never fails for this reason.
+/// [`ScrapeFormat::Protobuf`] cannot carry the output of a registered extra
+/// producer, which is opaque text; [`allow_protobuf`] reports whether it may be
+/// asked for. [`ScrapeFormat::fallback`] never fails for this reason.
+#[cfg(feature = "foundations-metrics-backend")]
 pub fn collect_format(format: ScrapeFormat, settings: &MetricsSettings) -> Result<Vec<u8>> {
+    collect_encoded(format, settings)
+}
+
+/// Encodes a scrape as `format`, backing both `collect_format` and the
+/// telemetry server's `/metrics` route.
+///
+/// The server negotiates formats whichever backend is active, so encoding stays
+/// available internally even where `collect_format` is not exposed.
+#[cfg(any(feature = "foundations-metrics-backend", feature = "telemetry-server"))]
+pub(crate) fn collect_encoded(format: ScrapeFormat, settings: &MetricsSettings) -> Result<Vec<u8>> {
     match format {
+        #[cfg(feature = "foundations-metrics-backend")]
         ScrapeFormat::Protobuf => collect_protobuf(settings),
+
+        // Unreachable through negotiation, which is never told protobuf is
+        // available here, but reported rather than mis-encoded regardless.
+        #[cfg(not(feature = "foundations-metrics-backend"))]
+        ScrapeFormat::Protobuf => Err(
+            "metrics can only be encoded as protobuf with the `foundations-metrics-backend` feature enabled"
+                .into(),
+        ),
+
         ScrapeFormat::Text { .. } => Ok(collect_text(settings)?.into_bytes()),
     }
 }
@@ -144,7 +174,7 @@ pub fn collect_format(format: ScrapeFormat, settings: &MetricsSettings) -> Resul
 /// Collects all metrics as protobuf, which only the new backend can encode.
 #[cfg(feature = "foundations-metrics-backend")]
 fn collect_protobuf(settings: &MetricsSettings) -> Result<Vec<u8>> {
-    if !allow_protobuf() {
+    if !protobuf_available() {
         return Err(
             "metrics cannot be encoded as protobuf while an extra producer is registered".into(),
         );
@@ -153,11 +183,6 @@ fn collect_protobuf(settings: &MetricsSettings) -> Result<Vec<u8>> {
     let families = collect_registered_metrics(settings);
 
     Ok(foundations_metrics::encode_to_protobuf(&families))
-}
-
-#[cfg(not(feature = "foundations-metrics-backend"))]
-fn collect_protobuf(_settings: &MetricsSettings) -> Result<Vec<u8>> {
-    Err("metrics can only be encoded as protobuf with the `foundations-metrics-backend` feature enabled".into())
 }
 
 /// Collects all metrics as OpenMetrics text, which every backend can encode.
@@ -200,27 +225,40 @@ fn collect_text(settings: &MetricsSettings) -> Result<String> {
 
 /// Reports whether protobuf can represent everything this process exposes.
 ///
-/// Pass the result to [`negotiate`] as `allow_protobuf`. It is `false` without
-/// the `foundations-metrics-backend` feature, which has no protobuf encoder, and
-/// `false` while any extra producer is registered: those hand over opaque text,
-/// which cannot be transcoded into the protobuf data model, so serving protobuf
-/// would silently drop every series they emit.
+/// Pass the result to [`negotiate`] as `allow_protobuf`. It is `false` while any
+/// extra producer is registered: those hand over opaque text, which cannot be
+/// transcoded into the protobuf data model, so serving protobuf would silently
+/// drop every series they emit.
 ///
 /// Evaluate it per scrape, because producers may be registered at any point.
 #[cfg(feature = "foundations-metrics-backend")]
-#[allow(deprecated)]
+#[deprecated = "Only reports whether an extra producer is registered, so it becomes redundant once `ExtraProducer` is removed. Until then, pass it to `negotiate`."]
+// TODO: remove alongside `ExtraProducer`
 pub fn allow_protobuf() -> bool {
+    protobuf_available()
+}
+
+/// Whether protobuf can carry everything this process exposes.
+///
+/// Backs `allow_protobuf` and the telemetry server's negotiation, so the server
+/// keeps withholding protobuf without depending on a deprecated function.
+#[cfg(feature = "foundations-metrics-backend")]
+#[allow(deprecated)]
+pub(crate) fn protobuf_available() -> bool {
     EXTRA_PRODUCERS
         .get()
         .is_none_or(|producers| producers.read().is_empty())
 }
 
-/// Reports whether protobuf can represent everything this process exposes.
+/// Whether protobuf can carry everything this process exposes.
 ///
 /// Always `false` here: encoding protobuf needs the
 /// `foundations-metrics-backend` feature.
-#[cfg(not(feature = "foundations-metrics-backend"))]
-pub fn allow_protobuf() -> bool {
+#[cfg(all(
+    not(feature = "foundations-metrics-backend"),
+    feature = "telemetry-server"
+))]
+pub(crate) fn protobuf_available() -> bool {
     false
 }
 
@@ -273,7 +311,7 @@ fn report_nonfatal_collect_error(err: &dyn Display) {
 /// ```
 ///
 /// The metrics associated with the functions are automatically registered in a global
-/// registry, and they can be collected with the [`collect_format`] function.
+/// registry, from which this module's collection functions report them.
 ///
 /// # Metric attributes
 ///
@@ -287,8 +325,8 @@ fn report_nonfatal_collect_error(err: &dyn Display) {
 /// ## `#[optional]`
 ///
 /// Metrics marked with `#[optional]` are collected in a separate registry and reported only if
-/// [`MetricsSettings::report_optional`] is set to `true`, whether they are collected through
-/// [`collect_format`] or the [telemetry server].
+/// [`MetricsSettings::report_optional`] is set to `true`, whether they are collected
+/// programmatically or through the [telemetry server].
 ///
 /// Can be used for heavy-weight metrics (e.g. with high cardinality) that don't need to be reported
 /// on a regular basis.
@@ -674,7 +712,12 @@ impl MetricConstructor<TimeHistogram> for HistogramBuilder {
 ///     prometheus_client::encoding::text::encode(buffer, &registry).unwrap();
 /// });
 /// ```
-#[deprecated = "Text output bypasses validation and cannot be encoded as protobuf. Implement `EncodeMetric` and pass it to `register` instead, enabling the `foundations-metrics-backend` feature if it is disabled."]
+// Only deprecated where `register` exists to replace it, so that services on the
+// old backend are not warned about an alternative they cannot reach.
+#[cfg_attr(
+    feature = "foundations-metrics-backend",
+    deprecated = "Text output bypasses validation and cannot be encoded as protobuf. Implement `EncodeMetric` and pass it to `register` instead."
+)]
 // TODO: remove before next major release
 #[allow(deprecated)]
 pub fn add_extra_producer<P>(p: P)
@@ -699,7 +742,10 @@ static EXTRA_PRODUCERS: OnceLock<parking_lot::RwLock<Vec<Box<dyn ExtraProducer>>
 
 /// Describes something that can expand prometheus metrics but appending
 /// them in a text format to a provided buffer.
-#[deprecated = "Text output bypasses validation and cannot be encoded as protobuf. Implement `EncodeMetric` instead, enabling the `foundations-metrics-backend` feature if it is disabled."]
+#[cfg_attr(
+    feature = "foundations-metrics-backend",
+    deprecated = "Text output bypasses validation and cannot be encoded as protobuf. Implement `EncodeMetric` instead."
+)]
 // TODO: remove before next major release
 pub trait ExtraProducer: Send + Sync {
     /// Takes a buffer and appends prometheus metrics in text format into it.

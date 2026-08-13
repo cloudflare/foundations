@@ -1,9 +1,9 @@
 //! Choosing which wire format to serve a metrics scrape.
 //!
 //! Negotiation is deliberately separate from collection: [`negotiate`] only
-//! reads an `Accept` header and [`collect_format`](super::collect_format) only
-//! encodes, so a service exposing its own endpoint can reuse either half on its
-//! own. Nothing here depends on the active metrics backend.
+//! reads an `Accept` header and collection only encodes, so a service exposing
+//! its own endpoint can reuse either half on its own. Nothing here depends on
+//! the active metrics backend.
 
 /// Content type of the text exposition with legacy name escaping.
 const LEGACY_CONTENT_TYPE: &str = "application/openmetrics-text; version=1.0.0; charset=utf-8";
