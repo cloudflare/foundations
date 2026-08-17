@@ -1,4 +1,4 @@
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 
 use foundations_metrics_registry::proto::{self, Bucket, BucketSpan, LabelPair, MetricType};
 use prometheus_client::encoding::prometheus_protobuf::{
@@ -242,17 +242,32 @@ pub struct NativeHistogramBuilder {
     ///
     /// `0` leaves the bucket count unbounded.
     pub max_buckets: usize,
+
+    /// How long a degraded histogram must run before the bucket limit is
+    /// enforced by resetting it instead of permanently reducing its resolution.
+    ///
+    /// When [`Self::max_buckets`] is exceeded and at least this long has elapsed
+    /// since the histogram was created or last reset, the histogram is reset:
+    /// its schema returns to the value implied by [`Self::bucket_factor`], and
+    /// its counts, sum, and classic buckets are cleared. Otherwise the schema is
+    /// reduced by one step, which is not recovered until a later reset.
+    ///
+    /// [`Duration::ZERO`] disables resets, so resolution loss becomes permanent
+    /// for the lifetime of the histogram.
+    pub min_reset_duration: Duration,
 }
 
 impl NativeHistogramBuilder {
     /// Creates a builder with the given bucket growth `factor`, the default zero
-    /// threshold, and an unbounded number of buckets.
+    /// threshold, an unbounded number of buckets, and a one hour minimum reset
+    /// duration.
     pub fn new(factor: f64) -> Self {
         Self {
             classic_buckets: None,
             bucket_factor: factor,
             zero_threshold: 0.0,
             max_buckets: 0,
+            min_reset_duration: Duration::from_secs(3600),
         }
     }
 
@@ -284,6 +299,15 @@ impl NativeHistogramBuilder {
         self
     }
 
+    /// Sets how long a degraded histogram must run before the bucket limit is
+    /// enforced by resetting it rather than reducing its resolution.
+    ///
+    /// [`Duration::ZERO`] disables resets, making resolution loss permanent.
+    pub fn with_min_reset_duration(mut self, min_reset_duration: Duration) -> Self {
+        self.min_reset_duration = min_reset_duration;
+        self
+    }
+
     /// Translates this builder into the wrapped crate's configuration.
     ///
     /// # Panics
@@ -309,6 +333,7 @@ impl NativeHistogramBuilder {
         NativeHistogramConfig::new(self.bucket_factor)
             .zero_threshold(self.zero_threshold)
             .max_buckets(self.max_buckets)
+            .min_reset_duration(self.min_reset_duration)
     }
 }
 
@@ -803,5 +828,47 @@ mod tests {
         let encoded = encoded_histogram(&families);
         assert_eq!(encoded.sample_count, Some(1));
         assert_eq!(encoded.zero_threshold, Some(0.001));
+    }
+
+    #[test]
+    fn elapsed_min_reset_duration_resets_instead_of_degrading_resolution() {
+        let histogram: NativeHistogram = NativeHistogramBuilder::new(1.1)
+            .with_max_buckets(1)
+            .with_min_reset_duration(Duration::from_nanos(1))
+            .new_metric();
+
+        let schema_before = encoded_histogram(&histogram.encode_metric_value())
+            .schema
+            .expect("schema is present");
+
+        histogram.observe(1.0);
+        histogram.observe(1.5);
+
+        let families = histogram.encode_metric_value();
+        let encoded = encoded_histogram(&families);
+
+        assert_eq!(encoded.schema, Some(schema_before));
+        assert_eq!(encoded.sample_count, Some(1));
+    }
+
+    #[test]
+    fn zero_min_reset_duration_degrades_resolution() {
+        let histogram: NativeHistogram = NativeHistogramBuilder::new(1.1)
+            .with_max_buckets(1)
+            .with_min_reset_duration(Duration::ZERO)
+            .new_metric();
+
+        let schema_before = encoded_histogram(&histogram.encode_metric_value())
+            .schema
+            .expect("schema is present");
+
+        histogram.observe(1.0);
+        histogram.observe(1.5);
+
+        let families = histogram.encode_metric_value();
+        let encoded = encoded_histogram(&families);
+
+        assert!(encoded.schema.expect("schema is present") < schema_before);
+        assert_eq!(encoded.sample_count, Some(2));
     }
 }
