@@ -249,18 +249,29 @@ pub struct NativeHistogramBuilder {
     /// When [`Self::max_buckets`] is exceeded and at least this long has elapsed
     /// since the histogram was created or last reset, the histogram is reset:
     /// its schema returns to the value implied by [`Self::bucket_factor`], and
-    /// its counts, sum, and classic buckets are cleared. Otherwise the schema is
-    /// reduced by one step, which is not recovered until a later reset.
+    /// its counts, sum, and classic buckets are cleared. Otherwise the zero
+    /// threshold may be widened up to [`Self::max_zero_threshold`], and if that
+    /// is not enough the schema is reduced by one step, which is not recovered
+    /// until a later reset.
     ///
     /// [`Duration::ZERO`] disables resets, so resolution loss becomes permanent
     /// for the lifetime of the histogram.
     pub min_reset_duration: Duration,
+
+    /// Upper bound on how far the zero bucket may be widened while enforcing
+    /// [`Self::max_buckets`].
+    ///
+    /// When the bucket limit is exceeded and a reset is not yet due, the
+    /// histogram first tries to absorb sparse buckets near zero into a wider
+    /// zero bucket. Widening stops at this value. `0.0` (the default) disables
+    /// widening, so the next step is schema reduction.
+    pub max_zero_threshold: f64,
 }
 
 impl NativeHistogramBuilder {
     /// Creates a builder with the given bucket growth `factor`, the default zero
-    /// threshold, an unbounded number of buckets, and a one hour minimum reset
-    /// duration.
+    /// threshold, an unbounded number of buckets, a one hour minimum reset
+    /// duration, and zero-bucket widening disabled.
     pub fn new(factor: f64) -> Self {
         Self {
             classic_buckets: None,
@@ -268,6 +279,7 @@ impl NativeHistogramBuilder {
             zero_threshold: 0.0,
             max_buckets: 0,
             min_reset_duration: Duration::from_secs(3600),
+            max_zero_threshold: 0.0,
         }
     }
 
@@ -308,12 +320,22 @@ impl NativeHistogramBuilder {
         self
     }
 
+    /// Sets how far the zero bucket may be widened while enforcing the bucket
+    /// limit.
+    ///
+    /// `0.0` disables widening. Must be finite and non-negative.
+    pub fn with_max_zero_threshold(mut self, max_zero_threshold: f64) -> Self {
+        self.max_zero_threshold = max_zero_threshold;
+        self
+    }
+
     /// Translates this builder into the wrapped crate's configuration.
     ///
     /// # Panics
     ///
-    /// Panics if `bucket_factor` is not greater than `1.0` or if
-    /// `zero_threshold` is not finite.
+    /// Panics if `bucket_factor` is not greater than `1.0`, if
+    /// `zero_threshold` is not finite, or if `max_zero_threshold` is not finite
+    /// and non-negative.
     #[track_caller]
     fn config(&self) -> NativeHistogramConfig {
         // Validated here rather than left to `prometheus-client`: its assertions
@@ -329,11 +351,17 @@ impl NativeHistogramBuilder {
             "native histogram zero threshold must be finite, but was {}",
             self.zero_threshold
         );
+        assert!(
+            self.max_zero_threshold.is_finite() && self.max_zero_threshold >= 0.0,
+            "native histogram max zero threshold must be finite and non-negative, but was {}",
+            self.max_zero_threshold
+        );
 
         NativeHistogramConfig::new(self.bucket_factor)
             .zero_threshold(self.zero_threshold)
             .max_buckets(self.max_buckets)
             .min_reset_duration(self.min_reset_duration)
+            .max_zero_threshold(self.max_zero_threshold)
     }
 }
 
@@ -567,6 +595,7 @@ mod tests {
         let histogram: NativeHistogram = NativeHistogramBuilder::new(1.5)
             .with_zero_threshold(0.001)
             .with_max_buckets(160)
+            .with_max_zero_threshold(1.0)
             .new_metric();
         histogram.observe(0.5);
 
@@ -870,5 +899,32 @@ mod tests {
 
         assert!(encoded.schema.expect("schema is present") < schema_before);
         assert_eq!(encoded.sample_count, Some(2));
+    }
+
+    #[test]
+    fn max_zero_threshold_widens_zero_bucket_before_reducing_resolution() {
+        // Factor 2^(2^-8) ≈ 1.0027 selects schema 8, matching the upstream
+        // prometheus-client case that exercises zero-bucket widening.
+        let histogram: NativeHistogram = NativeHistogramBuilder::new(2f64.powf(2f64.powi(-8)))
+            .with_max_buckets(1)
+            .with_min_reset_duration(Duration::ZERO)
+            .with_max_zero_threshold(1.0)
+            .new_metric();
+
+        let schema_before = encoded_histogram(&histogram.encode_metric_value())
+            .schema
+            .expect("schema is present");
+
+        histogram.observe(2f64.powi(-100));
+        histogram.observe(1.0);
+
+        let families = histogram.encode_metric_value();
+        let encoded = encoded_histogram(&families);
+
+        assert_eq!(encoded.schema, Some(schema_before));
+        assert_eq!(encoded.sample_count, Some(2));
+        assert_eq!(encoded.zero_count, Some(1));
+        assert!(encoded.zero_threshold.expect("zero threshold") > 0.0);
+        assert_eq!(encoded.positive_delta.len(), 1);
     }
 }
