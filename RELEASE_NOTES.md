@@ -1,4 +1,8 @@
 
+5.9.1
+- 2026-08-18 feat(metrics): expose max_zero_threshold on NativeHistogramBuilder
+- 2026-08-17 feat(metrics): let native histograms recover lost resolution
+
 5.9.0
 - 2026-08-13 fix: Make ScrapeFormat non-exhaustive to allow future expansion
 - 2026-08-13 refactor(metrics): finalize public API for publishing (#253)
