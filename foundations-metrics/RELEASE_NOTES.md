@@ -1,5 +1,9 @@
 
-0.1.0-beta.1
+0.1.0-beta.2
+- 2026-08-18 feat(metrics): expose max_zero_threshold on NativeHistogramBuilder
+- 2026-08-17 feat(metrics): let native histograms recover lost resolution
+
+foundations-metrics-v0.1.0-beta.1
 - 2026-08-13 refactor(metrics): finalize public API for publishing (#253)
 - 2026-08-13 docs(metrics): prepare the new metrics crates for publishing (#249)
 - 2026-08-11 feat(metrics): Add NativeTimeHistogram, new_classic_and_native method, and third-party linux process metrics from prometheus crate (#244)
