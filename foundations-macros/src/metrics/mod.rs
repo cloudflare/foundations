@@ -1092,6 +1092,8 @@ mod tests {
                 bucket_factor: 1.1,
                 zero_threshold: 0.0,
                 max_buckets: 0,
+                min_reset_duration: ::std::time::Duration::from_secs(3600),
+                max_zero_threshold: 0.0,
             }
         };
 
