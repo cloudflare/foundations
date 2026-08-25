@@ -59,7 +59,7 @@ fn convert_family(family: PrometheusMetricFamily) -> Option<MetricFamily> {
                 MetricType::Counter => Metric {
                     label,
                     counter: Some(Counter {
-                        value: Some(metric.get_counter().get_value()),
+                        value: Some(metric.get_counter().value()),
                         ..Default::default()
                     }),
                     ..Default::default()
@@ -67,7 +67,7 @@ fn convert_family(family: PrometheusMetricFamily) -> Option<MetricFamily> {
                 MetricType::Gauge => Metric {
                     label,
                     gauge: Some(Gauge {
-                        value: Some(metric.get_gauge().get_value()),
+                        value: Some(metric.get_gauge().value()),
                     }),
                     ..Default::default()
                 },
