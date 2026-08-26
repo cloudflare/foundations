@@ -219,17 +219,6 @@ fn encode_histogram(
     let mut infinity_bucket_seen = false;
     for bucket in &histogram.bucket {
         let upper_bound = bucket.upper_bound.unwrap_or_default();
-        // `Histogram` uses `f64::MAX` as its terminal bucket bound, matching
-        // `prometheus_client`, so that the bound stays a finite value the
-        // protobuf data model round-trips unchanged. The text exposition format
-        // has no such constraint and requires the catch-all bucket to be
-        // labelled `le="+Inf"`, so the sentinel is translated on the way out
-        // rather than at its source.
-        let upper_bound = if upper_bound == f64::MAX {
-            f64::INFINITY
-        } else {
-            upper_bound
-        };
         infinity_bucket_seen |= upper_bound == f64::INFINITY;
 
         write_sample(
@@ -605,7 +594,7 @@ requests{kind=\"a\\\"b\\\\c\\nd\"} 1 1.5 # {trace_id=\"abc\"} 2.0\n\
     }
 
     #[test]
-    fn encodes_classic_histogram_and_maps_terminal_bucket_to_infinity() {
+    fn encodes_classic_histogram_with_infinite_terminal_bucket() {
         let families = [MetricFamily {
             name: Some("request_duration_seconds".to_owned()),
             help: Some("Request duration.".to_owned()),
@@ -626,7 +615,7 @@ requests{kind=\"a\\\"b\\\\c\\nd\"} 1 1.5 # {trace_id=\"abc\"} 2.0\n\
                         },
                         Bucket {
                             cumulative_count: Some(3),
-                            upper_bound: Some(f64::MAX),
+                            upper_bound: Some(f64::INFINITY),
                             ..Default::default()
                         },
                     ],
