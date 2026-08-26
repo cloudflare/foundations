@@ -52,10 +52,10 @@ impl Histogram {
     /// Creates a histogram with the provided inclusive upper bounds.
     ///
     /// Bounds may be given in any order; they are sorted ascending. A terminal
-    /// `f64::MAX` bucket is appended automatically.
+    /// `f64::INFINITY` bucket is appended automatically.
     pub fn new(bounds: impl IntoIterator<Item = f64>) -> Self {
         let mut buckets: Vec<_> = bounds.into_iter().map(|bound| (bound, 0)).collect();
-        buckets.push((f64::MAX, 0));
+        buckets.push((f64::INFINITY, 0));
         buckets.sort_by(|(a, _), (b, _)| a.total_cmp(b));
 
         Self {
@@ -358,11 +358,11 @@ impl TimeHistogram {
     /// Creates a time histogram with inclusive bucket bounds in seconds.
     ///
     /// Bounds may be given in any order; they are sorted ascending. A terminal
-    /// `f64::MAX` bucket is appended automatically.
+    /// `f64::INFINITY` bucket is appended automatically.
     pub fn new(buckets: impl IntoIterator<Item = f64>) -> Self {
         let mut buckets: Vec<_> = buckets
             .into_iter()
-            .chain(once(f64::MAX))
+            .chain(once(f64::INFINITY))
             .map(|upper_bound| (upper_bound, AtomicU64::new(0)))
             .collect();
         buckets.sort_by(|(a, _), (b, _)| a.total_cmp(b));
@@ -477,7 +477,7 @@ mod tests {
             HistogramSnapshot {
                 sum: 6.0,
                 count: 4,
-                buckets: vec![(1.0, 2), (2.0, 1), (f64::MAX, 1)],
+                buckets: vec![(1.0, 2), (2.0, 1), (f64::INFINITY, 1)],
             }
         );
     }
@@ -496,7 +496,10 @@ mod tests {
         let unsorted = Histogram::new([10.0, 1.0]);
         unsorted.observe(0.5);
         let snapshot = unsorted.snapshot();
-        assert_eq!(snapshot.buckets, vec![(1.0, 1), (10.0, 0), (f64::MAX, 0)],);
+        assert_eq!(
+            snapshot.buckets,
+            vec![(1.0, 1), (10.0, 0), (f64::INFINITY, 0)],
+        );
     }
 
     #[test]
@@ -528,7 +531,7 @@ mod tests {
             vec![
                 (Some(1.0), Some(1)),
                 (Some(2.0), Some(2)),
-                (Some(f64::MAX), Some(3)),
+                (Some(f64::INFINITY), Some(3)),
             ]
         );
     }
@@ -596,7 +599,7 @@ mod tests {
 
         assert_eq!(
             histogram.snapshot().buckets(),
-            &[(1.0, 1), (2.0, 0), (f64::MAX, 0)]
+            &[(1.0, 1), (2.0, 0), (f64::INFINITY, 0)]
         );
     }
 
@@ -626,7 +629,7 @@ mod tests {
                 (4.0, 1),
                 (8.0, 0),
                 (16.0, 1),
-                (f64::MAX, 0),
+                (f64::INFINITY, 0),
             ]
         );
     }

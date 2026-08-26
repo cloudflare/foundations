@@ -490,7 +490,7 @@ fn convert_native_histogram(histogram: prometheus_proto::Histogram) -> proto::Hi
                 cumulative_count: Some(bucket.cumulative_count),
                 cumulative_count_float: (bucket.cumulative_count_float > 0.0)
                     .then_some(bucket.cumulative_count_float),
-                upper_bound: Some(bucket.upper_bound),
+                upper_bound: Some(classic_upper_bound(bucket.upper_bound)),
                 ..Default::default()
             })
             .collect(),
@@ -514,6 +514,23 @@ fn convert_native_histogram(histogram: prometheus_proto::Histogram) -> proto::Hi
         positive_delta: histogram.positive_delta,
         positive_count: histogram.positive_count,
         ..Default::default()
+    }
+}
+
+/// Translates `prometheus_client`'s terminal classic bucket bound to `+Inf`.
+///
+/// Upstream ends its classic bucket list with the finite `f64::MAX` rather than
+/// `f64::INFINITY`. Prometheus expects the catch-all bucket of a classic
+/// histogram to be `+Inf` and synthesises one when the encoded buckets do not
+/// end in an infinite bound, so passing the sentinel through would expose an
+/// extra `le` series duplicating `+Inf`. [`Histogram`](super::Histogram) and
+/// [`TimeHistogram`](super::TimeHistogram) own their bucket lists and already
+/// use `f64::INFINITY`; only the buckets borrowed from upstream need this.
+fn classic_upper_bound(upper_bound: f64) -> f64 {
+    if upper_bound == f64::MAX {
+        f64::INFINITY
+    } else {
+        upper_bound
     }
 }
 
@@ -662,7 +679,7 @@ mod tests {
             vec![
                 (Some(1.0), Some(0)),
                 (Some(2.0), Some(1)),
-                (Some(f64::MAX), Some(1)),
+                (Some(f64::INFINITY), Some(1)),
             ]
         );
         assert!(encoded.schema.is_some());
