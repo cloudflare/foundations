@@ -11,7 +11,7 @@ members = [
 resolver = "3"
 
 [workspace.package]
-version = "5.9.1"
+version = "5.9.2"
 repository = "https://github.com/cloudflare/foundations"
 edition = "2024"
 authors = ["Cloudflare"]
@@ -42,8 +42,8 @@ check-cfg = [
 [workspace.dependencies]
 anyhow = "1.0.102"
 backtrace = "0.3.76"
-foundations = { version = "5.9.1", path = "./foundations", default-features = false }
-foundations-macros = { version = "=5.9.1", path = "./foundations-macros", default-features = false }
+foundations = { version = "5.9.2", path = "./foundations", default-features = false }
+foundations-macros = { version = "=5.9.2", path = "./foundations-macros", default-features = false }
 foundations-metrics-registry = { version = "1.0.0", path = "./foundations-metrics-registry", default-features = false }
 foundations-metrics = { version = "0.1.0-beta.3", path = "./foundations-metrics", default-features = false }
 bindgen = { version = "0.72.1", default-features = false }

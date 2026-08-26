@@ -1,4 +1,8 @@
 
+5.9.2
+- 2026-08-26 fix(metrics): terminate classic histogram buckets with +Inf
+- 2026-08-25 fix(metrics): pin prometheus's protobuf feature for process metrics
+
 5.9.1
 - 2026-08-18 feat(metrics): expose max_zero_threshold on NativeHistogramBuilder
 - 2026-08-17 feat(metrics): let native histograms recover lost resolution
