@@ -1,7 +1,7 @@
 [package]
 name = "foundations-metrics"
 description = "Metric types and encoders for the Foundations stack."
-version = "0.1.0-beta.2"
+version = "0.1.0-beta.3"
 readme = "README.md"
 repository = { workspace = true }
 edition = { workspace = true }

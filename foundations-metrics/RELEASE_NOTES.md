@@ -1,5 +1,6 @@
 
-0.1.0-beta.2
+0.1.0-beta.3
+- 2026-08-26 fix(metrics): terminate classic histogram buckets with +Inf
 - 2026-08-18 feat(metrics): expose max_zero_threshold on NativeHistogramBuilder
 - 2026-08-17 feat(metrics): let native histograms recover lost resolution
 
