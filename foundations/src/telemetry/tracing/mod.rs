@@ -25,7 +25,9 @@ mod output_otlp_uds;
 mod traceparent;
 
 use self::init::TracingHarness;
-use self::internal::{SharedSpan, create_span, current_span, shared_span, span_trace_id};
+use self::internal::{
+    SharedSpan, SpanProbe, create_span, current_span, shared_span, span_trace_id,
+};
 #[cfg(feature = "user-tracing")]
 use self::internal::{
     SharedSpanHandle, child_user_span, current_user_span, start_user_trace, user_shared_span,
@@ -131,6 +133,24 @@ pub fn get_active_traces() -> String {
 /// }
 /// ```
 ///
+/// # Emitting a USDT probe at span end
+///
+/// ```
+/// use foundations::telemetry::tracing;
+///
+/// #[tracing::span_fn("foo", end_probe = true)]
+/// fn foo() {
+///     // Does something...
+/// }
+/// ```
+///
+/// With `end_probe = true`, the span additionally sets up a per-span USDT probe fired with the span
+/// duration when the span ends, with the same semantics as the `span_with_probe!` macro. The span
+/// name must be a string literal in this case. The provider defaults to the
+/// `FOUNDATIONS_USDT_PROVIDER` environment variable at compile time (settable per project via
+/// `[env]` in `.cargo/config.toml`), or `"foundations"` when unset, and can be customized per span
+/// with `usdt_provider = "..."`.
+///
 /// # Renamed or reexported crate
 ///
 /// The macro will fail to compile if `foundations` crate is reexported. However, the crate path
@@ -167,6 +187,14 @@ pub fn get_active_traces() -> String {
 ///
 /// [async_trait]: https://crates.io/crates/async-trait
 pub use foundations_macros::span_fn;
+
+/// [`span()`] variant that additionally arms a per-span USDT probe
+/// (`span_end__<sanitized name>`) fired when the span ends and a tracer has
+/// attached to it.
+///
+/// See the macro documentation in `foundations-macros` for details.
+#[doc(inline)]
+pub use foundations_macros::span_with_probe;
 
 /// A handle for the scope in which tracing span is active.
 ///
@@ -234,6 +262,19 @@ impl SpanScope {
         ctx.span = Some(self.span);
 
         ctx
+    }
+
+    /// Arms the span's USDT probe when `record_probe_start` is true (the
+    /// span's probe semaphore, a `static` in the `.probes` section bumped by
+    /// the tracer on attach, is non-zero). `end_probe` is the address of a
+    /// per-span function containing the probe's NOP placeholder; it is called
+    /// with the span duration in nanoseconds when the last clone of the span
+    /// drops. Arming records the start timestamp unconditionally with respect
+    /// to sampling, so probes work even when span tracing is disabled.
+    #[doc(hidden)]
+    #[inline(always)]
+    pub fn __arm_probe(&mut self, end_probe: fn(u64)) {
+        self.span.probe = Some(Arc::new(SpanProbe::new(end_probe)));
     }
 }
 
@@ -306,6 +347,7 @@ impl UserSpan {
             span: SharedSpan {
                 inner: SharedSpanHandle::Inactive,
                 is_sampled: false,
+                probe: None,
             },
         }
     }
@@ -417,6 +459,14 @@ impl DualSpanScope {
         }
 
         ctx
+    }
+
+    /// Arms the internal span's USDT probe when `record_probe_start` is true.
+    /// The user span is never probed.
+    #[doc(hidden)]
+    #[inline(always)]
+    pub fn __arm_probe(&mut self, end_probe: fn(u64)) {
+        self.inner.__arm_probe(end_probe);
     }
 }
 
@@ -1982,5 +2032,44 @@ mod user_tracing_tests {
                 .tags
                 .contains(&("moved".to_string(), TagValue::Boolean(true)))
         );
+    }
+}
+
+#[cfg(test)]
+mod probe_tests {
+    use super::span;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    #[test]
+    fn end_probe_fires_once_when_last_clone_drops() {
+        static FIRES: AtomicUsize = AtomicUsize::new(0);
+
+        fn counting_probe(_duration_ns: u64) {
+            FIRES.fetch_add(1, Ordering::Relaxed);
+        }
+
+        let mut scope = span("test::probe");
+        scope.__arm_probe(counting_probe);
+        let clone = scope.span.clone();
+
+        drop(scope);
+        assert_eq!(FIRES.load(Ordering::Relaxed), 0);
+
+        drop(clone);
+        assert_eq!(FIRES.load(Ordering::Relaxed), 1);
+    }
+
+    #[cfg(feature = "user-tracing")]
+    #[test]
+    fn dual_scope_probe_arms_internal_span_only() {
+        fn noop_probe(_duration_ns: u64) {}
+
+        let mut scope = super::dual_span("test::probe");
+        assert!(scope.inner.span.probe.is_none());
+        // No user trace is active, so no user span is created.
+        assert!(scope.user.is_none());
+
+        scope.__arm_probe(noop_probe);
+        assert!(scope.inner.span.probe.is_some());
     }
 }

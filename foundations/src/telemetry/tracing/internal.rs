@@ -14,6 +14,7 @@ use rand::RngExt as _;
 use std::borrow::Cow;
 use std::error::Error;
 use std::sync::Arc;
+use std::time::Instant;
 
 pub(crate) type Tracer = cf_rustracing::Tracer<BoxSampler<SpanContextState>, SpanContextState>;
 
@@ -74,6 +75,34 @@ pub(crate) struct SharedSpan {
     // NOTE: store sampling flag separately, so we don't need to acquire lock
     // every time we need to check the flag.
     pub(crate) is_sampled: bool,
+    /// USDT span probe state, recorded when the span's probe semaphore is
+    /// non-zero (a tracer is attached), regardless of sampling. Shared by all
+    /// clones, so the `span_end__*` probe fires exactly once when the last
+    /// clone of the span drops.
+    pub(crate) probe: Option<Arc<SpanProbe>>,
+}
+
+/// Probe state for a single span invocation. Dropping it fires the span's
+/// `span_end__*` USDT probe with the span duration in nanoseconds.
+#[derive(Debug)]
+pub(crate) struct SpanProbe {
+    start: Instant,
+    end_probe: fn(u64),
+}
+
+impl SpanProbe {
+    pub(crate) fn new(end_probe: fn(u64)) -> Self {
+        Self {
+            start: Instant::now(),
+            end_probe,
+        }
+    }
+}
+
+impl Drop for SpanProbe {
+    fn drop(&mut self) {
+        (self.end_probe)(self.start.elapsed().as_nanos() as u64);
+    }
 }
 
 /// Wraps a span and registers it with the internal harness's `active_roots` for live tracking.
@@ -83,6 +112,7 @@ pub(crate) fn shared_span(span: Span) -> SharedSpan {
     SharedSpan {
         inner: SharedSpanHandle::new(span),
         is_sampled,
+        probe: None,
     }
 }
 
@@ -98,7 +128,11 @@ pub(crate) fn user_shared_span(span: Span) -> SharedSpan {
         SharedSpanHandle::Inactive
     };
 
-    SharedSpan { inner, is_sampled }
+    SharedSpan {
+        inner,
+        is_sampled,
+        probe: None,
+    }
 }
 
 pub fn write_current_span(write_fn: impl FnOnce(&mut Span)) {
