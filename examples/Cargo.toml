@@ -22,3 +22,7 @@ tokio = { workspace = true, features = ["full"]}
 [[example]]
 name = "http_server"
 path = "http_server/main.rs"
+
+[[example]]
+name = "span_with_probe"
+path = "span_with_probe/main.rs"
