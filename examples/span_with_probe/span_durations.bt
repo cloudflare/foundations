@@ -1,0 +1,29 @@
+/*
+ * Duration histograms for the span_with_probe example's spans.
+ * `attr_task` is instrumented with `span_fn`'s `end_probe = true`
+ * option, the other two with the `span_with_probe!` macro.
+ *
+ * Run from the repository root (the probe path is relative to the cwd):
+ *
+ *   cargo run --example span_with_probe
+ *   sudo bpftrace examples/span_with_probe/span_durations.bt -p <pid>
+ *
+ * Probes receive the span duration in nanoseconds as arg0; recorded here in
+ * milliseconds.
+ */
+BEGIN {
+    printf("Attaching to span end probes, durations in milliseconds...\n");
+    printf("Hit Ctrl-C to end and print histograms.\n");
+}
+
+usdt:target/debug/examples/span_with_probe:foundations:span_end__example__short_task {
+    @short_task_ms = hist((uint64)arg0 / 1000000);
+}
+
+usdt:target/debug/examples/span_with_probe:foundations:span_end__example__long_task {
+    @long_task_ms = hist((uint64)arg0 / 1000000);
+}
+
+usdt:target/debug/examples/span_with_probe:foundations:span_end__example__attr_task {
+    @attr_task_ms = hist((uint64)arg0 / 1000000);
+}
