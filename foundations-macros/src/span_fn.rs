@@ -1,9 +1,11 @@
 use crate::common::parse_optional_trailing_meta_list;
+use crate::span_with_probe;
 use darling::FromMeta;
 use proc_macro::TokenStream;
 use proc_macro2::{Span, TokenStream as TokenStream2};
 use quote::{ToTokens, quote};
 use syn::parse::{Parse, ParseStream};
+use syn::spanned::Spanned as _;
 use syn::{Block, Expr, ExprCall, ItemFn, LitStr, Path, Signature, Stmt, parse_quote};
 
 const ERR_APPLIED_TO_NON_FN: &str = "`span_fn` macro can only be used on functions";
@@ -50,6 +52,16 @@ struct Options {
 
     #[darling(default = "Options::default_user")]
     user: bool,
+
+    /// Add a per-span USDT probe fired at span end (`span_with_probe!`
+    /// semantics).
+    #[darling(default)]
+    end_probe: bool,
+
+    /// USDT provider for the probe (defaults to `$FOUNDATIONS_USDT_PROVIDER`
+    /// or `"foundations"`); only valid together with `end_probe = true`.
+    #[darling(default)]
+    usdt_provider: Option<LitStr>,
 }
 
 impl Options {
@@ -79,7 +91,39 @@ impl Parse for Args {
     fn parse(input: ParseStream) -> syn::Result<Self> {
         let span_name = input.parse::<SpanName>()?;
         let meta_list = parse_optional_trailing_meta_list(&input)?;
-        let options = Options::from_list(&meta_list)?;
+        let mut options = Options::from_list(&meta_list)?;
+
+        if !options.end_probe
+            && let Some(provider) = &options.usdt_provider
+        {
+            return Err(syn::Error::new(
+                provider.span(),
+                "usdt_provider requires end_probe = true",
+            ));
+        }
+
+        if options.end_probe {
+            let provider = options
+                .usdt_provider
+                .get_or_insert_with(span_with_probe::Options::default_usdt_provider);
+
+            if !span_with_probe::is_valid_usdt_provider(&provider.value()) {
+                return Err(syn::Error::new(
+                    provider.span(),
+                    "usdt_provider must be non-empty and must not contain `:`",
+                ));
+            }
+        }
+
+        // The probe name is derived from the span name at compile time.
+        if options.end_probe
+            && let SpanName::Const(path) = &span_name
+        {
+            return Err(syn::Error::new(
+                path.span(),
+                "end_probe spans require a string literal span name",
+            ));
+        }
 
         Ok(Self { span_name, options })
     }
@@ -124,14 +168,20 @@ fn expand_from_parsed(args: Args, item_fn: ItemFn) -> TokenStream2 {
     let body = match asyncness {
         Some(_) => wrap_with_span(&args, quote!(async move { #block })),
         None => try_async_trait_fn_rewrite(&args, &block).unwrap_or_else(|| {
-            let span_name = args.span_name.as_tokens();
-            let crate_path = &args.options.crate_path;
-            let span_ctor = span_ctor(&args.options);
+            let span_expr = span_expr(&args);
 
-            quote!(
-                let __span = #crate_path::telemetry::tracing::#span_ctor(#span_name);
-                #block
-            )
+            match end_probe_setup(&args) {
+                Some(probe_setup) => quote!(
+                    #[allow(unused_mut)]
+                    let mut __span = #span_expr;
+                    #probe_setup
+                    #block
+                ),
+                None => quote!(
+                    let __span = #span_expr;
+                    #block
+                ),
+            }
         }),
     };
 
@@ -197,16 +247,66 @@ fn wrap_with_span(args: &Args, block: TokenStream2) -> TokenStream2 {
         quote!(apply)
     };
 
+    let span_expr = span_expr(args);
+
+    match end_probe_setup(args) {
+        Some(probe_setup) => quote!(
+            {
+                #[allow(unused_mut)]
+                let mut __span = #span_expr;
+                #probe_setup
+                __span
+                    .into_context()
+                    .#apply_fn(#block)
+                    .await
+            }
+        ),
+        None => quote!(
+            #span_expr
+                .into_context()
+                .#apply_fn(#block)
+                .await
+        ),
+    }
+}
+
+/// The span-construction expression: a plain `span`/`dual_span` call.
+fn span_expr(args: &Args) -> TokenStream2 {
     let span_name = args.span_name.as_tokens();
     let crate_path = &args.options.crate_path;
     let span_ctor = span_ctor(&args.options);
 
-    quote!(
-        #crate_path::telemetry::tracing::#span_ctor(#span_name)
-            .into_context()
-            .#apply_fn(#block)
-            .await
-    )
+    quote!(#crate_path::telemetry::tracing::#span_ctor(#span_name))
+}
+
+/// When `end_probe` is enabled, the linux/x86_64-only block that sets up the
+/// USDT span-end probe on the just-created `__span`.
+fn end_probe_setup(args: &Args) -> Option<TokenStream2> {
+    if !args.options.end_probe {
+        return None;
+    }
+
+    let SpanName::Str(span_name) = &args.span_name else {
+        unreachable!("end_probe spans require a string literal span name");
+    };
+
+    let usdt_provider = args
+        .options
+        .usdt_provider
+        .as_ref()
+        .expect("provider defaulted and validated during parse");
+
+    let probe_setup = span_with_probe::probe_setup(span_name, usdt_provider);
+    let track_env = span_with_probe::track_provider_env();
+
+    Some(quote!(
+        #track_env
+
+        #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+        {
+            #probe_setup
+        }
+    ))
 }
 
 /// The span constructor to call: `dual_span` when `user = true` (internal + parallel user span),
@@ -669,5 +769,180 @@ mod tests {
         };
 
         assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn expand_sync_fn_probe() {
+        let args = parse_attr! {
+            #[span_fn("sync_span", end_probe = true)]
+        };
+
+        let item_fn = parse_quote! {
+            fn do_sync() -> io::Result<String> {
+                do_something_else();
+
+                Ok("foo".into())
+            }
+        };
+
+        let actual = expand_from_parsed(args, item_fn).to_string();
+
+        // Plain span construction, with the probe armed on the scope after.
+        assert!(actual.contains(
+            "let mut __span = :: foundations :: telemetry :: tracing :: span (\"sync_span\") ;"
+        ));
+        assert!(actual.contains("if enabled { __span . __arm_probe (span_end_probe) ; }"));
+        assert!(actual.contains(".asciz \\\"span_end__sync_span\\\""));
+        assert!(actual.contains(".asciz \\\"foundations\\\""));
+        // Probe arming is linux/x86_64-only.
+        assert!(actual.contains("cfg (all (target_os = \"linux\" , target_arch = \"x86_64\"))"));
+    }
+
+    #[test]
+    fn expand_async_fn_probe() {
+        let args = parse_attr! {
+            #[span_fn("async_span", end_probe = true)]
+        };
+
+        let item_fn = parse_quote! {
+            async fn do_async() -> io::Result<String> {
+                do_something_else().await;
+
+                Ok("foo".into())
+            }
+        };
+
+        let actual = expand_from_parsed(args, item_fn).to_string();
+
+        assert!(actual.contains(
+            "let mut __span = :: foundations :: telemetry :: tracing :: span (\"async_span\") ;"
+        ));
+        assert!(actual.contains("if enabled { __span . __arm_probe (span_end_probe) ; }"));
+        assert!(actual.contains("__span . into_context () . apply (async move"));
+    }
+
+    #[test]
+    fn expand_fn_probe_user() {
+        let args = parse_attr! {
+            #[span_fn("user_span", end_probe = true, user = true)]
+        };
+
+        let item_fn = parse_quote! {
+            fn do_sync() {
+                do_something_else();
+            }
+        };
+
+        let actual = expand_from_parsed(args, item_fn).to_string();
+
+        assert!(actual.contains(
+            "let mut __span = :: foundations :: telemetry :: tracing :: dual_span (\"user_span\") ;"
+        ));
+        assert!(actual.contains("if enabled { __span . __arm_probe (span_end_probe) ; }"));
+    }
+
+    #[test]
+    fn expand_fn_probe_with_crate_path() {
+        let args = parse_attr! {
+            #[span_fn("sync_span", end_probe = true, crate_path = "::foo::bar")]
+        };
+
+        let item_fn = parse_quote! {
+            fn do_sync() {
+                do_something_else();
+            }
+        };
+
+        let actual = expand_from_parsed(args, item_fn).to_string();
+
+        assert!(actual.contains(
+            "let mut __span = :: foo :: bar :: telemetry :: tracing :: span (\"sync_span\") ;"
+        ));
+        assert!(actual.contains("if enabled { __span . __arm_probe (span_end_probe) ; }"));
+    }
+
+    #[test]
+    fn expand_fn_probe_with_usdt_provider() {
+        let args = parse_attr! {
+            #[span_fn("some::span", end_probe = true, usdt_provider = "myapp")]
+        };
+
+        let item_fn = parse_quote! {
+            fn do_sync() {
+                do_something_else();
+            }
+        };
+
+        let actual = expand_from_parsed(args, item_fn).to_string();
+
+        // The asm template is a nested string literal, so its quotes are
+        // escaped in the token stream's string representation.
+        assert!(actual.contains(".asciz \\\"myapp\\\""));
+        assert!(actual.contains(".asciz \\\"span_end__some__span\\\""));
+    }
+
+    #[test]
+    fn expand_fn_probe_with_env_usdt_provider() {
+        unsafe { std::env::set_var(span_with_probe::USDT_PROVIDER_ENV_VAR, "envapp") };
+
+        let args = parse_attr! {
+            #[span_fn("some::span", end_probe = true)]
+        };
+
+        let item_fn = parse_quote! {
+            fn do_sync() {
+                do_something_else();
+            }
+        };
+
+        let actual = expand_from_parsed(args, item_fn).to_string();
+
+        assert!(actual.contains(".asciz \\\"envapp\\\""));
+
+        unsafe { std::env::remove_var(span_with_probe::USDT_PROVIDER_ENV_VAR) };
+    }
+
+    #[test]
+    fn rejects_usdt_provider_without_probe() {
+        let tokens = quote! { "some::span", usdt_provider = "myapp" };
+        let err = match syn::parse2::<Args>(tokens) {
+            Ok(_) => panic!("usdt_provider without probe unexpectedly accepted"),
+            Err(err) => err,
+        };
+
+        assert!(
+            err.to_string().contains("requires end_probe = true"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_usdt_provider() {
+        for provider in ["foo:bar", ""] {
+            let tokens = quote! { "some::span", end_probe = true, usdt_provider = #provider };
+            let err = match syn::parse2::<Args>(tokens) {
+                Ok(_) => panic!("provider {provider:?} unexpectedly accepted"),
+                Err(err) => err,
+            };
+
+            assert!(
+                err.to_string().contains("usdt_provider"),
+                "provider {provider:?}: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_probe_with_const_span_name() {
+        let tokens = quote! { some::module::SPAN, end_probe = true };
+        let err = match syn::parse2::<Args>(tokens) {
+            Ok(_) => panic!("const span name with probe unexpectedly accepted"),
+            Err(err) => err,
+        };
+
+        assert!(
+            err.to_string().contains("string literal span name"),
+            "{err}"
+        );
     }
 }
