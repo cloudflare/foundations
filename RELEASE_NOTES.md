@@ -1,5 +1,10 @@
 
+5.10.0
+- 2026-08-28 feat(examples): add span_with_probe demo workload
+- 2026-08-28 feat(telemetry): add span_with_probe! macro and span_fn's end_probe option
+
 5.9.2
+- 2026-08-26 Release 5.9.2 (#259)
 - 2026-08-26 fix(metrics): terminate classic histogram buckets with +Inf
 - 2026-08-25 fix(metrics): pin prometheus's protobuf feature for process metrics
 
