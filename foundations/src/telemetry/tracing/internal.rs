@@ -14,6 +14,7 @@ use rand::RngExt as _;
 use std::borrow::Cow;
 use std::error::Error;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU8, Ordering};
 use std::time::Instant;
 
 pub(crate) type Tracer = cf_rustracing::Tracer<BoxSampler<SpanContextState>, SpanContextState>;
@@ -75,20 +76,81 @@ impl From<SharedSpanHandle> for Arc<RwLock<Span>> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub(crate) struct SharedSpan {
     // NOTE: we intentionally use a lock without poisoning here to not
     // panic the threads if they just share telemetry with failed thread.
     pub(crate) inner: SharedSpanHandle,
     // NOTE: store sampling flag separately, so we don't need to acquire lock
     // every time we need to check the flag. Deferred user roots are the exception:
-    // their initially inactive span can be replaced in place.
-    pub(crate) is_sampled: bool,
+    // their initially inactive span can be replaced in place, which is represented
+    // by the `0xFF` sentinel (`DEFERRED_SAMPLING`).
+    is_sampled: AtomicU8,
     /// USDT span probe state, recorded when the span's probe semaphore is
     /// non-zero (a tracer is attached), regardless of sampling. Shared by all
     /// clones, so the `span_end__*` probe fires exactly once when the last
     /// clone of the span drops.
     pub(crate) probe: Option<Arc<SpanProbe>>,
+}
+
+impl SharedSpan {
+    /// Sentinel value to indicate a deferred span in `is_sampled`.
+    const DEFERRED_SAMPLING: u8 = 0xFF;
+
+    /// Creates a [`SharedSpan`] equivalent to [`Span::inactive()`].
+    #[cfg(feature = "user-tracing")]
+    pub(crate) const fn inactive() -> Self {
+        Self {
+            inner: SharedSpanHandle::Inactive,
+            is_sampled: AtomicU8::new(false as u8),
+            probe: None,
+        }
+    }
+
+    /// Creates a [`SharedSpan`] whose root can be activated in place
+    /// after contexts have captured it.
+    #[cfg(feature = "user-tracing")]
+    pub(crate) fn deferred() -> Self {
+        Self {
+            inner: SharedSpanHandle::Deferred(Arc::new(RwLock::new(Span::inactive()))),
+            is_sampled: AtomicU8::new(Self::DEFERRED_SAMPLING),
+            probe: None,
+        }
+    }
+
+    #[inline]
+    pub(crate) fn is_sampled(&self) -> bool {
+        match self.is_sampled.load(Ordering::Relaxed) {
+            0 => return false,
+            1 => return true,
+            // Deferred SharedSpan, look inside the lock
+            _v => {
+                debug_assert_eq!(
+                    _v,
+                    Self::DEFERRED_SAMPLING,
+                    "unexpected value in SharedSpan::is_sampled",
+                );
+            }
+        }
+
+        let is_sampled = self.inner.with_read(|span| span.is_sampled());
+        if is_sampled {
+            // We never de-initialize a span inside SharedSpan, so we can
+            // save the result once its true.
+            self.is_sampled.store(true as u8, Ordering::Relaxed);
+        }
+        is_sampled
+    }
+}
+
+impl Clone for SharedSpan {
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+            is_sampled: AtomicU8::new(self.is_sampled.load(Ordering::Relaxed)),
+            probe: self.probe.clone(),
+        }
+    }
 }
 
 /// Probe state for a single span invocation. Dropping it fires the span's
@@ -120,7 +182,7 @@ pub(crate) fn shared_span(span: Span) -> SharedSpan {
 
     SharedSpan {
         inner: SharedSpanHandle::new(span),
-        is_sampled,
+        is_sampled: AtomicU8::new(is_sampled as u8),
         probe: None,
     }
 }
@@ -139,28 +201,8 @@ pub(crate) fn user_shared_span(span: Span) -> SharedSpan {
 
     SharedSpan {
         inner,
-        is_sampled,
+        is_sampled: AtomicU8::new(is_sampled as u8),
         probe: None,
-    }
-}
-
-/// Creates a user span whose root can be activated in place after contexts have captured it.
-#[cfg(feature = "user-tracing")]
-pub(crate) fn deferred_user_span() -> SharedSpan {
-    SharedSpan {
-        inner: SharedSpanHandle::Deferred(Arc::new(RwLock::new(Span::inactive()))),
-        is_sampled: false,
-        probe: None,
-    }
-}
-
-#[cfg(feature = "user-tracing")]
-impl SharedSpan {
-    pub(crate) fn user_is_sampled(&self) -> bool {
-        match &self.inner {
-            SharedSpanHandle::Deferred(span) => span.read().is_sampled(),
-            _ => self.is_sampled,
-        }
     }
 }
 
@@ -168,7 +210,7 @@ pub fn write_current_span(write_fn: impl FnOnce(&mut Span)) {
     // Check the cached flag before touching the lock. Writing to an unsampled span is a no-op
     // anyway, so this only avoids taking a write guard for nothing.
     let span = match current_span() {
-        Some(span) if span.is_sampled => span,
+        Some(span) if span.is_sampled() => span,
         _ => return,
     };
 
@@ -212,7 +254,7 @@ pub(crate) fn start_trace(
     }
 
     let mut current_span = match current_span() {
-        Some(current_span) if current_span.is_sampled => current_span,
+        Some(current_span) if current_span.is_sampled() => current_span,
         _ => return span_builder.start(),
     };
 
@@ -252,7 +294,7 @@ pub(crate) fn child_user_span(
 #[cfg(feature = "user-tracing")]
 pub fn write_current_user_span(write_fn: impl FnOnce(&mut Span)) {
     let span = match current_user_span() {
-        Some(span) if span.user_is_sampled() => span,
+        Some(span) if span.is_sampled() => span,
         _ => return,
     };
 
@@ -286,7 +328,7 @@ pub(crate) fn activate_deferred_user_trace(
         return;
     }
 
-    *span = start_user_trace(name, Arc::clone(&routing), inbound);
+    *span = start_user_trace(name, routing, inbound);
 }
 
 /// Starts a root user span on the user harness, optionally continuing the inbound W3C trace.
@@ -361,7 +403,7 @@ fn link_new_trace_with_current(
 
 pub(crate) fn fork_trace(fork_name: impl Into<Cow<'static, str>>) -> SharedSpan {
     match current_span() {
-        Some(span) if span.is_sampled => span,
+        Some(span) if span.is_sampled() => span,
         _ => return shared_span(Span::inactive()),
     };
 

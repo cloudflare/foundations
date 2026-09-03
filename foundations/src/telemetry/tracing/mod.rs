@@ -30,8 +30,8 @@ use self::internal::{
 };
 #[cfg(feature = "user-tracing")]
 use self::internal::{
-    SharedSpanHandle, activate_deferred_user_trace, child_user_span, current_user_span,
-    deferred_user_span, start_user_trace, user_shared_span,
+    activate_deferred_user_trace, child_user_span, current_user_span, start_user_trace,
+    user_shared_span,
 };
 use super::TelemetryContext;
 use super::scope::Scope;
@@ -335,7 +335,7 @@ pub struct UserSpan {
 #[cfg(feature = "user-tracing")]
 impl UserSpan {
     #[inline]
-    pub(crate) fn from_shared(span: SharedSpan) -> Self {
+    pub(crate) const fn from_shared(span: SharedSpan) -> Self {
         Self { span }
     }
 
@@ -344,13 +344,7 @@ impl UserSpan {
     /// Useful as a placeholder before a trace has been started, and as the resting state for a
     /// span slot that has been finished.
     pub const fn inactive() -> Self {
-        Self {
-            span: SharedSpan {
-                inner: SharedSpanHandle::Inactive,
-                is_sampled: false,
-                probe: None,
-            },
-        }
+        Self::from_shared(SharedSpan::inactive())
     }
 
     /// Creates a root user span that can be activated after telemetry contexts have captured it.
@@ -359,7 +353,7 @@ impl UserSpan {
     /// reported. Activation updates shared state in place, so scopes and [`TelemetryContext`]
     /// values created from this handle beforehand observe the active span without being replaced.
     pub fn deferred() -> Self {
-        Self::from_shared(deferred_user_span())
+        Self::from_shared(SharedSpan::deferred())
     }
 
     /// Activates this deferred root, continuing the inbound W3C trace from `inbound` when given.
@@ -422,8 +416,9 @@ impl UserSpan {
     ///
     /// Eager spans read cached state. Deferred roots inspect their shared span slot so contexts
     /// captured before activation observe the updated state.
+    #[inline]
     pub fn is_sampled(&self) -> bool {
-        self.span.user_is_sampled()
+        self.span.is_sampled()
     }
 
     /// W3C `traceparent` for this span, for outbound propagation to the next hop.
@@ -520,7 +515,7 @@ pub struct StartTraceOptions {
 /// This is useful to do a cheap check before commencing more expensive work,
 /// for example to set up span tags.
 pub fn span_is_sampled() -> bool {
-    matches!(current_span(), Some(span) if span.is_sampled)
+    matches!(current_span(), Some(span) if span.is_sampled())
 }
 
 /// Returns a trace ID of the current span.
