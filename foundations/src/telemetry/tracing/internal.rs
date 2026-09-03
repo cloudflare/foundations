@@ -24,6 +24,8 @@ pub(crate) type Tracer = cf_rustracing::Tracer<BoxSampler<SpanContextState>, Spa
 pub(crate) enum SharedSpanHandle {
     Tracked(Arc<LiveReferenceHandle<Arc<RwLock<Span>>>>),
     Untracked(Arc<RwLock<Span>>),
+    #[cfg(feature = "user-tracing")]
+    Deferred(Arc<RwLock<Span>>),
     Inactive,
 }
 
@@ -38,6 +40,8 @@ impl SharedSpanHandle {
         match self {
             SharedSpanHandle::Tracked(handle) => f(&handle.read()),
             SharedSpanHandle::Untracked(rw_lock) => f(&rw_lock.read()),
+            #[cfg(feature = "user-tracing")]
+            SharedSpanHandle::Deferred(rw_lock) => f(&rw_lock.read()),
             SharedSpanHandle::Inactive => f(&INACTIVE),
         }
     }
@@ -50,6 +54,8 @@ impl SharedSpanHandle {
         match self {
             SharedSpanHandle::Tracked(handle) => f(&mut handle.write()),
             SharedSpanHandle::Untracked(rw_lock) => f(&mut rw_lock.write()),
+            #[cfg(feature = "user-tracing")]
+            SharedSpanHandle::Deferred(rw_lock) => f(&mut rw_lock.write()),
             SharedSpanHandle::Inactive => {}
         }
     }
@@ -60,6 +66,8 @@ impl From<SharedSpanHandle> for Arc<RwLock<Span>> {
         match value {
             SharedSpanHandle::Tracked(handle) => Arc::clone(&handle),
             SharedSpanHandle::Untracked(rw_lock) => rw_lock,
+            #[cfg(feature = "user-tracing")]
+            SharedSpanHandle::Deferred(rw_lock) => rw_lock,
             // This is only used in `rustracing_span()`, which should rarely
             // need to be called. Allocating a fresh Arc every time is thus fine.
             SharedSpanHandle::Inactive => Arc::new(RwLock::new(Span::inactive())),
@@ -140,7 +148,7 @@ pub(crate) fn user_shared_span(span: Span) -> SharedSpan {
 #[cfg(feature = "user-tracing")]
 pub(crate) fn deferred_user_span() -> SharedSpan {
     SharedSpan {
-        inner: SharedSpanHandle::Untracked(Arc::new(RwLock::new(Span::inactive()))),
+        inner: SharedSpanHandle::Deferred(Arc::new(RwLock::new(Span::inactive()))),
         is_sampled: false,
         probe: None,
     }
@@ -149,7 +157,10 @@ pub(crate) fn deferred_user_span() -> SharedSpan {
 #[cfg(feature = "user-tracing")]
 impl SharedSpan {
     pub(crate) fn user_is_sampled(&self) -> bool {
-        self.is_sampled || self.inner.with_read(|span| span.is_sampled())
+        match &self.inner {
+            SharedSpanHandle::Deferred(span) => span.read().is_sampled(),
+            _ => self.is_sampled,
+        }
     }
 }
 
@@ -256,7 +267,7 @@ pub(crate) fn activate_deferred_user_trace(
     routing: impl RoutingMetadata + 'static,
     inbound: Option<super::TraceparentContext>,
 ) {
-    let SharedSpanHandle::Untracked(span) = &span.inner else {
+    let SharedSpanHandle::Deferred(span) = &span.inner else {
         return;
     };
 
