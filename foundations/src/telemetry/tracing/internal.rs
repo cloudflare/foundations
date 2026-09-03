@@ -73,7 +73,8 @@ pub(crate) struct SharedSpan {
     // panic the threads if they just share telemetry with failed thread.
     pub(crate) inner: SharedSpanHandle,
     // NOTE: store sampling flag separately, so we don't need to acquire lock
-    // every time we need to check the flag.
+    // every time we need to check the flag. Deferred user roots are the exception:
+    // their initially inactive span can be replaced in place.
     pub(crate) is_sampled: bool,
     /// USDT span probe state, recorded when the span's probe semaphore is
     /// non-zero (a tracer is attached), regardless of sampling. Shared by all
@@ -132,6 +133,23 @@ pub(crate) fn user_shared_span(span: Span) -> SharedSpan {
         inner,
         is_sampled,
         probe: None,
+    }
+}
+
+/// Creates a user span whose root can be activated in place after contexts have captured it.
+#[cfg(feature = "user-tracing")]
+pub(crate) fn deferred_user_span() -> SharedSpan {
+    SharedSpan {
+        inner: SharedSpanHandle::Untracked(Arc::new(RwLock::new(Span::inactive()))),
+        is_sampled: false,
+        probe: None,
+    }
+}
+
+#[cfg(feature = "user-tracing")]
+impl SharedSpan {
+    pub(crate) fn user_is_sampled(&self) -> bool {
+        self.is_sampled || self.inner.with_read(|span| span.is_sampled())
     }
 }
 
@@ -223,11 +241,41 @@ pub(crate) fn child_user_span(
 #[cfg(feature = "user-tracing")]
 pub fn write_current_user_span(write_fn: impl FnOnce(&mut Span)) {
     let span = match current_user_span() {
-        Some(span) if span.is_sampled => span,
+        Some(span) if span.user_is_sampled() => span,
         _ => return,
     };
 
     span.inner.with_write(write_fn);
+}
+
+/// Starts an inactive untracked root in place. Other spans and already-started roots are unchanged.
+#[cfg(feature = "user-tracing")]
+pub(crate) fn activate_deferred_user_trace(
+    span: &SharedSpan,
+    name: impl Into<Cow<'static, str>>,
+    routing: impl RoutingMetadata + 'static,
+    inbound: Option<super::TraceparentContext>,
+) {
+    let SharedSpanHandle::Untracked(span) = &span.inner else {
+        return;
+    };
+
+    if inbound
+        .as_ref()
+        .is_some_and(|inbound| !inbound.is_sampled())
+    {
+        return;
+    }
+
+    // Keep caller-controlled conversion and destruction outside the span lock.
+    let name = name.into();
+    let routing: Arc<dyn RoutingMetadata> = Arc::new(routing);
+    let mut span = span.write();
+    if span.is_sampled() {
+        return;
+    }
+
+    *span = start_user_trace(name, Arc::clone(&routing), inbound);
 }
 
 /// Starts a root user span on the user harness, optionally continuing the inbound W3C trace.

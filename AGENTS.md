@@ -18,3 +18,13 @@
 - Docs: add `///` doc comments for public items; `#![warn(missing_docs)]` is enabled
 - Feature flags: wrap platform/optional code with `#[cfg(feature = "...")]`
 - No `openssl`/`openssl-sys` - use `boring`, `ring`, or `rustls` instead
+
+## User Tracing
+
+- `UserSpan::deferred()` creates a stable request root that can be captured by telemetry contexts
+  before `activate()` makes the sampling decision.
+- A deferred root is an inactive span in a shared `RwLock`. Activation replaces it under the write
+  lock; the first active span wins, while inactive results remain retryable.
+- Recording and children created before activation are inactive. Contexts that captured the root
+  itself observe a later activation.
+- A sampled span remains protected by the same non-poisoning `RwLock` used by eager user spans.
