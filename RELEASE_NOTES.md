@@ -1,4 +1,9 @@
 
+5.10.1
+- 2026-09-03 feat(telemetry): attach user spans to contexts
+- 2026-09-03 refactor(telemetry): distinguish deferred user spans
+- 2026-09-03 feat(telemetry): add deferred user span activation
+
 5.10.0
 - 2026-08-28 feat(examples): add span_with_probe demo workload
 - 2026-08-28 feat(telemetry): add span_with_probe! macro and span_fn's end_probe option
