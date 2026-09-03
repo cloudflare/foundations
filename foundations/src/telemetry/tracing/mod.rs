@@ -30,7 +30,8 @@ use self::internal::{
 };
 #[cfg(feature = "user-tracing")]
 use self::internal::{
-    SharedSpanHandle, child_user_span, current_user_span, start_user_trace, user_shared_span,
+    SharedSpanHandle, activate_deferred_user_trace, child_user_span, current_user_span,
+    deferred_user_span, start_user_trace, user_shared_span,
 };
 use super::TelemetryContext;
 use super::scope::Scope;
@@ -352,6 +353,31 @@ impl UserSpan {
         }
     }
 
+    /// Creates a root user span that can be activated after telemetry contexts have captured it.
+    ///
+    /// Until [`activate`](Self::activate) is called, recording is inactive and no trace is
+    /// reported. Activation updates shared state in place, so scopes and [`TelemetryContext`]
+    /// values created from this handle beforehand observe the active span without being replaced.
+    pub fn deferred() -> Self {
+        Self::from_shared(deferred_user_span())
+    }
+
+    /// Activates this deferred root, continuing the inbound W3C trace from `inbound` when given.
+    ///
+    /// The first call that produces an active span wins. An unsampled inbound context is rejected
+    /// so this service does not create a fragment of a trace the caller chose not to collect.
+    ///
+    /// `routing` is attached at construction and inherited by child spans. An activation that
+    /// produces an inactive span leaves the root eligible for a later activation attempt.
+    pub fn activate(
+        &self,
+        name: impl Into<Cow<'static, str>>,
+        routing: impl RoutingMetadata + 'static,
+        inbound: Option<TraceparentContext>,
+    ) {
+        activate_deferred_user_trace(&self.span, name, routing, inbound);
+    }
+
     /// Starts a root user span, continuing the inbound W3C trace from `inbound` when given.
     ///
     /// `routing` is attached at construction and inherited by child spans. The result is inactive
@@ -394,9 +420,10 @@ impl UserSpan {
 
     /// Whether this span is being recorded.
     ///
-    /// Cheap: reads a flag rather than taking the span lock.
+    /// Eager spans read cached state. Deferred roots inspect their shared span slot so contexts
+    /// captured before activation observe the updated state.
     pub fn is_sampled(&self) -> bool {
-        self.span.is_sampled
+        self.span.user_is_sampled()
     }
 
     /// W3C `traceparent` for this span, for outbound propagation to the next hop.
@@ -1317,6 +1344,8 @@ mod user_tracing_tests {
     use crate::telemetry::TelemetryContext;
     use crate::telemetry::tracing::{Span, TestTraceOptions};
     use cf_rustracing::tag::{Tag, TagValue};
+    use std::cell::Cell;
+    use std::sync::{Arc, Barrier};
 
     #[derive(Debug)]
     struct TestRouting {
@@ -1790,13 +1819,270 @@ mod user_tracing_tests {
 
     // --- Owned `UserSpan` handles ---
 
-    fn assert_send<T: Send>() {}
+    fn assert_send_sync<T: Send + Sync>() {}
 
     // The property the whole type exists for: `UserSpanScope` is deliberately `!Send`, so it
     // can't be stored in a struct or held across an await point. This can.
     #[test]
-    fn handle_is_send() {
-        assert_send::<UserSpan>();
+    fn handle_is_send_and_sync() {
+        assert_send_sync::<UserSpan>();
+    }
+
+    #[test]
+    fn deferred_handle_activates_context_captured_before_activation() {
+        let ctx = TelemetryContext::test();
+        let _scope = ctx.scope();
+        let root = UserSpan::deferred();
+        let request_ctx = root.enter().into_context();
+        let tag_factory_called = Cell::new(false);
+
+        root.set_tags(|| {
+            tag_factory_called.set(true);
+            vec![Tag::new("before", true)]
+        });
+        assert!(!tag_factory_called.get());
+        assert!(!root.is_sampled());
+        assert!(root.w3c_traceparent().is_none());
+
+        root.activate("request", routing(), None);
+        assert!(root.is_sampled());
+
+        {
+            let _request = request_ctx.scope();
+            user_tracing::add_span_tags!("after" => true);
+            let _child = user_tracing::span("child");
+        }
+
+        drop(request_ctx);
+        drop(root);
+
+        let traces = ctx.user_traces(TestTraceOptions {
+            include_tags: true,
+            ..Default::default()
+        });
+        assert_eq!(traces.len(), 1);
+        assert_eq!(traces[0].0.children[0].name, "child");
+        assert!(
+            traces[0]
+                .0
+                .tags
+                .contains(&("after".to_string(), TagValue::Boolean(true)))
+        );
+        assert!(!traces[0].0.tags.iter().any(|(name, _)| name == "before"));
+    }
+
+    #[test]
+    fn pre_activation_child_and_its_subtree_stay_inactive() {
+        let ctx = TelemetryContext::test();
+        let _scope = ctx.scope();
+        let root = UserSpan::deferred();
+        let request_ctx = root.enter().into_context();
+
+        {
+            let _request = request_ctx.scope();
+            let before = user_tracing::span("before");
+
+            root.activate("request", routing(), None);
+            let ignored = user_tracing::span("ignored");
+
+            drop(ignored);
+            drop(before);
+            let _after = user_tracing::span("after");
+        }
+
+        drop(request_ctx);
+        drop(root);
+
+        assert_eq!(
+            ctx.user_traces(Default::default()),
+            vec![test_trace! { "request" => { "after" } }]
+        );
+    }
+
+    #[test]
+    fn context_from_pre_activation_child_remains_inactive() {
+        let ctx = TelemetryContext::test();
+        let _scope = ctx.scope();
+        let root = UserSpan::deferred();
+        let request_ctx = root.enter().into_context();
+        let before_ctx = {
+            let _request = request_ctx.scope();
+            user_tracing::span("before").into_context()
+        };
+
+        root.activate("request", routing(), None);
+        {
+            let _before = before_ctx.scope();
+            let _after = user_tracing::span("after");
+        }
+
+        drop(before_ctx);
+        drop(request_ctx);
+        drop(root);
+
+        assert_eq!(
+            ctx.user_traces(Default::default()),
+            vec![test_trace! { "request" }]
+        );
+    }
+
+    #[test]
+    fn ordinary_inactive_scope_still_masks_active_root() {
+        let ctx = TelemetryContext::test();
+        let _scope = ctx.scope();
+
+        {
+            let root = UserSpan::start_trace("request", routing(), None);
+            let _root = root.enter();
+            let inactive = UserSpan::inactive();
+            let _inactive = inactive.enter();
+            let _suppressed = user_tracing::span("suppressed");
+        }
+
+        assert_eq!(
+            ctx.user_traces(Default::default()),
+            vec![test_trace! { "request" }]
+        );
+    }
+
+    #[test]
+    fn deferred_handle_activates_only_once() {
+        let ctx = TelemetryContext::test();
+        let _scope = ctx.scope();
+        let root = UserSpan::deferred();
+
+        root.activate("first", routing(), None);
+        root.activate("second", routing(), None);
+        drop(root);
+
+        assert_eq!(
+            ctx.user_traces(Default::default()),
+            vec![test_trace! { "first" }]
+        );
+    }
+
+    #[test]
+    fn deferred_handle_retries_an_inactive_activation() {
+        let ctx = TelemetryContext::test();
+        let root = UserSpan::deferred();
+
+        root.activate("ignored", routing(), None);
+        assert!(!root.is_sampled());
+
+        {
+            let _scope = ctx.scope();
+            root.activate("request", routing(), None);
+            assert!(root.is_sampled());
+        }
+
+        drop(root);
+        assert_eq!(
+            ctx.user_traces(Default::default()),
+            vec![test_trace! { "request" }]
+        );
+    }
+
+    #[test]
+    fn deferred_handle_activates_only_once_concurrently() {
+        let ctx = TelemetryContext::test();
+        let root = Arc::new(UserSpan::deferred());
+        let request_ctx = {
+            let _scope = ctx.scope();
+            root.enter().into_context()
+        };
+        let barrier = Arc::new(Barrier::new(3));
+        let mut threads = Vec::new();
+
+        for name in ["first", "second"] {
+            let root = Arc::clone(&root);
+            let request_ctx = request_ctx.clone();
+            let barrier = Arc::clone(&barrier);
+            threads.push(std::thread::spawn(move || {
+                let _scope = request_ctx.scope();
+                barrier.wait();
+                root.activate(name, routing(), None);
+                assert!(root.is_sampled());
+                let _child = user_tracing::span(format!("{name} child"));
+            }));
+        }
+
+        barrier.wait();
+        for thread in threads {
+            thread.join().unwrap();
+        }
+        drop(request_ctx);
+        drop(root);
+
+        let traces = ctx.user_traces(Default::default());
+        assert_eq!(traces.len(), 1);
+        assert!(matches!(traces[0].0.name.as_str(), "first" | "second"));
+        let mut child_names: Vec<_> = traces[0]
+            .0
+            .children
+            .iter()
+            .map(|span| span.name.as_str())
+            .collect();
+        child_names.sort_unstable();
+        assert_eq!(child_names, ["first child", "second child"]);
+    }
+
+    #[test]
+    fn deferred_root_exports_after_its_last_context() {
+        let ctx = TelemetryContext::test();
+        let _scope = ctx.scope();
+        let root = UserSpan::deferred();
+        let request_ctx = root.enter().into_context();
+
+        root.activate("request", routing(), None);
+        root.finish();
+        assert!(ctx.user_traces(Default::default()).is_empty());
+
+        drop(request_ctx);
+        assert_eq!(
+            ctx.user_traces(Default::default()),
+            vec![test_trace! { "request" }]
+        );
+    }
+
+    #[test]
+    fn unsampled_inbound_does_not_claim_deferred_root() {
+        let ctx = TelemetryContext::test();
+        let _scope = ctx.scope();
+        let root = UserSpan::deferred();
+        let inbound =
+            TraceparentContext::parse(b"00-11223344556677889900aabbccddeeff-a1b2c3d4e5f60718-00")
+                .unwrap();
+
+        root.activate("ignored", routing(), Some(inbound));
+        assert!(!root.is_sampled());
+
+        root.activate("request", routing(), None);
+        drop(root);
+        assert_eq!(
+            ctx.user_traces(Default::default()),
+            vec![test_trace! { "request" }]
+        );
+    }
+
+    #[test]
+    fn deferred_root_continues_sampled_inbound_trace() {
+        let ctx = TelemetryContext::test();
+        let _scope = ctx.scope();
+        let root = UserSpan::deferred();
+        let inbound =
+            TraceparentContext::parse(b"00-11223344556677889900aabbccddeeff-a1b2c3d4e5f60718-01")
+                .unwrap();
+
+        root.activate("request", routing(), Some(inbound));
+        let root_traceparent = root.w3c_traceparent().expect("root traceparent");
+        let child_traceparent = root
+            .child("child")
+            .w3c_traceparent()
+            .expect("child traceparent");
+
+        assert!(root_traceparent.starts_with("00-11223344556677889900aabbccddeeff-"));
+        assert_eq!(&root_traceparent[..35], &child_traceparent[..35]);
+        assert_ne!(root_traceparent, child_traceparent);
     }
 
     #[test]
