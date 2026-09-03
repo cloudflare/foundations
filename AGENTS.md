@@ -23,6 +23,8 @@
 
 - `UserSpan::deferred()` creates a stable request root that can be captured by telemetry contexts
   before `activate()` makes the sampling decision.
+- `TelemetryContext::with_user_span()` attaches an explicit `UserSpan` without changing ambient
+  scope; the returned context and handle share the same underlying span.
 - A deferred root is an inactive span in a shared `RwLock`. Activation replaces it under the write
   lock; the first active span wins, while inactive results remain retryable.
 - Recording and children created before activation are inactive. Contexts that captured the root
