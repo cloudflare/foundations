@@ -461,6 +461,21 @@ impl UserSpan {
     pub fn finish(self) {}
 }
 
+#[cfg(feature = "user-tracing")]
+impl TelemetryContext {
+    /// Returns a copy of this context with `span` as its current user-tracing span.
+    ///
+    /// The returned context and the handle share the same underlying span, so activating a
+    /// deferred handle updates work already carrying the context. Existing logging and internal
+    /// tracing state is preserved. Use [`TelemetryContext::scope`] or [`TelemetryContext::apply`]
+    /// to make the returned context active.
+    pub fn with_user_span(&self, span: &UserSpan) -> Self {
+        let mut ctx = self.clone();
+        ctx.user_span = Some(span.span.clone());
+        ctx
+    }
+}
+
 /// A span recorded in both the internal and user traces, produced by [`dual_span`].
 ///
 /// Scope ends when the handle is dropped. [`into_context`](Self::into_context) carries both the
@@ -1831,9 +1846,12 @@ mod user_tracing_tests {
     #[test]
     fn deferred_handle_activates_context_captured_before_activation() {
         let ctx = TelemetryContext::test();
-        let _scope = ctx.scope();
+        let unrelated_ctx = TelemetryContext::test();
         let root = UserSpan::deferred();
-        let request_ctx = root.enter().into_context();
+        let request_ctx = {
+            let _scope = unrelated_ctx.scope();
+            ctx.with_user_span(&root)
+        };
         let tag_factory_called = Cell::new(false);
 
         root.set_tags(|| {
@@ -1844,11 +1862,10 @@ mod user_tracing_tests {
         assert!(!root.is_sampled());
         assert!(root.w3c_traceparent().is_none());
 
-        root.activate("request", routing(), None);
-        assert!(root.is_sampled());
-
         {
             let _request = request_ctx.scope();
+            root.activate("request", routing(), None);
+            assert!(root.is_sampled());
             user_tracing::add_span_tags!("after" => true);
             let _child = user_tracing::span("child");
         }
@@ -1869,6 +1886,7 @@ mod user_tracing_tests {
                 .contains(&("after".to_string(), TagValue::Boolean(true)))
         );
         assert!(!traces[0].0.tags.iter().any(|(name, _)| name == "before"));
+        assert!(unrelated_ctx.user_traces(Default::default()).is_empty());
     }
 
     #[test]
