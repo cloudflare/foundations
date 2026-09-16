@@ -1,4 +1,8 @@
 
+5.10.2
+- 2026-09-16 feat(telemetry): configure service name for user traces
+- 2026-09-03 Cache `SharedSpan::is_sampled` for deferred user tracing spans
+
 5.10.1
 - 2026-09-03 feat(telemetry): attach user spans to contexts
 - 2026-09-03 refactor(telemetry): distinguish deferred user spans
