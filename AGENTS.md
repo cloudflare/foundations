@@ -30,3 +30,5 @@
 - Recording and children created before activation are inactive. Contexts that captured the root
   itself observe a later activation.
 - A sampled span remains protected by the same non-poisoning `RwLock` used by eager user spans.
+- User trace resources use `UserTracingSettings::service_name` and intentionally omit the internal
+  service version.

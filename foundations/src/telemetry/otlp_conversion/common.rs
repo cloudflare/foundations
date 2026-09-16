@@ -1,19 +1,32 @@
+#[cfg(feature = "telemetry-otlp-grpc")]
 use crate::ServiceInfo;
 use opentelemetry_proto::tonic as otlp;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-pub(super) fn convert_service_info_to_resource(
-    service_info: &ServiceInfo,
-) -> otlp::resource::v1::Resource {
-    let service_name = otlp::common::v1::KeyValue {
+fn service_name_attribute(service_name: &str) -> otlp::common::v1::KeyValue {
+    otlp::common::v1::KeyValue {
         key: "service.name".to_string(),
         value: Some(otlp::common::v1::AnyValue {
             value: Some(otlp::common::v1::any_value::Value::StringValue(
-                service_info.name.to_string(),
+                service_name.to_string(),
             )),
         }),
-    };
+    }
+}
 
+#[cfg(feature = "user-tracing")]
+pub(super) fn convert_service_name_to_resource(service_name: &str) -> otlp::resource::v1::Resource {
+    otlp::resource::v1::Resource {
+        attributes: vec![service_name_attribute(service_name)],
+        dropped_attributes_count: 0,
+        entity_refs: vec![],
+    }
+}
+
+#[cfg(feature = "telemetry-otlp-grpc")]
+pub(super) fn convert_service_info_to_resource(
+    service_info: &ServiceInfo,
+) -> otlp::resource::v1::Resource {
     let service_version = otlp::common::v1::KeyValue {
         key: "service.version".to_string(),
         value: Some(otlp::common::v1::AnyValue {
@@ -24,7 +37,7 @@ pub(super) fn convert_service_info_to_resource(
     };
 
     otlp::resource::v1::Resource {
-        attributes: vec![service_name, service_version],
+        attributes: vec![service_name_attribute(service_info.name), service_version],
         dropped_attributes_count: 0,
         entity_refs: vec![],
     }

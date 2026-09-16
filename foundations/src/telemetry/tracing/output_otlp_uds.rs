@@ -6,9 +6,9 @@
 use super::channel::SharedSpanReceiver;
 use super::init::TraceOutputFutures;
 use super::internal::reporter_error;
-use crate::telemetry::otlp_conversion::tracing::convert_span;
+use crate::BootstrapResult;
+use crate::telemetry::otlp_conversion::tracing::convert_user_span;
 use crate::telemetry::settings::OtlpUdsOutputSettings;
-use crate::{BootstrapResult, ServiceInfo};
 use anyhow::ensure;
 use cf_rustracing_jaeger::span::FinishedSpan;
 use futures_util::future::FutureExt as _;
@@ -95,7 +95,7 @@ impl OtlpUdsClient {
     /// Processes a single drained batch of spans: groups them by routing,
     /// converts each to OTLP, and POSTs one request per group. Errors are
     /// reported and do not abort the batch.
-    async fn process_batch(&self, service_info: &ServiceInfo, spans: &mut Vec<FinishedSpan>) {
+    async fn process_batch(&self, service_name: &str, spans: &mut Vec<FinishedSpan>) {
         // Group spans by routing so each request carries a single routing value
         // in its header, encoded once per group.
         let mut groups: HashMap<String, (String, Vec<ResourceSpans>)> = HashMap::new();
@@ -110,7 +110,7 @@ impl OtlpUdsClient {
                 .entry(routing.group_key())
                 .or_insert_with(|| (routing.encode(), Vec::new()));
 
-            entry.1.push(convert_span(span, service_info));
+            entry.1.push(convert_user_span(span, service_name));
         }
 
         for (_group_key, (header_value, resource_spans)) in groups {
@@ -164,20 +164,25 @@ impl OtlpUdsClient {
 }
 
 pub(super) fn start(
-    service_info: &ServiceInfo,
+    service_name: &str,
     settings: &OtlpUdsOutputSettings,
     span_rx: SharedSpanReceiver,
 ) -> BootstrapResult<TraceOutputFutures> {
+    ensure!(
+        !service_name.is_empty(),
+        "user tracing `service_name` must be set"
+    );
+
     let client = Arc::new(OtlpUdsClient::new(settings)?);
     let max_batch_size = settings.max_batch_size;
 
     let workers = (0..settings.num_tasks)
         .map(|_| {
             let client = Arc::clone(&client);
-            let service_info = service_info.clone();
+            let service_name = service_name.to_owned();
             let span_rx = span_rx.clone();
 
-            async move { do_export(client, service_info, span_rx, max_batch_size).await }.boxed()
+            async move { do_export(client, service_name, span_rx, max_batch_size).await }.boxed()
         })
         .collect();
 
@@ -190,14 +195,14 @@ pub(super) fn start(
 /// Drains the span channel and hands each batch to the client for export.
 async fn do_export(
     client: Arc<OtlpUdsClient>,
-    service_info: ServiceInfo,
+    service_name: String,
     span_rx: SharedSpanReceiver,
     max_batch_size: usize,
 ) {
     let mut batch = Vec::with_capacity(max_batch_size);
 
     while span_rx.recv_many(&mut batch, max_batch_size).await > 0 {
-        client.process_batch(&service_info, &mut batch).await;
+        client.process_batch(&service_name, &mut batch).await;
     }
 }
 
@@ -216,6 +221,7 @@ mod tests {
     use tokio::sync::mpsc;
 
     const TEST_ROUTING_HEADER: &str = "cf-trace-config";
+    const TEST_SERVICE_NAME: &str = "edge_processing";
 
     #[derive(Debug)]
     struct TestRouting {
@@ -326,6 +332,18 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn start_rejects_empty_service_name() {
+        use super::super::channel::{PipelineType, unbounded_channel};
+
+        let (_sender, span_rx) = unbounded_channel(PipelineType::User);
+        let err = start("", &OtlpUdsOutputSettings::default(), span_rx)
+            .err()
+            .expect("an empty service name should be rejected");
+
+        assert!(err.to_string().contains("service_name"));
+    }
+
+    #[tokio::test]
     async fn send_posts_otlp_with_headers_and_body() {
         let (socket_path, _dir, mut rx) = spawn_receptor(StatusCode::OK);
 
@@ -398,8 +416,7 @@ mod tests {
                 .start();
         }
 
-        let service_info = crate::service_info!();
-        let futs = start(&service_info, &settings_for(&socket_path), span_rx).unwrap();
+        let futs = start(TEST_SERVICE_NAME, &settings_for(&socket_path), span_rx).unwrap();
         for worker in futs.workers {
             tokio::spawn(worker);
         }
@@ -434,12 +451,12 @@ mod tests {
 
         let settings = UserTracingSettings {
             enabled: true,
+            service_name: TEST_SERVICE_NAME.to_string(),
             max_queue_size: None,
             output: UserTracesOutput::OtlpUds(settings_for(&socket_path)),
         };
 
-        let service_info = crate::service_info!();
-        crate::telemetry::tracing::init::init_user(&service_info, &settings).unwrap();
+        crate::telemetry::tracing::init::init_user(&settings).unwrap();
 
         {
             let _root = user_tracing::start_trace(
@@ -465,6 +482,18 @@ mod tests {
 
         // Decode the OTLP body and verify the producer API actually emitted the expected spans.
         let req = ExportTraceServiceRequest::decode(captured.body.as_slice()).unwrap();
+        for resource_spans in &req.resource_spans {
+            let attributes = &resource_spans.resource.as_ref().unwrap().attributes;
+            assert!(matches!(
+                &attributes.as_slice(),
+                [attribute]
+                    if attribute.key == "service.name"
+                        && matches!(
+                            &attribute.value.as_ref().unwrap().value,
+                            Some(Value::StringValue(value)) if value == TEST_SERVICE_NAME
+                        )
+            ));
+        }
         let spans: Vec<_> = req
             .resource_spans
             .iter()
@@ -510,10 +539,11 @@ mod tests {
 
         let settings = UserTracingSettings {
             enabled: true,
+            service_name: TEST_SERVICE_NAME.to_string(),
             max_queue_size: None,
             output: UserTracesOutput::OtlpUds(settings_for(&socket_path)),
         };
-        crate::telemetry::tracing::init::init_user(&crate::service_info!(), &settings).unwrap();
+        crate::telemetry::tracing::init::init_user(&settings).unwrap();
 
         let inbound =
             TraceparentContext::parse(b"00-11223344556677889900aabbccddeeff-a1b2c3d4e5f60718-01")
@@ -556,10 +586,11 @@ mod tests {
 
         let settings = UserTracingSettings {
             enabled: true,
+            service_name: TEST_SERVICE_NAME.to_string(),
             max_queue_size: None,
             output: UserTracesOutput::OtlpUds(settings_for(&socket_path)),
         };
-        crate::telemetry::tracing::init::init_user(&crate::service_info!(), &settings).unwrap();
+        crate::telemetry::tracing::init::init_user(&settings).unwrap();
 
         {
             let _root = user_tracing::start_trace(

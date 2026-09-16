@@ -11,6 +11,10 @@ pub struct UserTracingSettings {
     #[serde(default = "UserTracingSettings::default_enabled")]
     pub enabled: bool,
 
+    /// Publicly visible service name attached to user traces. Must be non-empty
+    /// if user tracing is enabled.
+    pub service_name: String,
+
     /// Maximum number of spans to buffer for output. Any spans above
     /// this limit will be dropped until the queue regains capacity.
     ///
@@ -29,6 +33,7 @@ impl Default for UserTracingSettings {
     fn default() -> Self {
         Self {
             enabled: UserTracingSettings::default_enabled(),
+            service_name: String::new(),
             max_queue_size: UserTracingSettings::default_max_queue_size(),
             output: Default::default(),
         }

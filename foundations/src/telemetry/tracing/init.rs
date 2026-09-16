@@ -196,7 +196,6 @@ fn create_tracer_and_span_rx_for_user(
 // NOTE: does nothing if user tracing has already been initialized in this process.
 #[cfg(feature = "user-tracing")]
 pub(crate) fn init_user(
-    service_info: &ServiceInfo,
     settings: &UserTracingSettings,
 ) -> BootstrapResult<Option<BoxFuture<'static, BootstrapResult<()>>>> {
     if !settings.enabled || USER_HARNESS.get().is_some() {
@@ -207,7 +206,7 @@ pub(crate) fn init_user(
 
     let futs = match &settings.output {
         UserTracesOutput::OtlpUds(output_settings) => {
-            output_otlp_uds::start(service_info, output_settings, span_rx)?
+            output_otlp_uds::start(&settings.service_name, output_settings, span_rx)?
         }
     };
 
