@@ -50,6 +50,29 @@ async fn attr_task(iter: u64) {
     tokio::time::sleep(Duration::from_millis(100 + iter % 20)).await;
 }
 
+/// Showcase `probe_args`: one span that serves alternating cache hits and
+/// misses, passing a hit flag as arg1 so the tracer can bucket the probe's
+/// durations by outcome. Hits are fast (200-220ms), misses slow (300-320ms).
+async fn cache_task(iter: u64) {
+    const HIT: u64 = 1;
+    const MISS: u64 = 0;
+
+    let (hit, base_ms) = if iter % 2 == 0 {
+        (HIT, 200)
+    } else {
+        (MISS, 300)
+    };
+
+    let work_fut = async move {
+        tokio::time::sleep(Duration::from_millis(base_ms + iter % 20)).await;
+    };
+
+    span_with_probe!("example::cache_task", probe_args = [hit])
+        .into_context()
+        .apply(work_fut)
+        .await;
+}
+
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
     println!("pid {}", std::process::id());
@@ -59,6 +82,7 @@ async fn main() {
         short_task(iter).await;
         long_task(iter).await;
         attr_task(iter).await;
+        cache_task(iter).await;
 
         print!("\riteration {iter}");
         std::io::stdout().flush().unwrap();
