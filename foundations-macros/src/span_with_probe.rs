@@ -4,7 +4,7 @@ use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
 use syn::parse::{Parse, ParseStream};
-use syn::{LitStr, Path, parse_quote};
+use syn::{Expr, LitStr, Path, parse_quote};
 
 struct Args {
     span_name: LitStr,
@@ -18,6 +18,12 @@ pub(crate) struct Options {
 
     #[darling(default = "Options::default_usdt_provider")]
     usdt_provider: LitStr,
+
+    /// Opaque `u64` values passed to the probe as extra arguments (after the
+    /// span duration, which is always arg0); evaluated only when the probe is
+    /// armed.
+    #[darling(default)]
+    probe_args: Option<Expr>,
 }
 
 impl Options {
@@ -85,7 +91,11 @@ fn expand_from_parsed(args: Args) -> TokenStream2 {
     let span_name = &args.span_name;
     let crate_path = &args.options.crate_path;
 
-    let probe_setup = probe_setup(span_name, &args.options.usdt_provider);
+    let probe_setup = probe_setup(
+        span_name,
+        &args.options.usdt_provider,
+        args.options.probe_args.as_ref(),
+    );
     let track_env = track_provider_env();
 
     // The USDT machinery is linux/x86_64-only; elsewhere the macro degrades
@@ -107,10 +117,63 @@ fn expand_from_parsed(args: Args) -> TokenStream2 {
     })
 }
 
+/// Maximum number of u64 probe args (arg0 = duration); mirrors
+/// `MAX_PROBE_ARGS` in foundations. Keep in sync.
+const MAX_PROBE_ARGS: usize = 4;
+
 /// The probe scaffolding shared by `span_with_probe!` and `span_fn`.
-pub(crate) fn probe_setup(span_name: &LitStr, usdt_provider: &LitStr) -> TokenStream2 {
+/// `probe_args` is an optional `[u64; N]` array expression (0..=3 extra
+/// values) exposed to the tracer as the probe's arguments after the span
+/// duration (arg0); it is evaluated only when the probe is armed.
+pub(crate) fn probe_setup(
+    span_name: &LitStr,
+    usdt_provider: &LitStr,
+    probe_args: Option<&Expr>,
+) -> TokenStream2 {
     let probe_name = probe_name(&span_name.value());
-    let template = asm_template(&usdt_provider.value(), &probe_name);
+
+    // Split `probe_args` into its element expressions. An absent option or an
+    // empty array means duration-only; any other arity (up to MAX) is
+    // supported. A non-array expression is rejected.
+    let extra: Vec<Expr> = match probe_args {
+        None => Vec::new(),
+        Some(Expr::Array(arr)) => arr.elems.iter().cloned().collect(),
+        Some(other) => {
+            return syn::Error::new_spanned(
+                other,
+                "probe_args must be an array expression, e.g. `probe_args = [a, b]`",
+            )
+            .to_compile_error();
+        }
+    };
+
+    let nargs = 1 + extra.len();
+    if nargs > MAX_PROBE_ARGS {
+        return syn::Error::new_spanned(
+            probe_args.expect("extra is non-empty only when probe_args is set"),
+            format!(
+                "probe_args supports at most {} extra values ({} total args incl. duration)",
+                MAX_PROBE_ARGS - 1,
+                MAX_PROBE_ARGS
+            ),
+        )
+        .to_compile_error();
+    }
+
+    let template = asm_template(&usdt_provider.value(), &probe_name, nargs);
+
+    // The probe reads its operands from the `args` slice by constant index
+    // (arg0 = duration, then the extras). Each becomes one `-8@<reg>` in the
+    // note; constant indices let `asm!` place each in its own register.
+    let asm_operands = (0..nargs).map(|i| quote!(in(reg) args[#i] as isize,));
+
+    // The args array holds the duration placeholder (index 0, overwritten by
+    // the runtime) followed by the extra expressions, each evaluated once when
+    // the array is built. It is always exactly `MAX_PROBE_ARGS` elements, so
+    // its type is inferred from `__arm_probe`'s signature.
+    let arg_count = nargs as u8;
+    let pad = (0..MAX_PROBE_ARGS - nargs).map(|_| quote!(0u64));
+    let args_array = quote!([ 0u64 #(, #extra )* #(, #pad)* ]);
 
     quote!(
         #[unsafe(link_section = ".probes")]
@@ -119,11 +182,11 @@ pub(crate) fn probe_setup(span_name: &LitStr, usdt_provider: &LitStr) -> TokenSt
         // `#[inline(never)]` keeps the NOP inside this function so the
         // note's address is hit exactly when the span ends.
         #[inline(never)]
-        fn span_end_probe(duration_ns: u64) {
+        fn span_end_probe(args: &[u64]) {
             unsafe {
                 ::core::arch::asm!(#template,
                     sym SEMAPHORE,
-                    in(reg) duration_ns as isize,
+                    #( #asm_operands )*
                     options(readonly, nostack, preserves_flags, att_syntax),
                 )
             }
@@ -132,16 +195,22 @@ pub(crate) fn probe_setup(span_name: &LitStr, usdt_provider: &LitStr) -> TokenSt
         let enabled = unsafe { ::core::ptr::read_volatile(&raw const SEMAPHORE) } != 0;
 
         if enabled {
-            __span.__arm_probe(span_end_probe);
+            __span.__arm_probe(
+                span_end_probe,
+                #args_array,
+                #arg_count,
+            );
         }
     )
 }
 
 /// `stapsdt` note + NOP, adapted from probe-rs' `sdt!` (x86_64, SystemTap
-/// semaphore in `.probes`). The two `{}` operands are the semaphore symbol
-/// and the duration argument.
-fn asm_template(usdt_provider: &str, probe_name: &str) -> String {
+/// semaphore in `.probes`). The `{}` operands are the semaphore symbol and one
+/// `-8@{}` arg descriptor per probe argument (arg0 = duration, then the
+/// caller-chosen extras).
+fn asm_template(usdt_provider: &str, probe_name: &str, nargs: usize) -> String {
     let usdt_provider = sanitize(usdt_provider);
+    let args_desc = vec!["-8@{}"; nargs].join(" ");
 
     format!(
         r#"
@@ -156,7 +225,7 @@ fn asm_template(usdt_provider: &str, probe_name: &str) -> String {
         .8byte {{}}
         .asciz "{usdt_provider}"
         .asciz "{probe_name}"
-        .asciz "-8@{{}}"
+        .asciz "{args_desc}"
 994:    .balign 4
         .popsection
 .ifndef _.stapsdt.base
@@ -203,11 +272,49 @@ mod tests {
         assert!(actual.contains(
             "let mut __span = :: foundations :: telemetry :: tracing :: span (\"http::client::send_request\") ;"
         ));
-        assert!(actual.contains("if enabled { __span . __arm_probe (span_end_probe) ; }"));
+        // Duration-only probe: single arg, args array of just the duration slot.
+        assert!(actual.contains("fn span_end_probe (args : & [u64])"));
+        assert!(actual.contains("in (reg) args [0usize] as isize"));
+        assert!(
+            actual.contains("__span . __arm_probe (span_end_probe , [0u64 , 0u64 , 0u64 , 0u64]")
+        );
+        assert!(actual.contains(", 1u8 ,)"));
         assert!(actual.contains(".asciz \\\"span_end__http__client__send_request\\\""));
+        assert!(actual.contains(".asciz \\\"-8@{}\\\""));
         assert!(actual.contains(".asciz \\\"foundations\\\""));
         // Probe arming is linux/x86_64-only.
         assert!(actual.contains("cfg (all (target_os = \"linux\" , target_arch = \"x86_64\"))"));
+    }
+
+    #[test]
+    fn expand_span_with_probe_with_probe_args() {
+        let args = parse_attr! {
+            #[span_with_probe("some::span", probe_args = [u8::from(msg.opcode) as u64, flags])]
+        };
+
+        let actual = expand_from_parsed(args).to_string();
+
+        // Two extra values → three operands and a three-element note.
+        assert!(actual.contains("fn span_end_probe (args : & [u64])"));
+        assert!(actual.contains("in (reg) args [0usize] as isize"));
+        assert!(actual.contains("in (reg) args [1usize] as isize"));
+        assert!(actual.contains("in (reg) args [2usize] as isize"));
+        assert!(actual.contains(
+            "__span . __arm_probe (span_end_probe , [0u64 , u8 :: from (msg . opcode) as u64 , flags , 0u64]"
+        ));
+        assert!(actual.contains(", 3u8 ,)"));
+        assert!(actual.contains(".asciz \\\"-8@{} -8@{} -8@{}\\\""));
+    }
+
+    #[test]
+    fn rejects_too_many_probe_args() {
+        let args = parse_attr! {
+            #[span_with_probe("some::span", probe_args = [1, 2, 3, 4, 5])]
+        };
+
+        let actual = expand_from_parsed(args).to_string();
+
+        assert!(actual.contains("probe_args supports at most 3 extra values"));
     }
 
     #[test]

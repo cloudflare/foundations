@@ -25,6 +25,8 @@ mod output_otlp_uds;
 mod traceparent;
 
 use self::init::TracingHarness;
+#[doc(hidden)]
+pub use self::internal::MAX_PROBE_ARGS;
 use self::internal::{
     SharedSpan, SpanProbe, create_span, current_span, shared_span, span_trace_id,
 };
@@ -269,13 +271,24 @@ impl SpanScope {
     /// span's probe semaphore, a `static` in the `.probes` section bumped by
     /// the tracer on attach, is non-zero). `end_probe` is the address of a
     /// per-span function containing the probe's NOP placeholder; it is called
-    /// with the span duration in nanoseconds when the last clone of the span
-    /// drops. Arming records the start timestamp unconditionally with respect
-    /// to sampling, so probes work even when span tracing is disabled.
+    /// when the last clone of the span drops with `args[..args_len]`, where
+    /// `args[0]` is overwritten with the span duration in nanoseconds and the
+    /// rest are caller-chosen values exposed to the tracer as the probe's
+    /// remaining arguments. Arming records the start timestamp unconditionally
+    /// with respect to sampling, so probes work even when span tracing is
+    /// disabled.
+    ///
+    /// Only macro-generated code calls this; the macro emits `end_probe` and
+    /// `args_len` with matching arity.
     #[doc(hidden)]
     #[inline(always)]
-    pub fn __arm_probe(&mut self, end_probe: fn(u64)) {
-        self.span.probe = Some(Arc::new(SpanProbe::new(end_probe)));
+    pub fn __arm_probe(
+        &mut self,
+        end_probe: fn(&[u64]),
+        args: [u64; MAX_PROBE_ARGS],
+        args_len: u8,
+    ) {
+        self.span.probe = Some(Arc::new(SpanProbe::new(end_probe, args, args_len)));
     }
 }
 
@@ -502,8 +515,13 @@ impl DualSpanScope {
     /// The user span is never probed.
     #[doc(hidden)]
     #[inline(always)]
-    pub fn __arm_probe(&mut self, end_probe: fn(u64)) {
-        self.inner.__arm_probe(end_probe);
+    pub fn __arm_probe(
+        &mut self,
+        end_probe: fn(&[u64]),
+        args: [u64; MAX_PROBE_ARGS],
+        args_len: u8,
+    ) {
+        self.inner.__arm_probe(end_probe, args, args_len);
     }
 }
 
@@ -2337,18 +2355,20 @@ mod user_tracing_tests {
 #[cfg(test)]
 mod probe_tests {
     use super::span;
-    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
     #[test]
     fn end_probe_fires_once_when_last_clone_drops() {
         static FIRES: AtomicUsize = AtomicUsize::new(0);
+        static LAST_TAG: AtomicU64 = AtomicU64::new(0);
 
-        fn counting_probe(_duration_ns: u64) {
+        fn counting_probe(args: &[u64]) {
+            LAST_TAG.store(args[1], Ordering::Relaxed);
             FIRES.fetch_add(1, Ordering::Relaxed);
         }
 
         let mut scope = span("test::probe");
-        scope.__arm_probe(counting_probe);
+        scope.__arm_probe(counting_probe, [0, 42, 0, 0], 2);
         let clone = scope.span.clone();
 
         drop(scope);
@@ -2356,19 +2376,20 @@ mod probe_tests {
 
         drop(clone);
         assert_eq!(FIRES.load(Ordering::Relaxed), 1);
+        assert_eq!(LAST_TAG.load(Ordering::Relaxed), 42);
     }
 
     #[cfg(feature = "user-tracing")]
     #[test]
     fn dual_scope_probe_arms_internal_span_only() {
-        fn noop_probe(_duration_ns: u64) {}
+        fn noop_probe(_args: &[u64]) {}
 
         let mut scope = super::dual_span("test::probe");
         assert!(scope.inner.span.probe.is_none());
         // No user trace is active, so no user span is created.
         assert!(scope.user.is_none());
 
-        scope.__arm_probe(noop_probe);
+        scope.__arm_probe(noop_probe, [0; 4], 2);
         assert!(scope.inner.span.probe.is_some());
     }
 }
