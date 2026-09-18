@@ -44,16 +44,17 @@ pub fn span_fn(args: TokenStream, item: TokenStream) -> TokenStream {
 /// semaphore is non-zero, the span start timestamp is recorded in the span
 /// state (regardless of span sampling), and the per-span `probe_end` function's
 /// address is stored alongside it. When the last clone of the span drops,
-/// `probe_end` is called with the span duration in nanoseconds, executing the
-/// NOP whose address the `stapsdt` ELF note publishes as the
-/// `span_end__<sanitized span name>` probe location.
+/// `probe_end` is called with the span duration in nanoseconds followed by the
+/// `probe_args` values, executing the NOP whose address the `stapsdt` ELF note
+/// publishes as the `span_end__<sanitized span name>` probe location. Tracers
+/// see the duration as arg0 and each `probe_args` value after it.
 ///
 /// # Example
 ///
 /// ```rust,ignore
 /// use foundations::telemetry::tracing::span_with_probe;
 ///
-/// span_with_probe!("http::client::send_request", usdt_provider = "myapp")
+/// span_with_probe!("http::client::send_request", usdt_provider = "myapp", probe_args = [opcode as u64])
 ///      .into_context()
 ///      .apply(do_exchange())
 ///      .await
@@ -65,6 +66,9 @@ pub fn span_fn(args: TokenStream, item: TokenStream) -> TokenStream {
 ///   environment variable at compile time — settable per project via `[env]`
 ///   in `.cargo/config.toml` — or `"foundations"` when unset); must be
 ///   non-empty and must not contain `:`
+/// - `probe_args = [expr, ...]` (defaults to `[]`); up to 3 opaque `u64`
+///   values passed to the tracer as the probe's arguments after the duration
+///   (arg0), each evaluated only when the probe is armed
 #[proc_macro]
 pub fn span_with_probe(input: TokenStream) -> TokenStream {
     span_with_probe::expand(input)

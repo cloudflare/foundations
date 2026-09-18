@@ -296,7 +296,7 @@ fn end_probe_setup(args: &Args) -> Option<TokenStream2> {
         .as_ref()
         .expect("provider defaulted and validated during parse");
 
-    let probe_setup = span_with_probe::probe_setup(span_name, usdt_provider);
+    let probe_setup = span_with_probe::probe_setup(span_name, usdt_provider, None);
     let track_env = span_with_probe::track_provider_env();
 
     Some(quote!(
@@ -791,7 +791,9 @@ mod tests {
         assert!(actual.contains(
             "let mut __span = :: foundations :: telemetry :: tracing :: span (\"sync_span\") ;"
         ));
-        assert!(actual.contains("if enabled { __span . __arm_probe (span_end_probe) ; }"));
+        assert!(
+            actual.contains("__span . __arm_probe (span_end_probe , [0u64 , 0u64 , 0u64 , 0u64]")
+        );
         assert!(actual.contains(".asciz \\\"span_end__sync_span\\\""));
         assert!(actual.contains(".asciz \\\"foundations\\\""));
         // Probe arming is linux/x86_64-only.
@@ -817,7 +819,9 @@ mod tests {
         assert!(actual.contains(
             "let mut __span = :: foundations :: telemetry :: tracing :: span (\"async_span\") ;"
         ));
-        assert!(actual.contains("if enabled { __span . __arm_probe (span_end_probe) ; }"));
+        assert!(
+            actual.contains("__span . __arm_probe (span_end_probe , [0u64 , 0u64 , 0u64 , 0u64]")
+        );
         assert!(actual.contains("__span . into_context () . apply (async move"));
     }
 
@@ -838,7 +842,9 @@ mod tests {
         assert!(actual.contains(
             "let mut __span = :: foundations :: telemetry :: tracing :: dual_span (\"user_span\") ;"
         ));
-        assert!(actual.contains("if enabled { __span . __arm_probe (span_end_probe) ; }"));
+        assert!(
+            actual.contains("__span . __arm_probe (span_end_probe , [0u64 , 0u64 , 0u64 , 0u64]")
+        );
     }
 
     #[test]
@@ -858,7 +864,9 @@ mod tests {
         assert!(actual.contains(
             "let mut __span = :: foo :: bar :: telemetry :: tracing :: span (\"sync_span\") ;"
         ));
-        assert!(actual.contains("if enabled { __span . __arm_probe (span_end_probe) ; }"));
+        assert!(
+            actual.contains("__span . __arm_probe (span_end_probe , [0u64 , 0u64 , 0u64 , 0u64]")
+        );
     }
 
     #[test]
