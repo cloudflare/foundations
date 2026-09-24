@@ -33,7 +33,42 @@
 //!     // sentry::init(client_opts);
 //! }
 //! ```
+//!
+//! # Server-side symbolication
+//!
+//! Stacktraces are symbolicated locally by default. To capture instruction addresses
+//! without loading debug information, replace Sentry's automatic stacktrace integration
+//! with [`backtrace::UnresolvedStacktraceIntegration`] and enable
+//! [`panic::NoFlushPanicIntegration::with_unresolved_stacktraces`].
+//!
+//! Also install `sentry_debug_images::DebugImagesIntegration` (available through Sentry's
+//! `debug-images` feature) to attach loaded-image addresses and build IDs. The Sentry
+//! server must have access to the matching debug information, for example via debuginfod.
+//! These capture integrations alone do not provide the image metadata or debug files.
+//!
+//! Configure the capture integrations with:
+//!
+//! ```rust
+//! use std::sync::Arc;
+//! use foundations_sentry::backtrace::UnresolvedStacktraceIntegration;
+//! use foundations_sentry::panic::NoFlushPanicIntegration;
+//! use sentry_core::ClientOptions;
+//!
+//! let options = ClientOptions {
+//!     attach_stacktrace: true,
+//!     default_integrations: false,
+//!     integrations: vec![
+//!         Arc::new(UnresolvedStacktraceIntegration),
+//!         Arc::new(NoFlushPanicIntegration::new().with_unresolved_stacktraces()),
+//!     ],
+//!     ..Default::default()
+//! };
+//! ```
+//!
+//! Other integrations and previously installed panic hooks can still resolve their own
+//! stacktraces. Existing stacktraces on events are preserved, not replaced or resolved.
 
+pub mod backtrace;
 pub mod metrics;
 pub mod panic;
 

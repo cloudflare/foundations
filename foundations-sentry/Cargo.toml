@@ -30,8 +30,10 @@ pre-release-hook = [
 workspace = true
 
 [dependencies]
+backtrace = { workspace = true }
 foundations = { workspace = true, features = ["settings", "ratelimit", "metrics"] }
 governor = { workspace = true }
+sentry-backtrace = "0.47.0"
 sentry-core = "0.47.0"
 sentry-panic = "0.47.0"
 
