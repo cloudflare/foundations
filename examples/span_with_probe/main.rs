@@ -57,7 +57,7 @@ async fn cache_task(iter: u64) {
     const HIT: u64 = 1;
     const MISS: u64 = 0;
 
-    let (hit, base_ms) = if iter % 2 == 0 {
+    let (_hit, base_ms) = if iter.is_multiple_of(2) {
         (HIT, 200)
     } else {
         (MISS, 300)
@@ -67,7 +67,7 @@ async fn cache_task(iter: u64) {
         tokio::time::sleep(Duration::from_millis(base_ms + iter % 20)).await;
     };
 
-    span_with_probe!("example::cache_task", probe_args = [hit])
+    span_with_probe!("example::cache_task", probe_args = [_hit])
         .into_context()
         .apply(work_fut)
         .await;
