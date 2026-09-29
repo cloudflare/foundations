@@ -155,33 +155,27 @@ impl Clone for SharedSpan {
 
 /// Maximum number of u64 arguments a span probe can carry (arg0 is always the
 /// span duration in nanoseconds; the rest are caller-chosen values).
-///
-/// Only referenced by macro-generated code; not a public API.
-#[doc(hidden)]
-pub const MAX_PROBE_ARGS: usize = 4;
+pub(crate) const MAX_PROBE_ARGS: usize = 4;
 
 /// Probe state for a single span invocation. Dropping it fires the span's
-/// `span_end__*` USDT probe, passing `args[..args_len]`: the span duration in
+/// `span_end__*` USDT probe, passing `&args`: the span duration in
 /// nanoseconds (arg0) followed by the caller-chosen values. The probe function
-/// takes the args as a single slice, so one `SpanProbe` covers any arity.
+/// defines how many of those values are exposed/meaningful.
 #[derive(Debug)]
 pub(crate) struct SpanProbe {
     start: Instant,
-    end_probe: fn(&[u64]),
+    end_probe: fn(&[u64; MAX_PROBE_ARGS]),
     args: [u64; MAX_PROBE_ARGS],
-    args_len: u8,
 }
 
 impl SpanProbe {
     /// `args[0]` is overwritten at drop time with the span duration; the
-    /// remaining `args[1..args_len]` are the caller-chosen values.
-    pub(crate) fn new(end_probe: fn(&[u64]), args: [u64; MAX_PROBE_ARGS], args_len: u8) -> Self {
-        debug_assert!((args_len as usize) <= MAX_PROBE_ARGS);
+    /// remaining `args[1..4]` are the caller-chosen values.
+    pub(crate) fn new(end_probe: fn(&[u64; MAX_PROBE_ARGS]), args: [u64; MAX_PROBE_ARGS]) -> Self {
         Self {
             start: Instant::now(),
             end_probe,
             args,
-            args_len,
         }
     }
 }
@@ -189,7 +183,7 @@ impl SpanProbe {
 impl Drop for SpanProbe {
     fn drop(&mut self) {
         self.args[0] = self.start.elapsed().as_nanos() as u64;
-        (self.end_probe)(&self.args[..self.args_len as usize]);
+        (self.end_probe)(&self.args);
     }
 }
 

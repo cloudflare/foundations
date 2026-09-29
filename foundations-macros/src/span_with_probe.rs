@@ -171,7 +171,6 @@ pub(crate) fn probe_setup(
     // the runtime) followed by the extra expressions, each evaluated once when
     // the array is built. It is always exactly `MAX_PROBE_ARGS` elements, so
     // its type is inferred from `__arm_probe`'s signature.
-    let arg_count = nargs as u8;
     let pad = (0..MAX_PROBE_ARGS - nargs).map(|_| quote!(0u64));
     let args_array = quote!([ 0u64 #(, #extra )* #(, #pad)* ]);
 
@@ -182,7 +181,7 @@ pub(crate) fn probe_setup(
         // `#[inline(never)]` keeps the NOP inside this function so the
         // note's address is hit exactly when the span ends.
         #[inline(never)]
-        fn span_end_probe(args: &[u64]) {
+        fn span_end_probe(args: &[u64; #MAX_PROBE_ARGS]) {
             unsafe {
                 ::core::arch::asm!(#template,
                     sym SEMAPHORE,
@@ -198,7 +197,6 @@ pub(crate) fn probe_setup(
             __span.__arm_probe(
                 span_end_probe,
                 #args_array,
-                #arg_count,
             );
         }
     )
@@ -273,12 +271,12 @@ mod tests {
             "let mut __span = :: foundations :: telemetry :: tracing :: span (\"http::client::send_request\") ;"
         ));
         // Duration-only probe: single arg, args array of just the duration slot.
-        assert!(actual.contains("fn span_end_probe (args : & [u64])"));
+        assert!(actual.contains("fn span_end_probe (args : & [u64 ; 4usize])"));
         assert!(actual.contains("in (reg) args [0usize] as isize"));
         assert!(
-            actual.contains("__span . __arm_probe (span_end_probe , [0u64 , 0u64 , 0u64 , 0u64]")
+            actual
+                .contains("__span . __arm_probe (span_end_probe , [0u64 , 0u64 , 0u64 , 0u64] ,)")
         );
-        assert!(actual.contains(", 1u8 ,)"));
         assert!(actual.contains(".asciz \\\"span_end__http__client__send_request\\\""));
         assert!(actual.contains(".asciz \\\"-8@{}\\\""));
         assert!(actual.contains(".asciz \\\"foundations\\\""));
@@ -295,14 +293,13 @@ mod tests {
         let actual = expand_from_parsed(args).to_string();
 
         // Two extra values → three operands and a three-element note.
-        assert!(actual.contains("fn span_end_probe (args : & [u64])"));
+        assert!(actual.contains("fn span_end_probe (args : & [u64 ; 4usize])"));
         assert!(actual.contains("in (reg) args [0usize] as isize"));
         assert!(actual.contains("in (reg) args [1usize] as isize"));
         assert!(actual.contains("in (reg) args [2usize] as isize"));
         assert!(actual.contains(
-            "__span . __arm_probe (span_end_probe , [0u64 , u8 :: from (msg . opcode) as u64 , flags , 0u64]"
+            "__span . __arm_probe (span_end_probe , [0u64 , u8 :: from (msg . opcode) as u64 , flags , 0u64] ,)"
         ));
-        assert!(actual.contains(", 3u8 ,)"));
         assert!(actual.contains(".asciz \\\"-8@{} -8@{} -8@{}\\\""));
     }
 
