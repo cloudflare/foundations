@@ -1,4 +1,11 @@
 
+5.10.3
+- 2026-09-29 fix: clippy and rustc lints in span_with_probe example
+- 2026-09-29 feat(telemetry): drop duplicate args_len information from SpanProbe
+- 2026-09-18 feat(examples): showcase probe_args in the span_with_probe example
+- 2026-09-18 feat(telemetry): allow extra arguments with span end probes
+- 2026-09-24 Allow unsymbolicated sentry panics
+
 5.10.2
 - 2026-09-16 feat(telemetry): configure service name for user traces
 - 2026-09-03 Cache `SharedSpan::is_sampled` for deferred user tracing spans
