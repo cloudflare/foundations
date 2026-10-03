@@ -13,7 +13,7 @@ use std::ops::Range;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 macro_rules! impl_noop {
     ( $( $impl_desc:tt )* ) => {
@@ -30,7 +30,8 @@ macro_rules! impl_noop {
 }
 
 impl_noop!(<T> Settings for PhantomData<T> where T: 'static);
-impl_noop!(<Idx> Settings for Range<Idx> where Idx: Debug + Serialize + DeserializeOwned + Clone + Default + 'static);
+impl_noop!(<T> Settings for [T; 0] where T: Debug + Clone + 'static);
+impl_noop!(<Idx> Settings for Range<Idx> where Idx: Debug + Serialize + DeserializeOwned + Clone + 'static);
 impl_noop!(<T> Settings for Reverse<T> where T: Settings);
 impl_noop!(<T> Settings for Wrapping<T> where T: Settings);
 
@@ -39,7 +40,7 @@ macro_rules! impl_for_num {
     ( $( $Ty:ty )* ) => { $(
         impl_noop!(Settings for $Ty);
         impl_noop!(Settings for Saturating<$Ty>);
-        impl_noop!(Settings for Option<NonZero<$Ty>>);
+        impl_noop!(Settings for NonZero<$Ty>);
     )* };
 }
 
@@ -64,7 +65,14 @@ impl_for_non_generic! {
     CString,
     OsString,
     Duration,
-    PathBuf
+    SystemTime,
+    PathBuf,
+    std::net::IpAddr,
+    std::net::Ipv4Addr,
+    std::net::Ipv6Addr,
+    std::net::SocketAddr,
+    std::net::SocketAddrV4,
+    std::net::SocketAddrV6
 }
 
 macro_rules! impl_for_ref {
@@ -120,10 +128,10 @@ macro_rules! impl_for_array {
 }
 
 impl_for_array! {
-     0  1  2  3  4  5  6  7  8  9
-    10 11 12 13 14 15 16 17 18 19
-    20 21 22 23 24 25 26 27 28 29
-    30 31 32
+     1  2  3  4  5  6  7  8  9 10
+    11 12 13 14 15 16 17 18 19 20
+    21 22 23 24 25 26 27 28 29 30
+    31 32
 }
 
 impl<T: Settings> Settings for Option<T> {
