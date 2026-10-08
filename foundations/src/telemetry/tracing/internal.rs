@@ -135,11 +135,28 @@ impl SharedSpan {
 
         let is_sampled = self.inner.with_read(|span| span.is_sampled());
         if is_sampled {
-            // We never de-initialize a span inside SharedSpan, so we can
-            // save the result once its true.
+            // Only `discard` de-initializes a span inside SharedSpan, and it resets
+            // this cache, so we can save the result once its true.
             self.is_sampled.store(true as u8, Ordering::Relaxed);
         }
         is_sampled
+    }
+
+    /// Discards the span, so it is never reported.
+    ///
+    /// Every handle sharing the span stops recording, but only this handle's cached sampling flag
+    /// is reset: clones keep their own copy, so they may still report being sampled. Deferred
+    /// roots go back to reading the flag through the lock, so a root that wasn't activated yet
+    /// can still be activated.
+    #[cfg(feature = "user-tracing")]
+    pub(crate) fn discard(&self) {
+        self.inner.with_write(|span| span.discard());
+
+        let is_sampled = match self.inner {
+            SharedSpanHandle::Deferred(_) => Self::DEFERRED_SAMPLING,
+            _ => false as u8,
+        };
+        self.is_sampled.store(is_sampled, Ordering::Relaxed);
     }
 }
 

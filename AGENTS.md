@@ -32,3 +32,6 @@
 - A sampled span remains protected by the same non-poisoning `RwLock` used by eager user spans.
 - User trace resources use `UserTracingSettings::service_name` and intentionally omit the internal
   service version.
+- Discarding a user span replaces it with an inactive one under the write lock, so every handle
+  stops recording. `SharedSpan::is_sampled` is cached per clone, so only the discarding handle's
+  cache is reset; deferred roots reset to `DEFERRED_SAMPLING` and stay activatable.
