@@ -421,6 +421,27 @@ impl UserSpan {
         self.span.inner.with_write(|span| span.set_tags(f));
     }
 
+    /// Overrides the start time of this span.
+    ///
+    /// Together with [`set_finish_time`](Self::set_finish_time), this records a span for work
+    /// whose timing is already known, rather than measured by the span itself.
+    pub fn set_start_time(&self, time: std::time::SystemTime) {
+        self.span
+            .inner
+            .with_write(|span| span.set_start_time(|| time));
+    }
+
+    /// Marks the end of this span, without finishing it.
+    ///
+    /// The span stays usable: it can still receive tags and children, and it is reported once the
+    /// last handle to it drops, with `time` as its finish time. Marking it again overwrites the
+    /// previous mark. A span that is never marked finishes when it is reported.
+    pub fn set_finish_time(&self, time: std::time::SystemTime) {
+        self.span
+            .inner
+            .with_write(|span| span.set_finish_time(|| time));
+    }
+
     /// Whether this span is being recorded.
     ///
     /// Eager spans read cached state. Deferred roots inspect their shared span slot so contexts
@@ -736,6 +757,68 @@ pub fn start_trace(
 ///
 /// The user trace runs in parallel to the internal trace, and everything here operates only on
 /// it. To record a span in both traces at once, use [`dual_span`].
+///
+/// # Recording spans from known timings
+///
+/// A span normally measures its own lifetime. To record work whose timing is already known, such
+/// as timestamps reported by another system, create the span, then override both ends with
+/// [`UserSpan::set_start_time`] and [`UserSpan::set_finish_time`] before releasing it. The span is
+/// reported with exactly those times. The same works for the current span with
+/// [`set_span_start_time!`] and [`set_span_finish_time!`].
+///
+/// Timestamps from other systems may be untrusted: make sure the finish time isn't before the
+/// start time. Children aren't required to fall within their parent's times.
+///
+/// ```
+/// use foundations::telemetry::TelemetryContext;
+/// use foundations::telemetry::tracing::{RoutingMetadata, Tag, TestTraceOptions, user_tracing};
+/// use std::time::{Duration, SystemTime};
+///
+/// #[derive(Debug)]
+/// struct Routing;
+///
+/// impl RoutingMetadata for Routing {
+///     fn group_key(&self) -> String {
+///         "zone".into()
+///     }
+///
+///     fn encode(&self) -> String {
+///         "zone".into()
+///     }
+/// }
+///
+/// // Test context is used for demonstration purposes to show the resulting traces.
+/// let ctx = TelemetryContext::test();
+/// let _scope = ctx.scope();
+///
+/// // Timings reported by another system.
+/// let start = SystemTime::now() - Duration::from_millis(30);
+/// let finish = start + Duration::from_millis(12);
+///
+/// {
+///     let root = user_tracing::UserSpan::start_trace("request", Routing, None);
+///
+///     let dns = root.child("dns_lookup");
+///     dns.set_start_time(start);
+///     dns.set_tags(|| [Tag::new("dns.server", "1.1.1.1")]);
+///     dns.set_finish_time(finish);
+///     dns.finish();
+/// }
+///
+/// let traces = ctx.user_traces(TestTraceOptions {
+///     include_start_time: true,
+///     include_finish_time: true,
+///     ..Default::default()
+/// });
+/// let dns = &traces[0].0.children[0];
+///
+/// assert_eq!(dns.name, "dns_lookup");
+/// assert_eq!(dns.start_time, start);
+/// assert_eq!(dns.finish_time, finish);
+/// ```
+///
+/// [`set_span_start_time!`]: crate::telemetry::tracing::user_tracing::set_span_start_time
+/// [`set_span_finish_time!`]: crate::telemetry::tracing::user_tracing::set_span_finish_time
 #[cfg(feature = "user-tracing")]
 pub mod user_tracing {
     use super::internal::{create_user_span, current_user_span};
@@ -776,6 +859,8 @@ pub mod user_tracing {
     pub use crate::{
         __add_user_span_log_fields as add_span_log_fields, __add_user_span_tags as add_span_tags,
         __set_user_span_finish_callback as set_span_finish_callback,
+        __set_user_span_finish_time as set_span_finish_time,
+        __set_user_span_start_time as set_span_start_time,
     };
 }
 
@@ -1165,6 +1250,37 @@ macro_rules! __set_user_span_finish_callback {
     }};
 }
 
+/// Overrides the start time of the current user span. No-op when no user trace is active.
+///
+/// Behaves like [`set_span_start_time`] and [`UserSpan::set_start_time`]; see them for details
+/// and examples.
+#[cfg(feature = "user-tracing")]
+#[macro_export]
+#[doc(hidden)]
+macro_rules! __set_user_span_start_time {
+    ( $time:expr ) => {
+        $crate::telemetry::tracing::internal::write_current_user_span(|span| {
+            span.set_start_time(|| $time)
+        })
+    };
+}
+
+/// Marks the end of the current user span, without finishing it. No-op when no user trace is
+/// active.
+///
+/// The span stays current and can still receive tags until it is reported. Behaves like
+/// [`UserSpan::set_finish_time`]; see it for details.
+#[cfg(feature = "user-tracing")]
+#[macro_export]
+#[doc(hidden)]
+macro_rules! __set_user_span_finish_time {
+    ( $time:expr ) => {
+        $crate::telemetry::tracing::internal::write_current_user_span(|span| {
+            span.set_finish_time(|| $time)
+        })
+    };
+}
+
 /// A convenience macro to construct [`TestTrace`] for test assertions.
 ///
 /// Note that for span timings the macro always generates default
@@ -1369,6 +1485,7 @@ mod user_tracing_tests {
     use cf_rustracing::tag::{Tag, TagValue};
     use std::cell::Cell;
     use std::sync::{Arc, Barrier};
+    use std::time::{Duration, SystemTime};
 
     #[derive(Debug)]
     struct TestRouting {
@@ -2344,6 +2461,153 @@ mod user_tracing_tests {
                 .tags
                 .contains(&("moved".to_string(), TagValue::Boolean(true)))
         );
+    }
+
+    #[test]
+    fn set_start_time() {
+        let ctx = TelemetryContext::test();
+        let _scope = ctx.scope();
+        let root_start = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000);
+        let child_start = root_start + Duration::from_secs(1);
+
+        {
+            let root = UserSpan::start_trace("request", routing(), None);
+            let child = root.child("child");
+            child.set_start_time(child_start);
+
+            let _entered = root.enter();
+            user_tracing::set_span_start_time!(root_start);
+        }
+
+        let traces = ctx.user_traces(TestTraceOptions {
+            include_start_time: true,
+            ..Default::default()
+        });
+
+        assert_eq!(traces[0].0.start_time, root_start);
+        assert_eq!(traces[0].0.children[0].start_time, child_start);
+    }
+
+    #[test]
+    fn marked_finish_time_keeps_span_open_for_tags() {
+        let ctx = TelemetryContext::test();
+        let _scope = ctx.scope();
+        let root_finish = SystemTime::now() - Duration::from_secs(1);
+        let child_finish = root_finish - Duration::from_millis(1);
+
+        {
+            let root = UserSpan::start_trace("request", routing(), None);
+            let child = root.child("child");
+
+            child.set_finish_time(SystemTime::UNIX_EPOCH);
+            child.set_finish_time(child_finish);
+            child.set_tags(|| vec![Tag::new("after_mark", true)]);
+
+            let _entered = root.enter();
+            user_tracing::set_span_finish_time!(root_finish);
+            user_tracing::add_span_tags!("after_mark" => true);
+        }
+
+        let traces = ctx.user_traces(TestTraceOptions {
+            include_tags: true,
+            include_finish_time: true,
+            ..Default::default()
+        });
+        let root = &traces[0].0;
+        let after_mark = ("after_mark".to_string(), TagValue::Boolean(true));
+
+        assert_eq!(root.finish_time, root_finish);
+        assert!(root.tags.contains(&after_mark));
+        assert_eq!(root.children[0].finish_time, child_finish);
+        assert!(root.children[0].tags.contains(&after_mark));
+    }
+
+    #[test]
+    fn unmarked_span_finishes_when_reported() {
+        let ctx = TelemetryContext::test();
+        let _scope = ctx.scope();
+
+        let root = UserSpan::start_trace("request", routing(), None);
+        let before_drop = SystemTime::now();
+        drop(root);
+
+        let traces = ctx.user_traces(TestTraceOptions {
+            include_finish_time: true,
+            ..Default::default()
+        });
+
+        assert!(traces[0].0.finish_time >= before_drop);
+    }
+
+    #[test]
+    fn timing_is_no_op_when_inactive() {
+        let ctx = TelemetryContext::test();
+        let _scope = ctx.scope();
+
+        let span = UserSpan::inactive();
+        span.set_start_time(SystemTime::UNIX_EPOCH);
+        span.set_finish_time(SystemTime::UNIX_EPOCH);
+        user_tracing::set_span_start_time!(SystemTime::UNIX_EPOCH);
+        user_tracing::set_span_finish_time!(SystemTime::UNIX_EPOCH);
+        drop(span);
+
+        assert!(ctx.user_traces(Default::default()).is_empty());
+    }
+
+    #[test]
+    fn synthetic_spans_record_given_times() {
+        let ctx = TelemetryContext::test();
+        let _scope = ctx.scope();
+        let start = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000);
+        let finish = start + Duration::from_millis(12);
+        let ambient_start = finish + Duration::from_millis(1);
+        let ambient_finish = ambient_start + Duration::from_millis(5);
+
+        {
+            let root = UserSpan::start_trace("request", routing(), None);
+
+            let child = root.child("synthetic");
+            child.set_start_time(start);
+            child.set_finish_time(finish);
+            child.finish();
+
+            let _entered = root.enter();
+            let _ambient = user_tracing::span("ambient");
+            user_tracing::set_span_start_time!(ambient_start);
+            user_tracing::set_span_finish_time!(ambient_finish);
+        }
+
+        let traces = ctx.user_traces(TestTraceOptions {
+            include_start_time: true,
+            include_finish_time: true,
+            ..Default::default()
+        });
+        let children = &traces[0].0.children;
+
+        assert_eq!(children[0].name, "synthetic");
+        assert_eq!(
+            (children[0].start_time, children[0].finish_time),
+            (start, finish)
+        );
+        assert_eq!(children[1].name, "ambient");
+        assert_eq!(
+            (children[1].start_time, children[1].finish_time),
+            (ambient_start, ambient_finish)
+        );
+    }
+
+    #[test]
+    fn synthetic_child_of_inactive_parent_is_inactive() {
+        let ctx = TelemetryContext::test();
+        let _scope = ctx.scope();
+
+        let child = UserSpan::inactive().child("synthetic");
+        child.set_start_time(SystemTime::UNIX_EPOCH);
+        child.set_finish_time(SystemTime::UNIX_EPOCH + Duration::from_secs(1));
+
+        assert!(!child.is_sampled());
+        child.finish();
+        assert!(ctx.user_traces(Default::default()).is_empty());
     }
 }
 
