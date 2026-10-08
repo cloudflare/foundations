@@ -442,6 +442,20 @@ impl UserSpan {
             .with_write(|span| span.set_finish_time(|| time));
     }
 
+    /// Discards this span, so it is never reported.
+    ///
+    /// Meant for spans that turn out to describe nothing worth reporting, such as a lookup that
+    /// found no match. It affects every handle to the span: tags added afterwards are dropped and
+    /// new children are inactive. Other handles may still report
+    /// [`is_sampled`](Self::is_sampled) as `true`, but record nothing.
+    ///
+    /// Children that were already reported, and `traceparent`s already propagated from this span,
+    /// reference a parent that will never arrive. A deferred root that hasn't been activated yet
+    /// isn't affected, and can still be activated.
+    pub fn discard(&self) {
+        self.span.discard();
+    }
+
     /// Whether this span is being recorded.
     ///
     /// Eager spans read cached state. Deferred roots inspect their shared span slot so contexts
@@ -853,6 +867,17 @@ pub mod user_tracing {
     /// Span-derived (parent-id is the current user span); `None` when no user trace is active.
     pub fn w3c_traceparent() -> Option<String> {
         UserSpan::from_shared(current_user_span()?).w3c_traceparent()
+    }
+
+    /// Discards the current user span, so it is never reported. No-op when no user trace is
+    /// active.
+    ///
+    /// The span stays current until its scope ends, but records nothing. Behaves like
+    /// [`UserSpan::discard`]; see it for details.
+    pub fn discard_span() {
+        if let Some(span) = current_user_span() {
+            span.discard();
+        }
     }
 
     #[doc(inline)]
@@ -2607,6 +2632,126 @@ mod user_tracing_tests {
 
         assert!(!child.is_sampled());
         child.finish();
+        assert!(ctx.user_traces(Default::default()).is_empty());
+    }
+
+    #[test]
+    fn discarded_span_is_not_reported() {
+        let ctx = TelemetryContext::test();
+        let _scope = ctx.scope();
+
+        {
+            let _root = user_tracing::start_trace("request", routing(), None);
+            {
+                let _discarded = user_tracing::span("discarded");
+                user_tracing::discard_span();
+                user_tracing::add_span_tags!("after_discard" => true);
+                let _child = user_tracing::span("child_after_discard");
+            }
+            let _sibling = user_tracing::span("sibling");
+        }
+
+        assert_eq!(
+            ctx.user_traces(TestTraceOptions {
+                include_tags: true,
+                ..Default::default()
+            }),
+            vec![test_trace! {
+                "request" => {
+                    "sibling"
+                }
+            }]
+        );
+    }
+
+    #[test]
+    fn discarded_handle_records_nothing() {
+        let ctx = TelemetryContext::test();
+        let _scope = ctx.scope();
+
+        {
+            let root = UserSpan::start_trace("request", routing(), None);
+            let discarded = root.child("discarded");
+
+            discarded.discard();
+            discarded.discard();
+
+            assert!(!discarded.is_sampled());
+            assert!(discarded.w3c_traceparent().is_none());
+            assert!(!discarded.child("child").is_sampled());
+            discarded.set_tags(|| vec![Tag::new("after_discard", true)]);
+        }
+
+        assert_eq!(
+            ctx.user_traces(Default::default()),
+            vec![test_trace! { "request" }]
+        );
+    }
+
+    #[test]
+    fn discard_applies_to_live_scopes() {
+        let ctx = TelemetryContext::test();
+        let _scope = ctx.scope();
+
+        {
+            let root = UserSpan::start_trace("request", routing(), None);
+            let discarded = root.child("discarded");
+            let _entered = discarded.enter();
+
+            discarded.discard();
+            drop(discarded);
+
+            // Still current, but recording into a discarded span.
+            user_tracing::add_span_tags!("after_discard" => true);
+            let _child = user_tracing::span("child_after_discard");
+        }
+
+        assert_eq!(
+            ctx.user_traces(Default::default()),
+            vec![test_trace! { "request" }]
+        );
+    }
+
+    #[test]
+    fn discard_before_activation_leaves_deferred_root_usable() {
+        let ctx = TelemetryContext::test();
+        let _scope = ctx.scope();
+
+        let root = UserSpan::deferred();
+        root.discard();
+        root.activate("request", routing(), None);
+
+        assert!(root.is_sampled());
+        root.finish();
+        assert_eq!(
+            ctx.user_traces(Default::default()),
+            vec![test_trace! { "request" }]
+        );
+    }
+
+    #[test]
+    fn discard_after_activation_drops_deferred_root() {
+        let ctx = TelemetryContext::test();
+        let _scope = ctx.scope();
+
+        let root = UserSpan::deferred();
+        root.activate("request", routing(), None);
+        assert!(root.is_sampled());
+
+        root.discard();
+
+        assert!(!root.is_sampled());
+        root.finish();
+        assert!(ctx.user_traces(Default::default()).is_empty());
+    }
+
+    #[test]
+    fn discard_span_is_no_op_without_trace() {
+        let ctx = TelemetryContext::test();
+        let _scope = ctx.scope();
+
+        user_tracing::discard_span();
+
         assert!(ctx.user_traces(Default::default()).is_empty());
     }
 }
