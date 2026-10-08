@@ -59,8 +59,8 @@ use internal::{ErasedInfoMetric, Registries};
 mod backend {
     pub use foundations_metrics::{
         Counter, Family, Gauge, GaugeGuard, Histogram, HistogramBuilder, HistogramTimer,
-        InfoMetric, MetricConstructor, NativeHistogram, NativeHistogramBuilder,
-        NativeTimeHistogram, RangeGauge, TimeHistogram, WithExemplar,
+        InfoMetric, LowCardinalityFamily, LowCardinalityLabel, MetricConstructor, NativeHistogram,
+        NativeHistogramBuilder, NativeTimeHistogram, RangeGauge, TimeHistogram, WithExemplar,
     };
 
     // Everything needed to define, register, and label a custom metric. The
@@ -295,6 +295,12 @@ fn report_nonfatal_collect_error(err: &dyn Display) {
 /// # Labels
 /// Arguments of the bodyless functions become labels for that metric.
 ///
+/// For ordinary labeled metrics, the generated accessor returns an owned metric handle after
+/// looking up the label set in its [`Family`]. When the same labels are reused, call the accessor
+/// once and stash or cache that handle (cloning it when another owner needs a copy) instead of
+/// performing the lookup on every update. A `#[low_cardinality]` accessor instead returns a
+/// `'static` reference and is suitable for repeated access.
+///
 /// Supported metric types are reexported from this module for convenience:
 ///
 /// * [`Counter`]
@@ -336,6 +342,43 @@ fn report_nonfatal_collect_error(err: &dyn Display) {
 ///
 /// Can be used for heavy-weight metrics (e.g. with high cardinality) that don't need to be reported
 /// on a regular basis.
+///
+/// ## `#[low_cardinality]`
+///
+/// Requires the `foundations-metrics-backend` feature. Mark a metric `#[low_cardinality]` when
+/// every label has a small, compile-time-known set of possible values and the accessor will be
+/// called repeatedly.
+///
+/// Every label's type must implement [`LowCardinalityLabel`], normally by deriving it on
+/// a fieldless enum whose complete set of values is known at compile time.
+///
+/// The generated accessor returns `&'static M`, where `M` is the metric type. Update the metric
+/// through that reference, or call `.clone()` when an API needs an owned metric handle.
+///
+/// Untouched label combinations are not exported. Keep the Cartesian product of all label values
+/// reasonably small. Low-cardinality metrics do not support `#[with_removal]`.
+///
+/// ```ignore
+/// use foundations::telemetry::metrics::{Counter, LowCardinalityLabel, metrics};
+/// use serde::Serialize;
+///
+/// #[derive(Clone, Copy, PartialEq, Serialize, LowCardinalityLabel)]
+/// #[serde(rename_all = "snake_case")]
+/// enum Protocol {
+///     Tcp,
+///     Udp,
+///     Quic,
+/// }
+///
+/// #[metrics]
+/// mod network_metrics {
+///     #[low_cardinality]
+///     pub fn packets(protocol: Protocol) -> Counter;
+/// }
+///
+/// network_metrics::packets(Protocol::Tcp).inc();
+/// let owned: Counter = network_metrics::packets(Protocol::Tcp).clone();
+/// ```
 ///
 /// ## `#[with_removal]` (unstable)
 ///
@@ -520,6 +563,13 @@ fn report_nonfatal_collect_error(err: &dyn Display) {
 /// [telemetry server]: crate::telemetry::init_with_server
 /// [`MetricsSettings::report_optional`]: crate::telemetry::settings::MetricsSettings::report_optional
 pub use foundations_macros::metrics;
+
+/// Derives [`LowCardinalityLabel`] for a fieldless enum.
+///
+/// Indices follow variant declaration order, including for variants with explicit or sparse Rust
+/// discriminants. This derive is available with the `foundations-metrics-backend` feature.
+#[cfg(feature = "foundations-metrics-backend")]
+pub use foundations_macros::LowCardinalityLabel;
 
 /// A macro that allows to define a Prometheus info metric.
 ///

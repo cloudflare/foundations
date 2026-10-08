@@ -5,6 +5,25 @@ and encoders for OpenMetrics text and Prometheus protobuf formats. It uses
 `foundations-metrics-registry` for the process-global registry and protobuf data
 model.
 
+## Metric families
+
+Use `Family` to group instances of the same metric by a label set. It is the
+general-purpose choice for labels that are discovered at runtime or have an
+open-ended set of values. Call `get_or_create(&label_set)` or
+`get_or_create_owned(&label_set)` to access the metric for a particular set
+of labels. Prefer `get_or_create_owned` and cache / store the returned metric
+for faster updates.
+
+`LowCardinalityFamily` is an alternative for a small label set whose complete
+range of values is known at compile time. The family's label type must implement
+`LowCardinalityLabel`. Only label combinations that are accessed are exported,
+but keep the Cartesian product of all label values reasonably small.
+Low-cardinality families do not support removing or clearing entries.
+
+`LowCardinalityLabel` can be automatically derived on fieldless label enums.
+When using the `#[metrics]` macro annotate functions with `#[low_cardinality]`
+to use a `LowCardinalityFamily`.
+
 ## Migrating from `foundations::telemetry::metrics`
 
 `foundations` re-exports this crate's items through

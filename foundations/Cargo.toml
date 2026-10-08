@@ -216,7 +216,11 @@ telemetry-server-pattern-routing = []
 tracing-rs-compat = ["dep:tracing-slog"]
 
 # Selects the `foundations-metrics` implementation behind `telemetry::metrics`.
-foundations-metrics-backend = ["dep:foundations-metrics", "dep:foundations-metrics-registry"]
+foundations-metrics-backend = [
+    "dep:foundations-metrics",
+    "dep:foundations-metrics-registry",
+    "foundations-macros?/foundations-metrics-backend",
+]
 
 [package.metadata.docs.rs]
 all-features = true
