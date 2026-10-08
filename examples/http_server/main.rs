@@ -62,8 +62,12 @@ async fn main() -> BootstrapResult<()> {
 
     if let Some(addr) = tele_driver.server_addr() {
         match addr {
-            ListenAddr::Tcp(addr) => log::info!("Telemetry server is listening on http://{addr}"),
-            ListenAddr::Unix(path) => log::info!("Telemetry server is listening on {path:?}"),
+            ListenAddr::Tcp(addr) => {
+                log::info!("Telemetry server is listening on http://{addr}");
+            }
+            ListenAddr::Unix(path) => {
+                log::info!("Telemetry server is listening on {path:?}");
+            }
         }
     }
 
