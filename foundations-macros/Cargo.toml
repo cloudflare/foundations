@@ -15,6 +15,7 @@ tag-message = "Release foundations version {{version}}"
 
 [features]
 default = ["settings_deny_unknown_fields_by_default"]
+foundations-metrics-backend = []
 settings_deny_unknown_fields_by_default = []
 
 [lib]

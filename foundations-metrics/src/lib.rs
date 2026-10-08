@@ -34,8 +34,9 @@ pub use info::{InfoMetric, report_info};
 pub use labels::{LabelError, to_label_pairs};
 pub use metrics::{
     Counter, CounterAtomic, Family, FamilyMetricGuard, Gauge, GaugeAtomic, GaugeGuard, Histogram,
-    HistogramBuilder, HistogramSnapshot, HistogramTimer, MetricConstructor, NativeHistogram,
-    NativeHistogramBuilder, NativeTimeHistogram, RangeGauge, TimeHistogram, WithExemplar,
+    HistogramBuilder, HistogramSnapshot, HistogramTimer, LowCardinalityFamily, LowCardinalityLabel,
+    MetricConstructor, NativeHistogram, NativeHistogramBuilder, NativeTimeHistogram, RangeGauge,
+    TimeHistogram, WithExemplar,
 };
 pub use registered::NamedMetric;
 pub use validation::{NAME_REQUIREMENT, is_valid_name};

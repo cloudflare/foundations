@@ -1,5 +1,6 @@
 mod common;
 mod info_metric;
+mod low_cardinality_label;
 mod metrics;
 mod settings;
 mod span_fn;
@@ -11,6 +12,11 @@ use proc_macro::TokenStream;
 #[proc_macro_attribute]
 pub fn info_metric(args: TokenStream, item: TokenStream) -> TokenStream {
     info_metric::expand(args, item)
+}
+
+#[proc_macro_derive(LowCardinalityLabel, attributes(low_cardinality_label))]
+pub fn low_cardinality_label(input: TokenStream) -> TokenStream {
+    low_cardinality_label::expand(input)
 }
 
 #[proc_macro_attribute]

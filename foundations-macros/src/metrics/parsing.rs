@@ -1,6 +1,7 @@
 use super::{ArgAttrs, ArgMode, FnArg, FnAttrs, ItemFn, MacroArgs, Mod};
 use crate::common::{Result, error, parse_attr_value, parse_meta_list};
 use darling::FromMeta;
+use darling::util::Flag;
 use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
 use syn::{
@@ -10,17 +11,25 @@ use syn::{
 
 const IMPL_TRAIT_ERROR: &str = "Only `impl Into<T>` is allowed";
 
-const FN_ATTR_ERROR: &str = "Only `#[cfg]`, `#[doc]`, `#[ctor]`, `#[optional]`, and `#[with_removal]` are allowed on functions";
+const FN_ATTR_ERROR: &str = "Only `#[cfg]`, `#[doc]`, `#[ctor]`, `#[optional]`, `#[with_removal]`, and `#[low_cardinality]` are allowed on functions";
 
 const DUPLICATE_CTOR_ATTR_ERROR: &str = "Duplicate `#[ctor]` attribute";
 const DUPLICATE_OPTIONAL_ATTR_ERROR: &str = "Duplicate `#[optional]` attribute";
 const DUPLICATE_WITH_REMOVAL_ATTR_ERROR: &str = "Duplicate `#[with_removal]` attribute";
+const DUPLICATE_LOW_CARDINALITY_ATTR_ERROR: &str = "Duplicate `#[low_cardinality]` attribute";
 const DUPLICATE_SERDE_ATTR_ERROR: &str = "Duplicate `#[serde]` attribute";
 const DUPLICATE_SERDE_AS_ATTR_ERROR: &str = "Duplicate `#[serde_as]` attribute";
 
 const ARG_ATTR_ERROR: &str = "Only `#[serde]` and `#[serde_as]` are allowed on function arguments";
 const WITH_REMOVAL_NO_ARGS_ERROR: &str =
     "`#[with_removal]` can only be used on functions with arguments";
+const LOW_CARDINALITY_NO_ARGS_ERROR: &str =
+    "`#[low_cardinality]` can only be used on functions with label arguments";
+const LOW_CARDINALITY_WITH_REMOVAL_ERROR: &str =
+    "`#[low_cardinality]` cannot be combined with `#[with_removal]`";
+const LOW_CARDINALITY_BACKEND_ERROR: &str =
+    "`#[low_cardinality]` requires the `foundations-metrics-backend` feature";
+const LOW_CARDINALITY_MUT_REFERENCE_ERROR: &str = "mutable reference labels are not supported by `#[low_cardinality]`; use an owned value or a shared reference";
 
 impl Parse for MacroArgs {
     fn parse(input: ParseStream) -> Result<Self> {
@@ -65,6 +74,7 @@ impl FnAttrs {
         let mut ctor = None;
         let mut optional = None;
         let mut with_removal = None;
+        let mut low_cardinality = Flag::default();
 
         for attr in attrs {
             let path = attr.path().get_ident().map(ToString::to_string);
@@ -93,6 +103,13 @@ impl FnAttrs {
 
                     with_removal = Some(bool::from_meta(&attr.meta)?);
                 }
+                Some("low_cardinality") => {
+                    if low_cardinality.is_present() {
+                        return error(&attr, DUPLICATE_LOW_CARDINALITY_ATTR_ERROR);
+                    }
+
+                    low_cardinality = Flag::from_meta(&attr.meta)?;
+                }
                 _ => return error(&attr, FN_ATTR_ERROR),
             }
         }
@@ -103,6 +120,7 @@ impl FnAttrs {
             ctor,
             optional: optional.unwrap_or(false),
             with_removal: with_removal.unwrap_or(false),
+            low_cardinality,
         })
     }
 }
@@ -115,7 +133,7 @@ impl Parse for ItemFn {
         let ident = input.parse()?;
         let args_content;
         let paren_token = parenthesized!(args_content in input);
-        let mut args = Punctuated::new();
+        let mut args: Punctuated<FnArg, Token![,]> = Punctuated::new();
 
         while !args_content.is_empty() {
             args.push_value(args_content.parse()?);
@@ -133,6 +151,32 @@ impl Parse for ItemFn {
 
         if attrs.with_removal && args.is_empty() {
             return error(&paren_token.span, WITH_REMOVAL_NO_ARGS_ERROR);
+        }
+
+        if attrs.low_cardinality.is_present() {
+            let low_cardinality_span = attrs.low_cardinality.span();
+
+            if !cfg!(feature = "foundations-metrics-backend") {
+                return error(&low_cardinality_span, LOW_CARDINALITY_BACKEND_ERROR);
+            }
+
+            if args.is_empty() {
+                return error(&low_cardinality_span, LOW_CARDINALITY_NO_ARGS_ERROR);
+            }
+
+            if attrs.with_removal {
+                return error(&low_cardinality_span, LOW_CARDINALITY_WITH_REMOVAL_ERROR);
+            }
+
+            for arg in &mut args {
+                if let Type::Reference(reference) = &arg.ty {
+                    if reference.mutability.is_some() {
+                        return error(&reference, LOW_CARDINALITY_MUT_REFERENCE_ERROR);
+                    }
+
+                    arg.mode = ArgMode::Clone((*reference.elem).clone());
+                }
+            }
         }
 
         Ok(ItemFn {

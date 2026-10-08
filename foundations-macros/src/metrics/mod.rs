@@ -59,6 +59,7 @@ struct FnAttrs {
     ctor: Option<ExprStruct>,
     optional: bool,
     with_removal: bool,
+    low_cardinality: Flag,
 }
 
 struct FnArg {
@@ -193,12 +194,24 @@ fn expand_from_parsed(args: MacroArgs, extern_: Mod) -> proc_macro2::TokenStream
 /// Gets the type of the metric for its field in metric struct.
 fn metric_field(foundations: &Path, fn_: &ItemFn) -> proc_macro2::TokenStream {
     let ItemFn {
-        attrs: FnAttrs { cfg, ctor, .. },
+        attrs:
+            FnAttrs {
+                cfg,
+                ctor,
+                low_cardinality,
+                ..
+            },
         args,
         ty: metric_ty,
         ident: metric_name,
         ..
     } = fn_;
+
+    let family = if low_cardinality.is_present() {
+        quote! { #foundations::telemetry::metrics::LowCardinalityFamily }
+    } else {
+        quote! { #foundations::telemetry::metrics::Family }
+    };
 
     let field_ty = if args.is_empty() {
         metric_ty.to_token_stream()
@@ -207,7 +220,7 @@ fn metric_field(foundations: &Path, fn_: &ItemFn) -> proc_macro2::TokenStream {
     }) = ctor
     {
         quote! {
-            #foundations::telemetry::metrics::Family<
+            #family<
                 #metric_name,
                 #metric_ty,
                 #ctor_path,
@@ -215,7 +228,7 @@ fn metric_field(foundations: &Path, fn_: &ItemFn) -> proc_macro2::TokenStream {
         }
     } else {
         quote! {
-            #foundations::telemetry::metrics::Family<
+            #family<
                 #metric_name,
                 #metric_ty,
             >
@@ -228,7 +241,11 @@ fn metric_field(foundations: &Path, fn_: &ItemFn) -> proc_macro2::TokenStream {
 /// Returns the definition for the label set struct, if this metric uses labels.
 fn label_set_struct(foundations: &Path, fn_: &ItemFn) -> Option<proc_macro2::TokenStream> {
     let ItemFn {
-        attrs: FnAttrs { cfg, .. },
+        attrs: FnAttrs {
+            cfg,
+            low_cardinality,
+            ..
+        },
         args,
         ident: label_set_name,
         ..
@@ -251,21 +268,85 @@ fn label_set_struct(foundations: &Path, fn_: &ItemFn) -> Option<proc_macro2::Tok
 
     let labels = args.iter().map(|arg| arg.to_struct_member());
 
-    Some(quote! {
-        #(#cfg)*
-        #[allow(non_camel_case_types)]
-        #serde_as_attr
-        #[derive(
+    let derives = if low_cardinality.is_present() {
+        quote! {
+            ::std::clone::Clone,
+            ::std::cmp::PartialEq,
+            #serde::Serialize,
+        }
+    } else {
+        quote! {
             ::std::clone::Clone,
             ::std::cmp::Eq,
             ::std::hash::Hash,
             ::std::cmp::PartialEq,
             #serde::Serialize,
-        )]
+        }
+    };
+
+    let low_cardinality_impl = low_cardinality.is_present().then(|| {
+        let cardinality_factors = args.iter().map(|arg| {
+            let ty = match &arg.mode {
+                ArgMode::ByValue(ty) | ArgMode::Clone(ty) | ArgMode::Into(ty) => ty,
+            };
+
+            quote! {
+                __cardinality = match __cardinality.checked_mul(
+                    <#ty as #foundations::telemetry::metrics::LowCardinalityLabel>::CARDINALITY
+                        .get(),
+                ) {
+                    ::std::option::Option::Some(__cardinality) => __cardinality,
+                    ::std::option::Option::None => ::std::panic!(
+                        "low-cardinality metric label cardinality overflowed usize"
+                    ),
+                };
+            }
+        });
+        let index_steps = args.iter().map(|arg| {
+            let ident = &arg.ident;
+            let ty = match &arg.mode {
+                ArgMode::ByValue(ty) | ArgMode::Clone(ty) | ArgMode::Into(ty) => ty,
+            };
+
+            quote! {
+                __index = __index
+                    * <#ty as #foundations::telemetry::metrics::LowCardinalityLabel>::CARDINALITY
+                        .get()
+                    + <#ty as #foundations::telemetry::metrics::LowCardinalityLabel>::index(
+                        &self.#ident,
+                    );
+            }
+        });
+
+        quote! {
+            #(#cfg)*
+            impl #foundations::telemetry::metrics::LowCardinalityLabel for #label_set_name {
+                const CARDINALITY: ::std::num::NonZeroUsize = {
+                    let mut __cardinality = 1usize;
+                    #(#cardinality_factors)*
+                    ::std::num::NonZeroUsize::new(__cardinality).unwrap()
+                };
+
+                fn index(&self) -> usize {
+                    let mut __index = 0usize;
+                    #(#index_steps)*
+                    __index
+                }
+            }
+        }
+    });
+
+    Some(quote! {
+        #(#cfg)*
+        #[allow(non_camel_case_types)]
+        #serde_as_attr
+        #[derive(#derives)]
         #[serde(crate = #serde_str)]
         struct #label_set_name {
             #(#labels,)*
         }
+
+        #low_cardinality_impl
     })
 }
 
@@ -282,6 +363,7 @@ fn metric_init(
                 doc,
                 optional,
                 ctor,
+                low_cardinality,
                 ..
             },
         ident: field_name,
@@ -301,6 +383,9 @@ fn metric_init(
     let metric_init = match ctor {
         Some(ctor) if args.is_empty() => quote! {
             #foundations::telemetry::metrics::MetricConstructor::new_metric(&(#ctor))
+        },
+        Some(ctor) if low_cardinality.is_present() => quote! {
+            #foundations::telemetry::metrics::LowCardinalityFamily::new_with_constructor(#ctor)
         },
         Some(ctor) => quote! {
             #foundations::telemetry::metrics::Family::new_with_constructor(#ctor)
@@ -353,6 +438,7 @@ fn metric_fn(foundations: &Path, metrics_struct: &Ident, fn_: &ItemFn) -> proc_m
                 cfg,
                 doc,
                 with_removal,
+                low_cardinality,
                 ..
             },
         fn_token,
@@ -378,13 +464,22 @@ fn metric_fn(foundations: &Path, metrics_struct: &Ident, fn_: &ItemFn) -> proc_m
             };
         };
 
-        let accessor = quote! {
-            ::std::clone::Clone::clone(
-                &#foundations::telemetry::metrics::Family::get_or_create(
+        let accessor = if low_cardinality.is_present() {
+            quote! {
+                #foundations::telemetry::metrics::LowCardinalityFamily::get_or_create(
                     &#metrics_struct.#metric_name,
                     &__args,
                 )
-            )
+            }
+        } else {
+            quote! {
+                ::std::clone::Clone::clone(
+                    &#foundations::telemetry::metrics::Family::get_or_create(
+                        &#metrics_struct.#metric_name,
+                        &__args,
+                    )
+                )
+            }
         };
         (convert, accessor)
     };
@@ -425,11 +520,19 @@ fn metric_fn(foundations: &Path, metrics_struct: &Ident, fn_: &ItemFn) -> proc_m
         quote! {}
     };
 
+    let (return_type, low_cardinality_doc) = if low_cardinality.is_present() {
+        let doc = LitStr::new("Returns a static reference to a metric.", Span::call_site());
+        (quote! { &'static #metric_type }, quote! { #[doc = #doc] })
+    } else {
+        (quote! { #metric_type }, quote! {})
+    };
+
     quote! {
         #[doc = #doc]
+        #low_cardinality_doc
         #(#cfg)*
         #[must_use]
-        #fn_vis #fn_token #metric_name(#(#fn_args,)*) #arrow_token #metric_type {
+        #fn_vis #fn_token #metric_name(#(#fn_args,)*) #arrow_token #return_type {
             #convert_args
             #access_metric
         }
@@ -917,6 +1020,209 @@ mod tests {
         };
 
         assert_eq!(actual, expected);
+    }
+
+    #[cfg(feature = "foundations-metrics-backend")]
+    #[test]
+    fn expand_low_cardinality() {
+        let foundations: Path = parse_quote!(tarmac);
+        let src: Mod = parse_quote! {
+            pub(crate) mod oxy {
+                /// Latency by finite label combination.
+                #[low_cardinality]
+                #[ctor = HistogramBuilder { buckets: &[0.5, 1.] }]
+                pub(crate) fn latency(
+                    kind: &Kind,
+                    outcome: impl Into<Outcome>,
+                ) -> Histogram;
+            }
+        };
+        let fn_ = &src.fns[0];
+
+        let field = metric_field(&foundations, fn_).to_string();
+        assert_eq!(
+            field,
+            code_str! {
+                latency: tarmac::telemetry::metrics::LowCardinalityFamily<
+                    latency,
+                    Histogram,
+                    HistogramBuilder,
+                >
+            }
+        );
+
+        let labels = label_set_struct(&foundations, fn_).unwrap().to_string();
+        assert!(labels.contains(&code_str! {
+            #[derive(
+                ::std::clone::Clone,
+                ::std::cmp::PartialEq,
+                tarmac::reexports_for_macros::serde::Serialize,
+            )]
+        }));
+        assert!(!labels.contains("std :: hash :: Hash"));
+        assert!(labels.contains(&code_str! {
+            struct latency { kind: Kind, outcome: Outcome, }
+        }));
+        assert!(labels.contains(&code_str! {
+            impl tarmac::telemetry::metrics::LowCardinalityLabel for latency
+        }));
+        assert!(labels.contains("const CARDINALITY : :: std :: num :: NonZeroUsize"));
+        assert!(labels.contains(&code_str! {
+            ::std::num::NonZeroUsize::new(__cardinality).unwrap()
+        }));
+        assert!(labels.contains(&code_str! {
+            <Kind as tarmac::telemetry::metrics::LowCardinalityLabel>::CARDINALITY.get()
+        }));
+        assert!(labels.contains(&code_str! {
+            <Outcome as tarmac::telemetry::metrics::LowCardinalityLabel>::CARDINALITY.get()
+        }));
+        assert!(labels.contains(&code_str! {
+            <Kind as tarmac::telemetry::metrics::LowCardinalityLabel>::index(&self.kind,)
+        }));
+        assert!(labels.contains(&code_str! {
+            <Outcome as tarmac::telemetry::metrics::LowCardinalityLabel>::index(&self.outcome,)
+        }));
+        assert!(labels.contains("checked_mul"));
+
+        let init = metric_init(
+            &foundations,
+            &parse_quote!(oxy),
+            &format_ident!("true"),
+            fn_,
+        )
+        .to_string();
+        assert!(init.contains(&code_str! {
+            tarmac::telemetry::metrics::LowCardinalityFamily::new_with_constructor(
+                HistogramBuilder { buckets: &[0.5, 1.] }
+            )
+        }));
+
+        let accessor = metric_fn(&foundations, &parse_quote!(__oxy_Metrics), fn_).to_string();
+        assert!(accessor.contains(&code_str! {
+            pub(crate) fn latency(
+                kind: &Kind,
+                outcome: impl Into<Outcome>,
+            ) -> &'static Histogram
+        }));
+        assert!(accessor.contains(&code_str! {
+            tarmac::telemetry::metrics::LowCardinalityFamily::get_or_create(
+                &__oxy_Metrics.latency,
+                &__args,
+            )
+        }));
+        assert!(
+            !accessor.contains(
+                "Clone :: clone (& tarmac :: telemetry :: metrics :: LowCardinalityFamily"
+            )
+        );
+    }
+
+    #[test]
+    fn reject_duplicate_low_cardinality_attribute() {
+        let err = syn::parse2::<Mod>(quote! {
+            mod oxy {
+                #[low_cardinality]
+                #[low_cardinality]
+                fn requests(kind: Kind) -> Counter;
+            }
+        })
+        .err()
+        .expect("duplicate attribute must fail");
+
+        assert_eq!(err.to_string(), "Duplicate `#[low_cardinality]` attribute");
+    }
+
+    #[cfg(not(feature = "foundations-metrics-backend"))]
+    #[test]
+    fn low_cardinality_requires_backend_feature() {
+        let err = syn::parse2::<Mod>(quote! {
+            mod oxy {
+                #[low_cardinality]
+                fn requests(kind: Kind) -> Counter;
+            }
+        })
+        .err()
+        .expect("missing backend feature must fail");
+
+        assert_eq!(
+            err.to_string(),
+            "`#[low_cardinality]` requires the `foundations-metrics-backend` feature"
+        );
+    }
+
+    #[cfg(feature = "foundations-metrics-backend")]
+    #[test]
+    fn reject_low_cardinality_without_labels() {
+        let err = syn::parse2::<Mod>(quote! {
+            mod oxy {
+                #[low_cardinality]
+                fn requests() -> Counter;
+            }
+        })
+        .err()
+        .expect("unlabelled low-cardinality metric must fail");
+
+        assert_eq!(
+            err.to_string(),
+            "`#[low_cardinality]` can only be used on functions with label arguments"
+        );
+    }
+
+    #[cfg(feature = "foundations-metrics-backend")]
+    #[test]
+    fn reject_low_cardinality_with_removal() {
+        let err = syn::parse2::<Mod>(quote! {
+            mod oxy {
+                #[low_cardinality]
+                #[with_removal]
+                fn requests(kind: Kind) -> Counter;
+            }
+        })
+        .err()
+        .expect("low-cardinality removal must fail");
+
+        assert_eq!(
+            err.to_string(),
+            "`#[low_cardinality]` cannot be combined with `#[with_removal]`"
+        );
+    }
+
+    #[cfg(feature = "foundations-metrics-backend")]
+    #[test]
+    fn reject_low_cardinality_mutable_references() {
+        let mutable_err = syn::parse2::<Mod>(quote! {
+            mod oxy {
+                #[low_cardinality]
+                fn requests(kind: &mut Kind) -> Counter;
+            }
+        })
+        .err()
+        .expect("mutable reference must fail");
+        assert_eq!(
+            mutable_err.to_string(),
+            "mutable reference labels are not supported by `#[low_cardinality]`; use an owned value or a shared reference"
+        );
+    }
+
+    #[cfg(feature = "foundations-metrics-backend")]
+    #[test]
+    fn accept_low_cardinality_explicit_lifetime_references() {
+        let parsed = syn::parse2::<Mod>(quote! {
+            pub mod oxy {
+                #[low_cardinality]
+                pub fn requests(kind: &'static Kind) -> Counter;
+            }
+        })
+        .expect("explicit-lifetime shared reference must parse");
+
+        let arg = &parsed.fns[0].args[0];
+        assert!(matches!(&arg.mode, ArgMode::Clone(Type::Path(_))));
+        assert_eq!(arg.ty.to_token_stream().to_string(), "& 'static Kind");
+        assert_eq!(arg.to_struct_member().to_string(), "kind : Kind");
+        assert_eq!(
+            arg.to_initializer().to_string(),
+            "kind : :: std :: clone :: Clone :: clone (kind)"
+        );
     }
 
     #[cfg(foundations_unstable)]
