@@ -65,11 +65,15 @@ impl SharedSpanHandle {
         static INACTIVE: Span = Span::inactive();
 
         match self {
-            SharedSpanHandle::Tracked { span, .. } => f(&span.read()),
+            SharedSpanHandle::Tracked { span, is_sampled } if *is_sampled => f(&span.read()),
             SharedSpanHandle::Untracked(rw_lock) => f(&rw_lock.read()),
             #[cfg(feature = "user-tracing")]
-            SharedSpanHandle::User(slot) | SharedSpanHandle::Deferred(slot) => f(&slot.span.read()),
-            SharedSpanHandle::Inactive => f(&INACTIVE),
+            SharedSpanHandle::User(slot) | SharedSpanHandle::Deferred(slot)
+                if slot.is_sampled() =>
+            {
+                f(&slot.span.read())
+            }
+            _ => f(&INACTIVE),
         }
     }
 
@@ -79,13 +83,15 @@ impl SharedSpanHandle {
     /// can't substitute a shared placeholder.
     pub(crate) fn with_write(&self, f: impl FnOnce(&mut Span)) {
         match self {
-            SharedSpanHandle::Tracked { span, .. } => f(&mut span.write()),
+            SharedSpanHandle::Tracked { span, is_sampled } if *is_sampled => f(&mut span.write()),
             SharedSpanHandle::Untracked(rw_lock) => f(&mut rw_lock.write()),
             #[cfg(feature = "user-tracing")]
-            SharedSpanHandle::User(slot) | SharedSpanHandle::Deferred(slot) => {
+            SharedSpanHandle::User(slot) | SharedSpanHandle::Deferred(slot)
+                if slot.is_sampled() =>
+            {
                 f(&mut slot.span.write())
             }
-            SharedSpanHandle::Inactive => {}
+            _ => {}
         }
     }
 }
