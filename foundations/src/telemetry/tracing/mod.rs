@@ -445,9 +445,8 @@ impl UserSpan {
     /// Discards this span, so it is never reported.
     ///
     /// Meant for spans that turn out to describe nothing worth reporting, such as a lookup that
-    /// found no match. It affects every handle to the span: tags added afterwards are dropped and
-    /// new children are inactive. Other handles may still report
-    /// [`is_sampled`](Self::is_sampled) as `true`, but record nothing.
+    /// found no match. It affects every handle to the span: they report it as unsampled, tags added
+    /// afterwards are dropped, and new children are inactive.
     ///
     /// Children that were already reported, and `traceparent`s already propagated from this span,
     /// reference a parent that will never arrive. A deferred root that hasn't been activated yet
@@ -458,8 +457,8 @@ impl UserSpan {
 
     /// Whether this span is being recorded.
     ///
-    /// Eager spans read cached state. Deferred roots inspect their shared span slot so contexts
-    /// captured before activation observe the updated state.
+    /// Every handle to the span shares this state, so activating or discarding the span through
+    /// one handle is visible through all of them.
     #[inline]
     pub fn is_sampled(&self) -> bool {
         self.span.is_sampled()
@@ -2753,6 +2752,52 @@ mod user_tracing_tests {
         user_tracing::discard_span();
 
         assert!(ctx.user_traces(Default::default()).is_empty());
+    }
+
+    fn current_user_span_is_sampled() -> bool {
+        super::current_user_span().is_some_and(|span| span.is_sampled())
+    }
+
+    // `discard_span` discards through a clone of the span taken from the scope stack. Every other
+    // handle must see it.
+    #[test]
+    fn discard_is_visible_through_every_handle() {
+        let ctx = TelemetryContext::test();
+        let _scope = ctx.scope();
+
+        let root = UserSpan::start_trace("request", routing(), None);
+        let child = root.child("child");
+        let captured = ctx.with_user_span(&child);
+
+        {
+            let _entered = child.enter();
+            user_tracing::discard_span();
+
+            assert!(!current_user_span_is_sampled());
+        }
+
+        assert!(!child.is_sampled());
+        let _captured = captured.scope();
+        assert!(!current_user_span_is_sampled());
+    }
+
+    #[test]
+    fn deferred_root_sampling_is_shared_by_every_handle() {
+        let ctx = TelemetryContext::test();
+        let _scope = ctx.scope();
+
+        let root = UserSpan::deferred();
+        let captured = ctx.with_user_span(&root);
+        let captured_is_sampled = || {
+            let _captured = captured.scope();
+            current_user_span_is_sampled()
+        };
+
+        assert!(!captured_is_sampled());
+        root.activate("request", routing(), None);
+        assert!(captured_is_sampled());
+        root.discard();
+        assert!(!captured_is_sampled());
     }
 }
 

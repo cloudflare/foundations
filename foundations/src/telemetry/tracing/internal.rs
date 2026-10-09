@@ -14,19 +14,34 @@ use rand::RngExt as _;
 use std::borrow::Cow;
 use std::error::Error;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU8, Ordering};
+#[cfg(feature = "user-tracing")]
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
 pub(crate) type Tracer = cf_rustracing::Tracer<BoxSampler<SpanContextState>, SpanContextState>;
 
 /// Shared span with mutability and additional reference tracking for
 /// ad-hoc inspection.
+///
+/// Every handle knows whether its span is sampled without taking the span's lock. Internal spans
+/// never change after creation, so the variant implies it, or `Tracked` stores it. User spans can
+/// be activated or discarded through any handle, so they share the flag in a [`UserSpanSlot`].
 #[derive(Clone, Debug)]
 pub(crate) enum SharedSpanHandle {
-    Tracked(Arc<LiveReferenceHandle<Arc<RwLock<Span>>>>),
+    /// An internal span registered for liveness tracking. It's only unsampled when all spans are
+    /// tracked.
+    Tracked {
+        span: Arc<LiveReferenceHandle<Arc<RwLock<Span>>>>,
+        is_sampled: bool,
+    },
+    /// A sampled internal span.
     Untracked(Arc<RwLock<Span>>),
+    /// A sampled user span.
     #[cfg(feature = "user-tracing")]
-    Deferred(Arc<RwLock<Span>>),
+    User(Arc<UserSpanSlot>),
+    /// A user root that starts inactive and can be activated in place.
+    #[cfg(feature = "user-tracing")]
+    Deferred(Arc<UserSpanSlot>),
     Inactive,
 }
 
@@ -35,14 +50,25 @@ impl SharedSpanHandle {
         TracingHarness::get().active_roots.track(span)
     }
 
+    #[inline]
+    pub(crate) fn is_sampled(&self) -> bool {
+        match self {
+            SharedSpanHandle::Tracked { is_sampled, .. } => *is_sampled,
+            SharedSpanHandle::Untracked(_) => true,
+            #[cfg(feature = "user-tracing")]
+            SharedSpanHandle::User(slot) | SharedSpanHandle::Deferred(slot) => slot.is_sampled(),
+            SharedSpanHandle::Inactive => false,
+        }
+    }
+
     pub(crate) fn with_read<R>(&self, f: impl FnOnce(&Span) -> R) -> R {
         static INACTIVE: Span = Span::inactive();
 
         match self {
-            SharedSpanHandle::Tracked(handle) => f(&handle.read()),
+            SharedSpanHandle::Tracked { span, .. } => f(&span.read()),
             SharedSpanHandle::Untracked(rw_lock) => f(&rw_lock.read()),
             #[cfg(feature = "user-tracing")]
-            SharedSpanHandle::Deferred(rw_lock) => f(&rw_lock.read()),
+            SharedSpanHandle::User(slot) | SharedSpanHandle::Deferred(slot) => f(&slot.span.read()),
             SharedSpanHandle::Inactive => f(&INACTIVE),
         }
     }
@@ -53,10 +79,12 @@ impl SharedSpanHandle {
     /// can't substitute a shared placeholder.
     pub(crate) fn with_write(&self, f: impl FnOnce(&mut Span)) {
         match self {
-            SharedSpanHandle::Tracked(handle) => f(&mut handle.write()),
+            SharedSpanHandle::Tracked { span, .. } => f(&mut span.write()),
             SharedSpanHandle::Untracked(rw_lock) => f(&mut rw_lock.write()),
             #[cfg(feature = "user-tracing")]
-            SharedSpanHandle::Deferred(rw_lock) => f(&mut rw_lock.write()),
+            SharedSpanHandle::User(slot) | SharedSpanHandle::Deferred(slot) => {
+                f(&mut slot.span.write())
+            }
             SharedSpanHandle::Inactive => {}
         }
     }
@@ -65,27 +93,58 @@ impl SharedSpanHandle {
 impl From<SharedSpanHandle> for Arc<RwLock<Span>> {
     fn from(value: SharedSpanHandle) -> Self {
         match value {
-            SharedSpanHandle::Tracked(handle) => Arc::clone(&handle),
+            SharedSpanHandle::Tracked { span, .. } => Arc::clone(&span),
             SharedSpanHandle::Untracked(rw_lock) => rw_lock,
+            // This is only used in `rustracing_span()`, which reads the internal span and should
+            // rarely need to be called. Allocating a fresh Arc every time is thus fine.
             #[cfg(feature = "user-tracing")]
-            SharedSpanHandle::Deferred(rw_lock) => rw_lock,
-            // This is only used in `rustracing_span()`, which should rarely
-            // need to be called. Allocating a fresh Arc every time is thus fine.
+            SharedSpanHandle::User(_) | SharedSpanHandle::Deferred(_) => {
+                Arc::new(RwLock::new(Span::inactive()))
+            }
             SharedSpanHandle::Inactive => Arc::new(RwLock::new(Span::inactive())),
         }
     }
 }
 
+/// A user span and whether it's sampled, shared by every handle to it.
+///
+/// Keeping the flag next to the span, rather than in each handle, keeps it accurate in every handle
+/// when the span is activated or discarded.
+#[cfg(feature = "user-tracing")]
 #[derive(Debug)]
+pub(crate) struct UserSpanSlot {
+    span: RwLock<Span>,
+    /// Mirrors `span.is_sampled()`, so it can be read without the lock. Only written while holding
+    /// the write lock.
+    is_sampled: AtomicBool,
+}
+
+#[cfg(feature = "user-tracing")]
+impl UserSpanSlot {
+    fn new(span: Span) -> Self {
+        Self {
+            is_sampled: AtomicBool::new(span.is_sampled()),
+            span: RwLock::new(span),
+        }
+    }
+
+    #[inline]
+    fn is_sampled(&self) -> bool {
+        self.is_sampled.load(Ordering::Relaxed)
+    }
+
+    fn discard(&self) {
+        let mut span = self.span.write();
+        span.discard();
+        self.is_sampled.store(false, Ordering::Relaxed);
+    }
+}
+
+#[derive(Clone, Debug)]
 pub(crate) struct SharedSpan {
     // NOTE: we intentionally use a lock without poisoning here to not
     // panic the threads if they just share telemetry with failed thread.
     pub(crate) inner: SharedSpanHandle,
-    // NOTE: store sampling flag separately, so we don't need to acquire lock
-    // every time we need to check the flag. Deferred user roots are the exception:
-    // their initially inactive span can be replaced in place, which is represented
-    // by the `0xFF` sentinel (`DEFERRED_SAMPLING`).
-    is_sampled: AtomicU8,
     /// USDT span probe state, recorded when the span's probe semaphore is
     /// non-zero (a tracer is attached), regardless of sampling. Shared by all
     /// clones, so the `span_end__*` probe fires exactly once when the last
@@ -94,15 +153,11 @@ pub(crate) struct SharedSpan {
 }
 
 impl SharedSpan {
-    /// Sentinel value to indicate a deferred span in `is_sampled`.
-    const DEFERRED_SAMPLING: u8 = 0xFF;
-
     /// Creates a [`SharedSpan`] equivalent to [`Span::inactive()`].
     #[cfg(feature = "user-tracing")]
     pub(crate) const fn inactive() -> Self {
         Self {
             inner: SharedSpanHandle::Inactive,
-            is_sampled: AtomicU8::new(false as u8),
             probe: None,
         }
     }
@@ -112,60 +167,25 @@ impl SharedSpan {
     #[cfg(feature = "user-tracing")]
     pub(crate) fn deferred() -> Self {
         Self {
-            inner: SharedSpanHandle::Deferred(Arc::new(RwLock::new(Span::inactive()))),
-            is_sampled: AtomicU8::new(Self::DEFERRED_SAMPLING),
+            inner: SharedSpanHandle::Deferred(Arc::new(UserSpanSlot::new(Span::inactive()))),
             probe: None,
         }
     }
 
     #[inline]
     pub(crate) fn is_sampled(&self) -> bool {
-        match self.is_sampled.load(Ordering::Relaxed) {
-            0 => return false,
-            1 => return true,
-            // Deferred SharedSpan, look inside the lock
-            _v => {
-                debug_assert_eq!(
-                    _v,
-                    Self::DEFERRED_SAMPLING,
-                    "unexpected value in SharedSpan::is_sampled",
-                );
-            }
-        }
-
-        let is_sampled = self.inner.with_read(|span| span.is_sampled());
-        if is_sampled {
-            // Only `discard` de-initializes a span inside SharedSpan, and it resets
-            // this cache, so we can save the result once its true.
-            self.is_sampled.store(true as u8, Ordering::Relaxed);
-        }
-        is_sampled
+        self.inner.is_sampled()
     }
 
-    /// Discards the span, so it is never reported.
+    /// Discards a user span, so it is never reported.
     ///
-    /// Every handle sharing the span stops recording, but only this handle's cached sampling flag
-    /// is reset: clones keep their own copy, so they may still report being sampled. Deferred
-    /// roots go back to reading the flag through the lock, so a root that wasn't activated yet
-    /// can still be activated.
+    /// Every handle sharing the span stops recording and reports it as unsampled. A deferred root
+    /// that wasn't activated yet has nothing to discard, so it can still be activated. Internal
+    /// spans can't be discarded.
     #[cfg(feature = "user-tracing")]
     pub(crate) fn discard(&self) {
-        self.inner.with_write(|span| span.discard());
-
-        let is_sampled = match self.inner {
-            SharedSpanHandle::Deferred(_) => Self::DEFERRED_SAMPLING,
-            _ => false as u8,
-        };
-        self.is_sampled.store(is_sampled, Ordering::Relaxed);
-    }
-}
-
-impl Clone for SharedSpan {
-    fn clone(&self) -> Self {
-        Self {
-            inner: self.inner.clone(),
-            is_sampled: AtomicU8::new(self.is_sampled.load(Ordering::Relaxed)),
-            probe: self.probe.clone(),
+        if let SharedSpanHandle::User(slot) | SharedSpanHandle::Deferred(slot) = &self.inner {
+            slot.discard();
         }
     }
 }
@@ -206,32 +226,23 @@ impl Drop for SpanProbe {
 
 /// Wraps a span and registers it with the internal harness's `active_roots` for live tracking.
 pub(crate) fn shared_span(span: Span) -> SharedSpan {
-    let is_sampled = span.is_sampled();
-
     SharedSpan {
         inner: SharedSpanHandle::new(span),
-        is_sampled: AtomicU8::new(is_sampled as u8),
         probe: None,
     }
 }
 
-/// Wraps a user span as `Untracked`/`Inactive`, bypassing `active_roots` so user spans never
+/// Wraps a user span as `User`/`Inactive`, bypassing `active_roots` so user spans never
 /// enter the internal harness's live registry.
 #[cfg(feature = "user-tracing")]
 pub(crate) fn user_shared_span(span: Span) -> SharedSpan {
-    let is_sampled = span.is_sampled();
-
-    let inner = if is_sampled {
-        SharedSpanHandle::Untracked(Arc::new(RwLock::new(span)))
+    let inner = if span.is_sampled() {
+        SharedSpanHandle::User(Arc::new(UserSpanSlot::new(span)))
     } else {
         SharedSpanHandle::Inactive
     };
 
-    SharedSpan {
-        inner,
-        is_sampled: AtomicU8::new(is_sampled as u8),
-        probe: None,
-    }
+    SharedSpan { inner, probe: None }
 }
 
 pub fn write_current_span(write_fn: impl FnOnce(&mut Span)) {
@@ -329,7 +340,7 @@ pub fn write_current_user_span(write_fn: impl FnOnce(&mut Span)) {
     span.inner.with_write(write_fn);
 }
 
-/// Starts an inactive untracked root in place. Other spans and already-started roots are unchanged.
+/// Starts an inactive deferred root in place. Other spans and already-started roots are unchanged.
 #[cfg(feature = "user-tracing")]
 pub(crate) fn activate_deferred_user_trace(
     span: &SharedSpan,
@@ -337,7 +348,7 @@ pub(crate) fn activate_deferred_user_trace(
     routing: impl RoutingMetadata + 'static,
     inbound: Option<super::TraceparentContext>,
 ) {
-    let SharedSpanHandle::Deferred(span) = &span.inner else {
+    let SharedSpanHandle::Deferred(slot) = &span.inner else {
         return;
     };
 
@@ -351,12 +362,13 @@ pub(crate) fn activate_deferred_user_trace(
     // Keep caller-controlled conversion and destruction outside the span lock.
     let name = name.into();
     let routing: Arc<dyn RoutingMetadata> = Arc::new(routing);
-    let mut span = span.write();
+    let mut span = slot.span.write();
     if span.is_sampled() {
         return;
     }
 
     *span = start_user_trace(name, routing, inbound);
+    slot.is_sampled.store(span.is_sampled(), Ordering::Relaxed);
 }
 
 /// Starts a root user span on the user harness, optionally continuing the inbound W3C trace.
