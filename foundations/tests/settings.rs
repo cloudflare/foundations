@@ -61,6 +61,40 @@ struct StructWithEnumField {
     field: SomeEnum,
 }
 
+// Documenting a new type variant is behind `--cfg foundations_unstable`, since it requires the
+// type the variant wraps to implement `Settings`.
+#[cfg(foundations_unstable)]
+#[settings(impl_default = false)]
+enum SomeOutput {
+    /// Writes the output to a file.
+    File(FileOutputSettings),
+    /// Writes the output to the terminal.
+    Terminal,
+}
+
+#[cfg(foundations_unstable)]
+impl Default for SomeOutput {
+    fn default() -> Self {
+        Self::File(Default::default())
+    }
+}
+
+#[cfg(foundations_unstable)]
+#[settings]
+struct FileOutputSettings {
+    /// Path of the output file.
+    path: String,
+    /// Whether an existing file is truncated.
+    truncate: bool,
+}
+
+#[cfg(foundations_unstable)]
+#[settings]
+struct StructWithNewTypeEnumField {
+    /// Where the output is written
+    output: SomeOutput,
+}
+
 #[settings]
 struct ProxySettings {
     /// Proxy address.
@@ -218,6 +252,15 @@ fn simple_config_with_docs() {
 #[test]
 fn enum_fields() {
     assert_ser_eq!(StructWithEnumField::default(), "settings_enum_fields.yaml");
+}
+
+#[cfg(foundations_unstable)]
+#[test]
+fn enum_new_type_variant_fields() {
+    assert_ser_eq!(
+        StructWithNewTypeEnumField::default(),
+        "settings_enum_new_type_variant_fields.yaml"
+    );
 }
 
 #[test]
