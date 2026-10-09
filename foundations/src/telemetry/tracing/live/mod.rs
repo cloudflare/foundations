@@ -43,7 +43,10 @@ impl ActiveRoots {
         let is_sampled = span.is_sampled();
 
         if self.settings.enabled && (self.settings.track_all_spans || is_sampled) {
-            SharedSpanHandle::Tracked(self.roots.track(Arc::new(RwLock::new(span))))
+            SharedSpanHandle::Tracked {
+                span: self.roots.track(Arc::new(RwLock::new(span))),
+                is_sampled,
+            }
         } else if is_sampled {
             SharedSpanHandle::Untracked(Arc::new(RwLock::new(span)))
         } else {

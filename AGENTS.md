@@ -33,5 +33,8 @@
 - User trace resources use `UserTracingSettings::service_name` and intentionally omit the internal
   service version.
 - Discarding a user span replaces it with an inactive one under the write lock, so every handle
-  stops recording. `SharedSpan::is_sampled` is cached per clone, so only the discarding handle's
-  cache is reset; deferred roots reset to `DEFERRED_SAMPLING` and stay activatable.
+  stops recording.
+- User spans keep their sampled flag in a `UserSpanSlot` shared by every handle, next to the
+  `RwLock` but outside it. Activation and discard update it under the write lock, so every handle
+  reports the same state. Internal spans never change after creation, so the handle variant implies
+  their flag, or `Tracked` stores it.
