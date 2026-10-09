@@ -1,4 +1,14 @@
 
+5.11.0
+- 2026-10-09 feat(telemetry): skip RwLock for unsampled SharedSpanHandles
+- 2026-10-09 refactor(telemetry): share user span sampling state between handles
+- 2026-10-08 feat(telemetry): discard user spans
+- 2026-10-08 chore(deps): bump cf-rustracing to 1.4.1
+- 2026-10-08 feat(telemetry): set start and finish times on user spans
+- 2026-10-08 metrics: Add LowCardinalityFamily and associated #[metric] logic
+- 2026-10-08 fix: libc 0.2.190 breaks semver
+- 2026-10-08 fix: Rust 1.99 lints
+
 5.10.3
 - 2026-09-29 fix: clippy and rustc lints in span_with_probe example
 - 2026-09-29 feat(telemetry): drop duplicate args_len information from SpanProbe
