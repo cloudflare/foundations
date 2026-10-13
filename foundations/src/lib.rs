@@ -102,6 +102,9 @@ pub mod security;
 #[cfg(feature = "ratelimit")]
 pub mod ratelimit;
 
+#[cfg(feature = "derive")]
+pub mod derive;
+
 #[doc(hidden)]
 pub mod reexports_for_macros {
     #[cfg(feature = "tracing")]
