@@ -198,6 +198,9 @@ cli = ["settings", "dep:clap"]
 # Enables testing-related functionality.
 testing = ["dep:foundations-macros"]
 
+# Enables derive macros for `Display` and `std::error::Error`.
+derive = ["dep:foundations-macros"]
+
 # Enables the ratelimit! utility macro.
 ratelimit = ["dep:governor", "dep:crossbeam-utils"]
 
