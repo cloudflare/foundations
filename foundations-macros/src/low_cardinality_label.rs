@@ -53,6 +53,7 @@ fn expand_from_parsed(input: DeriveInput) -> Result<proc_macro2::TokenStream> {
     let (impl_generics, type_generics, where_clause) = input.generics.split_for_impl();
 
     Ok(quote! {
+        #[automatically_derived]
         impl #impl_generics #trait_path for #enum_name #type_generics #where_clause {
             const CARDINALITY: ::std::num::NonZeroUsize =
                 ::std::num::NonZeroUsize::new(#cardinality).unwrap();
@@ -115,6 +116,7 @@ mod tests {
 
         let actual = expand_from_parsed(input).unwrap().to_string();
         let expected = code_str! {
+            #[automatically_derived]
             impl ::foundations::telemetry::metrics::LowCardinalityLabel for Protocol {
                 const CARDINALITY: ::std::num::NonZeroUsize =
                     ::std::num::NonZeroUsize::new(3usize).unwrap();
@@ -147,6 +149,7 @@ mod tests {
 
         let actual = expand_from_parsed(input).unwrap().to_string();
         let expected = code_str! {
+            #[automatically_derived]
             impl<const N: usize> ::facade::telemetry::metrics::LowCardinalityLabel for Generic<N>
             where
                 [(); N]: Sized,
