@@ -1,6 +1,7 @@
 use foundations_metrics_registry::{iter, proto::LabelPair};
 
 use crate::MetricFamily;
+use crate::clear::hide_unchanged;
 use crate::diagnostics::report_collect_error;
 use crate::validation::{
     NAME_REQUIREMENT, ValidationContext, is_valid_name, sanitize_metric_family,
@@ -44,7 +45,7 @@ pub fn collect(options: CollectionOptions) -> Vec<MetricFamily> {
 
     let mut collected = Vec::new();
 
-    for registered in iter() {
+    for (index, registered) in iter().enumerate() {
         let metadata = registered.metadata();
 
         if metadata.optional && !options.include_optional {
@@ -52,6 +53,7 @@ pub fn collect(options: CollectionOptions) -> Vec<MetricFamily> {
         }
 
         let mut families = registered.metric().encode();
+        hide_unchanged(index, &mut families);
 
         if let Some(service_name) = options.service_name {
             apply_service_name(

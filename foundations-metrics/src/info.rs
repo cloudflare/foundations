@@ -98,6 +98,19 @@ where
     }
 }
 
+/// Returns the names of the info metrics reported so far.
+pub(crate) fn info_metric_names() -> Vec<&'static str> {
+    let Some(info_metrics) = INFO_METRICS.get() else {
+        return Vec::new();
+    };
+
+    info_metrics
+        .read()
+        .values()
+        .map(|entry| entry.name)
+        .collect()
+}
+
 /// Encodes every reported info metric as a gauge family valued `1`.
 struct InfoCollector;
 
