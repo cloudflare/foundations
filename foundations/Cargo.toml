@@ -37,6 +37,7 @@ default = ["platform-common-default", "security"]
 
 # All non platform-specific features
 platform-common-default = [
+    "derive",
     "settings",
     "jemalloc",
     "telemetry",
