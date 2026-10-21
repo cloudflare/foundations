@@ -444,7 +444,8 @@ pub fn to_yaml_string(settings: &impl Settings) -> BootstrapResult<String> {
     let mut doc_comments = Default::default();
     let mut yaml_with_docs = String::new();
     let mut key_stack = vec![];
-    let mut list_index = 0;
+    // Indentation and next item index of each list enclosing the current line.
+    let mut list_indices: Vec<(usize, usize)> = vec![];
 
     settings.add_docs(&[], &mut doc_comments);
 
@@ -463,13 +464,27 @@ pub fn to_yaml_string(settings: &impl Settings) -> BootstrapResult<String> {
 
             // NOTE: if we have a list item, then append the index of the item to the key stack.
             if is_list_item {
+                // Lists nested in the previous item end here.
+                list_indices.retain(|&(indent, _)| indent <= spaces);
+
+                let list_index = match list_indices.last_mut() {
+                    Some((indent, next_index)) if *indent == spaces => {
+                        *next_index += 1;
+                        *next_index - 1
+                    }
+                    _ => {
+                        list_indices.push((spaces, 1));
+                        0
+                    }
+                };
+
                 key_stack.push(list_index.to_string());
 
                 field_name = field_name[LIST_ITEM_PREFIX.len()..].trim().to_string();
                 spaces += LIST_ITEM_PREFIX.len();
-                list_index += 1;
             } else {
-                list_index = 0;
+                // A key at or left of a list's dash ends that list.
+                list_indices.retain(|&(indent, _)| indent < spaces);
             }
 
             key_stack.push(field_name);
