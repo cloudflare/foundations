@@ -1,8 +1,12 @@
 use foundations::telemetry::TelemetryContext;
 use foundations::telemetry::TestTelemetryContext;
 use foundations::telemetry::log::internal::LoggerWithKvNestingTracking;
-use foundations::telemetry::log::{add_fields, freeze, is_frozen, set_verbosity, unfreeze, warn};
-use foundations::telemetry::settings::{LogVerbosity, LoggingSettings, RateLimitingSettings};
+use foundations::telemetry::log::{
+    TestLogRecord, add_fields, freeze, is_frozen, set_verbosity, unfreeze, warn,
+};
+use foundations::telemetry::settings::{
+    Level, LogVerbosity, LoggingSettings, RateLimitingSettings,
+};
 use foundations_macros::with_test_telemetry;
 
 #[with_test_telemetry(test)]
@@ -139,6 +143,54 @@ fn test_frozen_logger_add_fields_panics(_ctx: TestTelemetryContext) {
             }
         }
     }
+}
+
+// With panic_on_field_overwrite, add_fields! must panic when it sets a key the logger already
+// has, including a key inherited by a forked logger.
+#[with_test_telemetry(test)]
+fn test_field_overwrite_panics(mut ctx: TestTelemetryContext) {
+    ctx.set_logging_settings(LoggingSettings {
+        panic_on_field_overwrite: true,
+        ..Default::default()
+    });
+
+    add_fields! { "key" => "value" }
+
+    let forked_ctx = TelemetryContext::current().with_forked_log();
+    let _scope = forked_ctx.scope();
+
+    add_fields! { "other_key" => "value" }
+
+    let err = std::panic::catch_unwind(|| {
+        add_fields! { "key" => "new value" }
+    })
+    .expect_err("expected a panic when add_fields! overwrites a key");
+
+    let msg = err.downcast_ref::<String>().expect("String panic payload");
+    assert!(msg.starts_with(LoggerWithKvNestingTracking::FIELD_OVERWRITE_ERROR));
+    assert!(msg.contains("`key`"));
+}
+
+// allow_overwrite opts a single add_fields! call out of panic_on_field_overwrite.
+#[with_test_telemetry(test)]
+fn test_field_overwrite_allowed(mut ctx: TestTelemetryContext) {
+    ctx.set_logging_settings(LoggingSettings {
+        panic_on_field_overwrite: true,
+        ..Default::default()
+    });
+
+    add_fields! { "key" => "value" }
+    add_fields! { allow_overwrite; "key" => "new value" }
+    warn!("hello");
+
+    assert_eq!(
+        *ctx.log_records(),
+        [TestLogRecord {
+            level: Level::Warning,
+            message: "hello".into(),
+            fields: vec![("key".into(), "new value".into())],
+        }]
+    );
 }
 
 #[cfg(feature = "tracing-rs-compat")]
