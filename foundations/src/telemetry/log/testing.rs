@@ -87,7 +87,8 @@ where
     let drain = wrap_root_drain(settings, drain);
 
     let logger = build_log_with_drain(settings.verbosity, slog::o!(), Arc::clone(&drain));
-    let log = LoggerWithKvNestingTracking::new(logger);
+    let mut log = LoggerWithKvNestingTracking::new(logger);
+    log.panic_on_field_overwrite = settings.panic_on_field_overwrite;
 
     let _ = LogHarness::override_for_testing(LogHarness {
         root_log: Arc::new(ParkingRwLock::new(log.clone())),

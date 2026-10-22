@@ -128,11 +128,12 @@ pub(crate) fn init(
     );
 
     let root_log = build_log_with_drain(settings.verbosity, root_kv, Arc::clone(&root_drain));
+    let mut root_log = LoggerWithKvNestingTracking::new(root_log);
+    root_log.panic_on_field_overwrite = settings.panic_on_field_overwrite;
+
     let harness = LogHarness {
         root_drain,
-        root_log: Arc::new(parking_lot::RwLock::new(LoggerWithKvNestingTracking::new(
-            root_log,
-        ))),
+        root_log: Arc::new(parking_lot::RwLock::new(root_log)),
         settings: settings.clone(),
         log_scope_stack: Default::default(),
     };
