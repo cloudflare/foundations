@@ -1,14 +1,16 @@
 use std::collections::HashMap;
-use std::sync::OnceLock;
 
+use crossbeam_utils::CachePadded;
 use foundations_metrics_registry::proto::{LabelPair, Metric};
 use foundations_metrics_registry::{EncodeMetric, MetricFamily, iter};
-use parking_lot::Mutex;
+use parking_lot::{Mutex, MutexGuard};
 
 use crate::info::info_metric_names;
 
 /// Series that haven't changed since [`clear_all`] was last called.
-static CLEARED: OnceLock<Mutex<Option<Snapshot>>> = OnceLock::new();
+static CLEARED: CachePadded<Mutex<Snapshot>> = CachePadded::new(Mutex::new(Snapshot {
+    metrics: Vec::new(),
+}));
 
 /// Stops reporting every series until its value changes.
 ///
@@ -62,19 +64,13 @@ pub fn clear_all() {
         &always_reported,
     );
 
-    *CLEARED.get_or_init(Default::default).lock() = Some(snapshot);
+    *CLEARED.lock() = snapshot;
 }
 
-/// Removes the rows of the metric at registry position `index` that haven't
-/// changed since [`clear_all`] was called.
-pub(crate) fn hide_unchanged(index: usize, families: &mut Vec<MetricFamily>) {
-    let Some(cleared) = CLEARED.get() else {
-        return;
-    };
-
-    if let Some(snapshot) = cleared.lock().as_mut() {
-        snapshot.hide_unchanged(index, families);
-    }
+/// Locks the rows that haven't changed since [`clear_all`] was called, so a
+/// collection can filter every metric under one lock.
+pub(crate) fn cleared() -> MutexGuard<'static, Snapshot> {
+    CLEARED.lock()
 }
 
 /// Encodes `metric` twice and returns the second result.
@@ -88,7 +84,7 @@ fn encode_settled(metric: &dyn EncodeMetric) -> Vec<MetricFamily> {
 
 /// The rows each registered metric had when [`clear_all`] was called, by
 /// registry position. Rows are forgotten once they change.
-struct Snapshot {
+pub(crate) struct Snapshot {
     metrics: Vec<MetricSnapshot>,
 }
 
@@ -132,7 +128,9 @@ impl Snapshot {
         Self { metrics }
     }
 
-    fn hide_unchanged(&mut self, index: usize, families: &mut Vec<MetricFamily>) {
+    /// Removes the rows of the metric at registry position `index` that
+    /// haven't changed since [`clear_all`] was called.
+    pub(crate) fn hide_unchanged(&mut self, index: usize, families: &mut Vec<MetricFamily>) {
         let Some(snapshot) = self.metrics.get_mut(index) else {
             return;
         };
