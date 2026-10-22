@@ -252,3 +252,17 @@ async fn telemetry_server() {
     assert!(trace_output.contains("child_span_outliving_parent"));
     assert!(trace_output.contains("my_root_span"));
 }
+
+#[test]
+fn custom_route_collides_with_built_in_route() {
+    let route = |path: &str, method| TelemetryServerRoute {
+        path: path.into(),
+        methods: vec![method],
+        handler: Box::new(|_, _| unreachable!()),
+    };
+
+    assert!(route("/health", Method::GET).collides_with_built_in_route());
+    assert!(route("/metrics", Method::GET).collides_with_built_in_route());
+    assert!(!route("/health", Method::POST).collides_with_built_in_route());
+    assert!(!route("/custom-route", Method::GET).collides_with_built_in_route());
+}
