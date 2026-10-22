@@ -54,7 +54,9 @@ type RouteHandlerShared = Arc<
 ///
 /// New built-in routes may be added from time to time. We reserve the `/foundations/`
 /// prefix for this purpose, but other paths may be used if there are existing conventions
-/// for a feature (such as `/pprof/*` and `/metrics`.)
+/// for a feature (such as `/pprof/*` and `/metrics`.) Use
+/// [`collides_with_built_in_route`](Self::collides_with_built_in_route) to check a route
+/// against the built-in routes at startup.
 ///
 /// # Pattern-Based Routing
 ///
@@ -89,6 +91,35 @@ pub struct TelemetryServerRoute {
 
     /// A route handler.
     pub handler: TelemetryRouteHandler,
+}
+
+impl TelemetryServerRoute {
+    /// Returns `true` if this route collides with a built-in route for any of its methods.
+    ///
+    /// Built-in routes are inserted before custom routes, so a route with the same path and
+    /// method as a built-in route is silently ignored for that method. Services can call this
+    /// at startup to catch such collisions, including with built-in routes added in later
+    /// releases.
+    pub fn collides_with_built_in_route(&self) -> bool {
+        let mut built_in = Routes(Default::default());
+        built_in
+            .init_built_in_routes()
+            .expect("built-in routes should not conflict with each other");
+
+        let path = router_path(&self.path);
+        let placeholder: RouteHandlerShared = Arc::new(|_, _| unreachable!());
+
+        self.methods.iter().any(|method| {
+            built_in.0.get(method).is_some_and(|router| {
+                matches!(
+                    router
+                        .clone()
+                        .insert(path.clone(), Arc::clone(&placeholder)),
+                    Err(matchit::InsertError::Conflict { .. })
+                )
+            })
+        })
+    }
 }
 
 struct Routes(HashMap<Method, matchit::Router<RouteHandlerShared>>);
@@ -203,33 +234,36 @@ impl Routes {
         Ok(())
     }
 
-    #[allow(unused_mut, reason = "conditional mutation")]
-    fn set(&mut self, mut route: TelemetryServerRoute) -> BootstrapResult<()> {
+    fn set(&mut self, route: TelemetryServerRoute) -> BootstrapResult<()> {
         let handler = Arc::from(route.handler);
-
-        #[cfg(not(feature = "telemetry-server-pattern-routing"))]
-        {
-            // Escape parameter delimiters so `matchit` interprets them literally
-            route.path = route.path.replace('{', "{{").replace('}', "}}");
-        }
+        let path = router_path(&route.path);
 
         for method in route.methods {
             let res = self
                 .0
                 .entry(method)
                 .or_default()
-                .insert(route.path.clone(), Arc::clone(&handler));
+                .insert(path.clone(), Arc::clone(&handler));
 
             match res {
                 Ok(()) => {}
                 // Exact matches were allowed and ignored historically. Any other errors
                 // should be reported up.
-                Err(matchit::InsertError::Conflict { with }) if with == route.path => {}
-                Err(e) => anyhow::bail!("tried to insert route `{}`, but {}", route.path, e),
+                Err(matchit::InsertError::Conflict { with }) if with == path => {}
+                Err(e) => anyhow::bail!("tried to insert route `{}`, but {}", path, e),
             }
         }
 
         Ok(())
+    }
+}
+
+fn router_path(path: &str) -> String {
+    if cfg!(feature = "telemetry-server-pattern-routing") {
+        path.to_owned()
+    } else {
+        // Escape parameter delimiters so `matchit` interprets them literally
+        path.replace('{', "{{").replace('}', "}}")
     }
 }
 
