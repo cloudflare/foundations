@@ -12,6 +12,10 @@
     not(feature = "foundations-metrics-backend"),
     doc = "- Use [`collect`] method to obtain metrics report programmatically."
 )]
+#![cfg_attr(
+    feature = "foundations-metrics-backend",
+    doc = "- Use [`clear_all`] to stop reporting unchanged series, e.g. when draining."
+)]
 //! - Use [telemetry server] to expose a metrics endpoint.
 //!
 //! [Prometheus]: https://prometheus.io/
@@ -70,6 +74,8 @@ mod backend {
         EncodeMetric, EncodeMetricValue, IntoMetrics, LabelError, MetricFamily, NamedMetric,
         RegistrationMetadata, proto, register, to_label_pairs,
     };
+
+    pub use foundations_metrics::clear_all;
 }
 #[cfg(not(feature = "foundations-metrics-backend"))]
 mod backend {
