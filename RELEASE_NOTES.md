@@ -1,4 +1,10 @@
 
+5.11.1
+- 2026-10-19 deps: update libc to 0.2.191 and remove upper bound
+- 2026-10-15 foundations/derive: add derive to the platform-common-default feature set
+- 2026-10-14 metrics: add #[automatically_derived] to LowCardinalityLabel impls
+- 2026-10-13 foundations: add Display derive for trivial struct/enum Display
+
 5.11.0
 - 2026-10-09 feat(telemetry): skip RwLock for unsampled SharedSpanHandles
 - 2026-10-09 refactor(telemetry): share user span sampling state between handles
