@@ -161,6 +161,20 @@ struct WithVec {
     items: Vec<NestedStruct>,
 }
 
+#[settings]
+struct NamedOption {
+    /// Name of the item
+    name: String,
+    /// Optional field
+    optional: Option<NestedStruct>,
+}
+
+#[settings]
+struct WithVecOfOptions {
+    /// Items
+    items: Vec<NamedOption>,
+}
+
 mod foundations_reexport {
     pub(crate) mod nested {
         pub(crate) use foundations::*;
@@ -291,6 +305,24 @@ fn vec() {
     };
 
     assert_ser_eq!(s, "with_vec.yaml");
+}
+
+#[test]
+fn vec_items_with_different_fields() {
+    let s = WithVecOfOptions {
+        items: vec![
+            NamedOption {
+                name: "foo".into(),
+                optional: None,
+            },
+            NamedOption {
+                name: "bar".into(),
+                optional: Some(NestedStruct { a: 1, b: 2, c: 3 }),
+            },
+        ],
+    };
+
+    assert_ser_eq!(s, "with_vec_of_options.yaml");
 }
 
 #[test]

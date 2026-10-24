@@ -1,0 +1,17 @@
+---
+# Items
+items:
+    # Name of the item
+  - name: foo
+    # Optional field
+    optional: ~
+    # Name of the item
+  - name: bar
+    # Optional field
+    optional:
+      # A field, which is named the same as another field.
+      a: 1
+      # multi-line
+      # doc comment
+      b: 2
+      c: 3
