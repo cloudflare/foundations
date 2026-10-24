@@ -65,8 +65,9 @@ impl MemoryProfiler {
     /// # Enabling profiling
     ///
     /// Note that profiling needs to be explicitly enabled by setting `_RJEM_MALLOC_CONF=prof:true`
-    /// environment variable for the binary and with [`MemoryProfilerSettings::enabled`] being set
-    /// to `true`. Otherwise, this method will return `None`.
+    /// environment variable for the binary. When profiling is available, this method applies the
+    /// configured sample interval and activation state. It returns `None` when profiling is
+    /// unavailable or [`MemoryProfilerSettings::enabled`] is `false`.
     ///
     /// If syscall sandboxing is being used (see [`crate::security`] for more details), telemetry
     /// must be initialized prior to syscall sandboxing.
@@ -152,9 +153,24 @@ impl MemoryProfiler {
 }
 
 fn init_profiler(settings: &MemoryProfilerSettings) -> BootstrapResult<Option<MemoryProfiler>> {
-    if !settings.enabled || !control::profiling_enabled() {
+    if !control::profiling_enabled() {
         return Ok(None);
     }
+
+    // Disable profiling before resetting it so no samples are collected using stale settings.
+    control::write(control::PROF_ACTIVE, false)
+        .map_err(|e| BootstrapError::new(e).context("failed to deactivate profiling"))?;
+
+    control::write(control::PROF_RESET, usize::from(settings.sample_interval))
+        .map_err(|e| BootstrapError::new(e).context("failed to set sample interval"))?;
+
+    if !settings.enabled {
+        return Ok(None);
+    }
+
+    control::write(control::BACKGROUND_THREAD, true).map_err(|e| {
+        BootstrapError::new(e).context("failed to activate background thread collection")
+    })?;
 
     let (request_sender, request_receiver) = mpsc::channel();
     HEAP_PROFILE_REQUEST_SENDER
@@ -162,13 +178,6 @@ fn init_profiler(settings: &MemoryProfilerSettings) -> BootstrapResult<Option<Me
         .map_err(|_| anyhow::anyhow!("request sender had already been initialized"))?;
 
     std::thread::spawn(move || heap_profile_thread(request_receiver));
-
-    control::write(control::BACKGROUND_THREAD, true).map_err(|e| {
-        BootstrapError::new(e).context("failed to activate background thread collection")
-    })?;
-
-    control::write(control::PROF_RESET, settings.sample_interval as u64)
-        .map_err(|e| BootstrapError::new(e).context("failed to set sample interval"))?;
 
     control::write(control::PROF_ACTIVE, true)
         .map_err(|e| BootstrapError::new(e).context("failed to activate profiling"))?;

@@ -343,6 +343,12 @@ pub fn init(config: TelemetryConfig) -> BootstrapResult<TelemetryDriver> {
         )
     }
 
+    // Eagerly init the memory profiler so it gets set up before syscalls are sandboxed with seccomp.
+    // Apply its settings even when memory_profiler.enabled or server.enabled is false
+    // to ensure profiling is disabled
+    #[cfg(all(target_os = "linux", feature = "memory-profiling"))]
+    let _ = MemoryProfiler::get_or_init_with(&config.settings.memory_profiler)?;
+
     #[cfg(feature = "metrics")]
     self::metrics::init::init(config.service_info, &config.settings.metrics)?;
 
