@@ -233,6 +233,13 @@ rustdoc-args = ["--cfg", "foundations_docsrs", "--cfg", "tokio_unstable", "--cfg
 # to rustc, or else dependencies will not be enabled, and the docs build will fail.
 rustc-args = ["--cfg", "tokio_unstable", "--cfg", "foundations_unstable"]
 
+[[bin]]
+name = "memory-profiler-test-helper"
+path = "tests/helpers/memory_profiler_test_helper.rs"
+required-features = ["memory-profiling"]
+test = false
+bench = false
+
 [lints]
 workspace = true
 

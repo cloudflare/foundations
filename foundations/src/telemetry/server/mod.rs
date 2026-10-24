@@ -151,13 +151,6 @@ impl TelemetryServerFuture {
 
         let settings = Arc::new(settings);
 
-        // Eagerly init the memory profiler so it gets set up before syscalls are sandboxed with seccomp.
-        #[cfg(all(target_os = "linux", feature = "memory-profiling"))]
-        if settings.memory_profiler.enabled {
-            memory_profiling::profiler(Arc::clone(&settings))
-                .map_err(|err| anyhow::anyhow!(err))?;
-        }
-
         let router = Router::new(custom_routes, Arc::clone(&settings))
             .context("building telemetry server router")?;
 
