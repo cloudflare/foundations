@@ -1,4 +1,7 @@
 
+5.11.2
+- 2026-10-26 fix: Allow libc <0.2.190 again for compatibility with quiche
+
 5.11.1
 - 2026-10-19 deps: update libc to 0.2.191 and remove upper bound
 - 2026-10-15 foundations/derive: add derive to the platform-common-default feature set
