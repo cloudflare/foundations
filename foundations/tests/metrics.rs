@@ -18,6 +18,11 @@ mod regular {
     pub fn dynamic(label: &'static str) -> Counter;
 }
 
+#[metrics]
+mod str_labels {
+    pub fn requests(path: &str) -> Counter;
+}
+
 #[metrics(unprefixed)]
 mod library {
     pub fn calls() -> Counter;
@@ -62,6 +67,29 @@ fn metrics_unprefixed() {
     assert!(!metrics.contains("\nundefined_regular_dynamic"));
     assert!(metrics.contains(&format!("\nlibrary_calls {ONE}\n")));
     assert!(!metrics.contains("\nlibrary_optional"));
+}
+
+#[test]
+fn str_labels_are_owned_with_to_owned() {
+    let path = "/metrics".to_owned();
+
+    str_labels::requests(&path).inc_by(2);
+    str_labels::requests("/health").inc();
+
+    let settings = MetricsSettings {
+        service_name_format: ServiceNameFormat::MetricPrefix,
+        report_optional: false,
+    };
+    let metrics = collect_text(&settings);
+
+    assert!(
+        metrics.contains("undefined_str_labels_requests{path=\"/metrics\"} 2\n"),
+        "collected output was: {metrics}"
+    );
+    assert!(
+        metrics.contains("undefined_str_labels_requests{path=\"/health\"} 1\n"),
+        "collected output was: {metrics}"
+    );
 }
 
 #[test]

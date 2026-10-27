@@ -79,6 +79,7 @@ struct ArgAttrs {
 enum ArgMode {
     ByValue(Type),
     Clone(Type),
+    ToOwned(Type),
     Into(Type),
 }
 
@@ -92,9 +93,8 @@ impl FnArg {
         } = self;
 
         let ty = match &self.mode {
-            ArgMode::ByValue(ty) => ty,
-            ArgMode::Clone(ty) => ty,
-            ArgMode::Into(ty) => ty,
+            ArgMode::ByValue(ty) | ArgMode::Clone(ty) | ArgMode::Into(ty) => quote! { #ty },
+            ArgMode::ToOwned(ty) => quote! { <#ty as ::std::borrow::ToOwned>::Owned },
         };
 
         quote! { #serde_as #serde #ident #colon_token #ty }
@@ -120,6 +120,9 @@ impl FnArg {
             ArgMode::ByValue(_) => quote! { #ident },
             ArgMode::Clone(_) => quote! {
                 #ident #colon_token ::std::clone::Clone::clone(#ident)
+            },
+            ArgMode::ToOwned(_) => quote! {
+                #ident #colon_token ::std::borrow::ToOwned::to_owned(#ident)
             },
             ArgMode::Into(_) => quote! {
                 #ident #colon_token ::std::convert::Into::into(#ident)
@@ -287,7 +290,10 @@ fn label_set_struct(foundations: &Path, fn_: &ItemFn) -> Option<proc_macro2::Tok
     let low_cardinality_impl = low_cardinality.is_present().then(|| {
         let cardinality_factors = args.iter().map(|arg| {
             let ty = match &arg.mode {
-                ArgMode::ByValue(ty) | ArgMode::Clone(ty) | ArgMode::Into(ty) => ty,
+                ArgMode::ByValue(ty)
+                | ArgMode::Clone(ty)
+                | ArgMode::ToOwned(ty)
+                | ArgMode::Into(ty) => ty,
             };
 
             quote! {
@@ -305,7 +311,10 @@ fn label_set_struct(foundations: &Path, fn_: &ItemFn) -> Option<proc_macro2::Tok
         let index_steps = args.iter().map(|arg| {
             let ident = &arg.ident;
             let ty = match &arg.mode {
-                ArgMode::ByValue(ty) | ArgMode::Clone(ty) | ArgMode::Into(ty) => ty,
+                ArgMode::ByValue(ty)
+                | ArgMode::Clone(ty)
+                | ArgMode::ToOwned(ty)
+                | ArgMode::Into(ty) => ty,
             };
 
             quote! {
@@ -886,6 +895,94 @@ mod tests {
                         kind,
                         message,
                         error: ::std::convert::Into::into(error),
+                    };
+                    ::std::clone::Clone::clone(
+                        &::foundations::telemetry::metrics::Family::get_or_create(
+                            &__oxy_Metrics.connections_errors_total,
+                            &__args,
+                        )
+                    )
+                }
+            }
+        };
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn expand_str_label() {
+        let attr = parse_attr! {
+            #[metrics]
+        };
+
+        let src = parse_quote! {
+            pub mod oxy {
+                /// Total number of connection errors
+                pub fn connections_errors_total(endpoint: &str) -> Counter;
+            }
+        };
+
+        let actual = expand_from_parsed(attr, src).to_string();
+
+        let expected = code_str! {
+            pub mod oxy {
+                use super::*;
+
+                #[allow(non_camel_case_types)]
+                struct __oxy_Metrics {
+                    connections_errors_total:
+                        ::foundations::telemetry::metrics::Family<
+                            connections_errors_total,
+                            Counter,
+                        >,
+                }
+
+                #[allow(non_camel_case_types)]
+                #[derive(
+                    ::std::clone::Clone,
+                    ::std::cmp::Eq,
+                    ::std::hash::Hash,
+                    ::std::cmp::PartialEq,
+                    ::foundations::reexports_for_macros::serde::Serialize,
+                )]
+                #[serde(crate = ":: foundations :: reexports_for_macros :: serde")]
+                struct connections_errors_total {
+                    endpoint: <str as ::std::borrow::ToOwned>::Owned,
+                }
+
+                #[allow(non_upper_case_globals)]
+                static __oxy_Metrics: ::std::sync::LazyLock<__oxy_Metrics> =
+                    ::std::sync::LazyLock::new(|| {
+                        __oxy_Metrics {
+                            connections_errors_total: {
+                                let metric = ::std::default::Default::default();
+
+                                ::foundations::telemetry::metrics::internal::register_metric(
+                                    ::std::stringify!(oxy),
+                                    ::std::stringify!(connections_errors_total),
+                                    ::std::concat!(
+                                        ::std::stringify!(oxy),
+                                        "_",
+                                        ::std::stringify!(connections_errors_total),
+                                    ),
+                                    str::trim(" Total number of connection errors"),
+                                    ::std::clone::Clone::clone(&metric),
+                                    false,
+                                    true,
+                                );
+
+                                metric
+                            },
+                        }
+                    });
+
+                #[doc = " Total number of connection errors"]
+                #[must_use]
+                pub fn connections_errors_total(
+                    endpoint: &str,
+                ) -> Counter {
+                    let __args = connections_errors_total {
+                        endpoint: ::std::borrow::ToOwned::to_owned(endpoint),
                     };
                     ::std::clone::Clone::clone(
                         &::foundations::telemetry::metrics::Family::get_or_create(
