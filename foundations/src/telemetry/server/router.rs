@@ -101,10 +101,8 @@ impl TelemetryServerRoute {
     /// at startup to catch such collisions, including with built-in routes added in later
     /// releases.
     pub fn collides_with_built_in_route(&self) -> bool {
-        let mut built_in = Routes(Default::default());
-        built_in
-            .init_built_in_routes()
-            .expect("built-in routes should not conflict with each other");
+        let built_in =
+            Routes::new(vec![]).expect("built-in routes should not conflict with each other");
 
         let path = router_path(&self.path);
         let placeholder: RouteHandlerShared = Arc::new(|_, _| unreachable!());
