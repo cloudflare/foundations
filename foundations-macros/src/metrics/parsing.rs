@@ -174,7 +174,7 @@ impl Parse for ItemFn {
                         return error(&reference, LOW_CARDINALITY_MUT_REFERENCE_ERROR);
                     }
 
-                    arg.mode = ArgMode::Clone((*reference.elem).clone());
+                    arg.mode = ArgMode::ToOwned((*reference.elem).clone());
                 }
             }
         }
@@ -272,11 +272,7 @@ impl Parse for FnArg {
 
             Ok(match ty {
                 Type::Reference(ref_) if ref_.lifetime.is_none() => {
-                    if is_unsized(&ref_.elem) {
-                        ArgMode::ToOwned((*ref_.elem).clone())
-                    } else {
-                        ArgMode::Clone((*ref_.elem).clone())
-                    }
+                    ArgMode::ToOwned((*ref_.elem).clone())
                 }
                 Type::ImplTrait(impl_) => ArgMode::Into(as_into_target(impl_)?.clone()),
                 ty => ArgMode::ByValue(ty.clone()),
@@ -295,22 +291,5 @@ impl Parse for FnArg {
             ty,
             mode,
         })
-    }
-}
-
-fn is_unsized(ty: &Type) -> bool {
-    match ty {
-        Type::Paren(paren) => is_unsized(&paren.elem),
-        Type::Slice(_) => true,
-        Type::Path(path)
-            if path.qself.is_none()
-                && path.path.leading_colon.is_none()
-                && path.path.segments.len() == 1 =>
-        {
-            let segment = &path.path.segments[0];
-
-            segment.ident == "str" && matches!(segment.arguments, PathArguments::None)
-        }
-        _ => false,
     }
 }

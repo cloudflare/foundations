@@ -78,7 +78,6 @@ struct ArgAttrs {
 
 enum ArgMode {
     ByValue(Type),
-    Clone(Type),
     ToOwned(Type),
     Into(Type),
 }
@@ -93,7 +92,7 @@ impl FnArg {
         } = self;
 
         let ty = match &self.mode {
-            ArgMode::ByValue(ty) | ArgMode::Clone(ty) | ArgMode::Into(ty) => quote! { #ty },
+            ArgMode::ByValue(ty) | ArgMode::Into(ty) => quote! { #ty },
             ArgMode::ToOwned(ty) => quote! { <#ty as ::std::borrow::ToOwned>::Owned },
         };
 
@@ -118,9 +117,6 @@ impl FnArg {
 
         match &self.mode {
             ArgMode::ByValue(_) => quote! { #ident },
-            ArgMode::Clone(_) => quote! {
-                #ident #colon_token ::std::clone::Clone::clone(#ident)
-            },
             ArgMode::ToOwned(_) => quote! {
                 #ident #colon_token ::std::borrow::ToOwned::to_owned(#ident)
             },
@@ -290,10 +286,7 @@ fn label_set_struct(foundations: &Path, fn_: &ItemFn) -> Option<proc_macro2::Tok
     let low_cardinality_impl = low_cardinality.is_present().then(|| {
         let cardinality_factors = args.iter().map(|arg| {
             let ty = match &arg.mode {
-                ArgMode::ByValue(ty)
-                | ArgMode::Clone(ty)
-                | ArgMode::ToOwned(ty)
-                | ArgMode::Into(ty) => ty,
+                ArgMode::ByValue(ty) | ArgMode::ToOwned(ty) | ArgMode::Into(ty) => ty,
             };
 
             quote! {
@@ -311,10 +304,7 @@ fn label_set_struct(foundations: &Path, fn_: &ItemFn) -> Option<proc_macro2::Tok
         let index_steps = args.iter().map(|arg| {
             let ident = &arg.ident;
             let ty = match &arg.mode {
-                ArgMode::ByValue(ty)
-                | ArgMode::Clone(ty)
-                | ArgMode::ToOwned(ty)
-                | ArgMode::Into(ty) => ty,
+                ArgMode::ByValue(ty) | ArgMode::ToOwned(ty) | ArgMode::Into(ty) => ty,
             };
 
             quote! {
@@ -849,7 +839,7 @@ mod tests {
                 #[serde(crate = ":: foundations :: reexports_for_macros :: serde")]
                 struct connections_errors_total {
                     #[serde(rename = "endpoint_name")]
-                    endpoint: Arc<String>,
+                    endpoint: <Arc<String> as ::std::borrow::ToOwned>::Owned,
                     #[serde_as(as = "DisplayFromStr")]
                     kind: Kind,
                     message: &'static str,
@@ -891,7 +881,7 @@ mod tests {
                     error: impl Into<String>,
                 ) -> Counter {
                     let __args = connections_errors_total {
-                        endpoint: ::std::clone::Clone::clone(endpoint),
+                        endpoint: ::std::borrow::ToOwned::to_owned(endpoint),
                         kind,
                         message,
                         error: ::std::convert::Into::into(error),
@@ -1313,12 +1303,12 @@ mod tests {
         .expect("explicit-lifetime shared reference must parse");
 
         let arg = &parsed.fns[0].args[0];
-        assert!(matches!(&arg.mode, ArgMode::Clone(Type::Path(_))));
+        assert!(matches!(&arg.mode, ArgMode::ToOwned(Type::Path(_))));
         assert_eq!(arg.ty.to_token_stream().to_string(), "& 'static Kind");
         assert_eq!(arg.to_struct_member().to_string(), "kind : Kind");
         assert_eq!(
             arg.to_initializer().to_string(),
-            "kind : :: std :: clone :: Clone :: clone (kind)"
+            "kind : :: std :: clone :: ToOwned :: to_owned (kind)"
         );
     }
 
