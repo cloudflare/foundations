@@ -1,5 +1,8 @@
 
-0.1.0-beta.4
+0.1.0-beta.5
+- 2026-10-28 feat(metrics): add clear_all to stop reporting unchanged series (#280)
+
+foundations-metrics-v0.1.0-beta.4
 - 2026-10-08 metrics: Add LowCardinalityFamily and associated #[metric] logic
 
 foundations-metrics-v0.1.0-beta.3
