@@ -12,6 +12,7 @@
 //! crate. See the crate README for migration instructions.
 #![warn(missing_docs)]
 
+mod clear;
 mod collect;
 mod diagnostics;
 mod encoding;
@@ -22,6 +23,7 @@ mod registered;
 mod validation;
 mod value;
 
+pub use clear::clear_all;
 pub use collect::{CollectionOptions, ServiceNameFormat, collect};
 pub use diagnostics::{CollectErrorHookAlreadySet, set_collect_error_hook};
 pub use encoding::{
