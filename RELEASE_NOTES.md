@@ -1,4 +1,8 @@
 
+5.11.3
+- 2026-10-28 feat(metrics): add clear_all to stop reporting unchanged series (#280)
+- 2026-10-24 Always apply memory profiler settings
+
 5.11.2
 - 2026-10-26 fix: Allow libc <0.2.190 again for compatibility with quiche
 
