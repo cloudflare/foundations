@@ -356,3 +356,16 @@ x: 1
     assert!(complex.tls.enabled);
     assert!(complex.tls.mtls.enabled);
 }
+
+// Telemetry configs generated on Linux include the memory profiler section, and must still
+// parse on platforms where memory profiling is not supported.
+#[cfg(feature = "memory-profiling")]
+#[test]
+fn memory_profiler_settings_on_all_platforms() {
+    use foundations::telemetry::settings::TelemetrySettings;
+
+    let settings: TelemetrySettings =
+        from_yaml_str("memory_profiler:\n  enabled: false\n  sample_interval: 20\n").unwrap();
+
+    assert_eq!(settings.memory_profiler.sample_interval, 20);
+}
