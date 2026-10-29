@@ -15,7 +15,7 @@ mod logging;
 #[cfg(feature = "metrics")]
 mod metrics;
 
-#[cfg(all(target_os = "linux", feature = "memory-profiling"))]
+#[cfg(feature = "memory-profiling")]
 mod memory_profiler;
 
 #[cfg(any(feature = "logging", feature = "tracing"))]
@@ -39,7 +39,7 @@ pub use self::logging::*;
 #[cfg(feature = "metrics")]
 pub use self::metrics::*;
 
-#[cfg(all(target_os = "linux", feature = "memory-profiling"))]
+#[cfg(feature = "memory-profiling")]
 pub use self::memory_profiler::*;
 
 #[cfg(any(feature = "logging", feature = "tracing"))]
@@ -72,7 +72,10 @@ pub struct TelemetrySettings {
     pub metrics: MetricsSettings,
 
     /// Memory profiler settings
-    #[cfg(all(target_os = "linux", feature = "memory-profiling"))]
+    ///
+    /// Memory profiling is only supported on Linux. On other platforms these settings are
+    /// accepted, so the same config works everywhere, but have no effect.
+    #[cfg(feature = "memory-profiling")]
     pub memory_profiler: MemoryProfilerSettings,
 
     /// Server settings.
