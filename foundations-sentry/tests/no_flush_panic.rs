@@ -48,17 +48,13 @@ fn capture_panic(
     panic: impl FnOnce() + std::panic::UnwindSafe,
 ) -> Event<'static> {
     let transport = CountingTransport::new();
-    let options = ClientOptions {
-        dsn: Some(TEST_DSN.parse().unwrap()),
-        transport: Some(Arc::new(Arc::clone(&transport))),
-        attach_stacktrace: true,
-        default_integrations: false,
-        integrations: vec![
-            Arc::new(UnresolvedStacktraceIntegration),
-            Arc::new(integration),
-        ],
-        ..Default::default()
-    };
+    let options = ClientOptions::default()
+        .dsn(TEST_DSN)
+        .transport(Arc::new(Arc::clone(&transport)))
+        .attach_stacktrace(true)
+        .default_integrations(false)
+        .add_integration(UnresolvedStacktraceIntegration)
+        .add_integration(integration);
 
     let client = sentry_core::Client::with_options(options);
     let hub = Hub::new(Some(Arc::new(client)), Default::default());
