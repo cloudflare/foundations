@@ -1,5 +1,8 @@
 
-0.1.0-beta.5
+0.1.0-beta.6
+- 2025-10-25 feat(metrics): Add a thread_local-based counter
+
+foundations-metrics-v0.1.0-beta.5
 - 2026-10-28 feat(metrics): add clear_all to stop reporting unchanged series (#280)
 
 foundations-metrics-v0.1.0-beta.4
