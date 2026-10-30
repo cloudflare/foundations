@@ -130,6 +130,9 @@ pub fn is_frozen() -> bool {
 /// To avoid this panic, make sure to only use `add_fields!` for fields that will remain relatively
 /// static (under 1000 updates over the lifetime of any given logger).
 ///
+/// If [`LoggingSettings::panic_on_field_overwrite`] is enabled, setting a key that the logger
+/// already has panics. Use `add_fields!(allow_overwrite; ...)` where the overwrite is intended.
+///
 /// Certain added fields may not be present in the resulting logs if
 /// [`LoggingSettings::redact_keys`] is used.
 ///
@@ -150,7 +153,7 @@ pub fn is_frozen() -> bool {
 /// log::warn!("With context fields"; "foo" => "bar");
 ///
 /// // Update the context field value
-/// log::add_fields!("ctx_field1" => 43);
+/// log::add_fields!(allow_overwrite; "ctx_field1" => 43);
 ///
 /// log::warn!("One more with context fields");
 ///
@@ -181,12 +184,20 @@ pub fn is_frozen() -> bool {
 /// ```
 ///
 /// [`LoggingSettings::redact_keys`]: crate::telemetry::settings::LoggingSettings::redact_keys
+/// [`LoggingSettings::panic_on_field_overwrite`]: crate::telemetry::settings::LoggingSettings::panic_on_field_overwrite
 #[macro_export]
 #[doc(hidden)]
 macro_rules! __add_fields {
+    ( allow_overwrite ; $($args:tt)* ) => {
+        $crate::telemetry::log::internal::add_log_fields(
+            $crate::reexports_for_macros::slog::o!($($args)*),
+            true,
+        );
+    };
     ( $($args:tt)* ) => {
         $crate::telemetry::log::internal::add_log_fields(
-            $crate::reexports_for_macros::slog::o!($($args)*)
+            $crate::reexports_for_macros::slog::o!($($args)*),
+            false,
         );
     };
 }
