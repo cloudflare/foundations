@@ -1,4 +1,12 @@
 
+5.11.4
+- 2026-10-29 fix(telemetry): accept memory profiler settings on all platforms
+- 2026-10-30 chore: Clean up unused workspace dependency
+- 2025-10-25 feat(metrics): Add a thread_local-based counter
+- 2026-10-28 refactor(telemetry): use Routes::new in the built-in route collision check
+- 2026-10-22 feat(telemetry): expose a check for collisions with built-in server routes
+- 2026-10-21 fix(settings): keep doc comments on every list item in generated YAML
+
 5.11.3
 - 2026-10-28 feat(metrics): add clear_all to stop reporting unchanged series (#280)
 - 2026-10-24 Always apply memory profiler settings
