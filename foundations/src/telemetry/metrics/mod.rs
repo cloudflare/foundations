@@ -301,6 +301,10 @@ fn report_nonfatal_collect_error(err: &dyn Display) {
 /// # Labels
 /// Arguments of the bodyless functions become labels for that metric.
 ///
+/// References with an elided lifetime are converted to owned values: `&str` and `&[T]` with
+/// [`ToOwned`], any other `&T` with [`Clone`]. `impl Into<T>` arguments are converted with
+/// [`Into`]. All other types, including `&'static` references, are stored as is.
+///
 /// For ordinary labeled metrics, the generated accessor returns an owned metric handle after
 /// looking up the label set in its [`Family`]. When the same labels are reused, call the accessor
 /// once and stash or cache that handle (cloning it when another owner needs a copy) instead of
@@ -460,7 +464,7 @@ fn report_nonfatal_collect_error(err: &dyn Display) {
 /// pub mod my_app_metrics {
 ///     /// Number of active client connections
 ///     pub fn client_connections_active(
-///         // Labels with an anonymous reference type will get cloned.
+///         // Labels with an elided-lifetime reference are cloned (`&str` and `&[T]` use `ToOwned`).
 ///         endpoint: &Arc<String>,
 ///         protocol: labels::L4Protocol,
 ///         ip_version: labels::IpVersion,

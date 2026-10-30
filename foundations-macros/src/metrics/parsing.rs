@@ -174,7 +174,7 @@ impl Parse for ItemFn {
                         return error(&reference, LOW_CARDINALITY_MUT_REFERENCE_ERROR);
                     }
 
-                    arg.mode = ArgMode::Clone((*reference.elem).clone());
+                    arg.mode = ArgMode::ToOwned((*reference.elem).clone());
                 }
             }
         }
@@ -221,7 +221,8 @@ impl Parse for FnArg {
 
         let attrs = parse_attrs(input.call(Attribute::parse_outer)?)?;
 
-        /// If the type is a reference with an eluded lifetime, then the argument should be cloned.
+        /// If the type is a reference with an elided lifetime, then the argument should be cloned,
+        /// or converted with `ToOwned` if the pointee is `str` or a slice.
         /// If the type is `impl Into<Foo>`, then the Into trait should be used.
         /// Otherwise, use the value directly.
         fn arg_mode(ty: &Type) -> Result<ArgMode> {
@@ -271,7 +272,7 @@ impl Parse for FnArg {
 
             Ok(match ty {
                 Type::Reference(ref_) if ref_.lifetime.is_none() => {
-                    ArgMode::Clone((*ref_.elem).clone())
+                    ArgMode::ToOwned((*ref_.elem).clone())
                 }
                 Type::ImplTrait(impl_) => ArgMode::Into(as_into_target(impl_)?.clone()),
                 ty => ArgMode::ByValue(ty.clone()),
