@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use foundations_sentry::backtrace::UnresolvedStacktraceIntegration;
 use sentry_core::protocol::{Event, Exception, Frame, Stacktrace, Thread};
 use sentry_core::{ClientOptions, Integration};
@@ -8,10 +6,7 @@ fn process_event(event: Event<'static>, attach_stacktrace: bool) -> Event<'stati
     UnresolvedStacktraceIntegration
         .process_event(
             event,
-            &ClientOptions {
-                attach_stacktrace,
-                ..Default::default()
-            },
+            &ClientOptions::default().attach_stacktrace(attach_stacktrace),
         )
         .unwrap()
 }
@@ -144,12 +139,10 @@ fn preserves_empty_stacktrace() {
 #[test]
 #[should_panic(expected = "must replace sentry_backtrace::AttachStacktraceIntegration")]
 fn rejects_resolving_stacktrace_integration() {
-    sentry_core::Client::with_options(ClientOptions {
-        default_integrations: false,
-        integrations: vec![
-            Arc::new(sentry_backtrace::AttachStacktraceIntegration),
-            Arc::new(UnresolvedStacktraceIntegration),
-        ],
-        ..Default::default()
-    });
+    sentry_core::Client::with_options(
+        ClientOptions::default()
+            .default_integrations(false)
+            .add_integration(sentry_backtrace::AttachStacktraceIntegration)
+            .add_integration(UnresolvedStacktraceIntegration),
+    );
 }

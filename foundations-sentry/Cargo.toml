@@ -33,9 +33,9 @@ workspace = true
 backtrace = { workspace = true }
 foundations = { workspace = true, features = ["settings", "ratelimit", "metrics"] }
 governor = { workspace = true }
-sentry-backtrace = "0.47.0"
-sentry-core = "0.47.0"
-sentry-panic = "0.47.0"
+sentry-backtrace = "0.49.0"
+sentry-core = "0.49.0"
+sentry-panic = "0.49.0"
 
 [dev-dependencies]
-sentry-core = { version = "0.47.0", features = ["test"] }
+sentry-core = { version = "0.49.0", features = ["test"] }

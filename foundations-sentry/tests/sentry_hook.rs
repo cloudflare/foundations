@@ -78,14 +78,12 @@ fn sentry_hook_preserves_previous_before_send_hook() {
     let previous_hook_count = Arc::new(AtomicU64::new(0));
     let counter = Arc::clone(&previous_hook_count);
 
-    let mut options = ClientOptions {
+    let mut options = ClientOptions::default()
         // Install a custom before_send hook first
-        before_send: Some(Arc::new(move |event| {
+        .before_send(move |event| {
             counter.fetch_add(1, Ordering::Relaxed);
             Some(event)
-        })),
-        ..Default::default()
-    };
+        });
 
     // Now install foundations hook
     foundations_sentry::install_hook_with_settings(&mut options, &Default::default());
