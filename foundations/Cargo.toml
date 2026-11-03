@@ -179,7 +179,7 @@ memory-profiling = [
     "dep:backtrace",
     "dep:once_cell",
     "dep:tikv-jemalloc-ctl",
-    "dep:tempfile",
+    "dep:jemalloc_pprof",
     "dep:tokio",
     "dep:serde",
     "jemalloc",
@@ -318,7 +318,7 @@ sentry-core = { workspace = true, optional = true }
 tikv-jemalloc-ctl = { workspace = true, optional = true, features = [
     "use_std",
 ] }
-tempfile = { workspace = true, optional = true }
+jemalloc_pprof = { workspace = true, optional = true }
 
 # needed for minver purposes
 neli = { workspace = true, optional = true }
