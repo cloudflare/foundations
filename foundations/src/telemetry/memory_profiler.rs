@@ -11,9 +11,19 @@ use tokio::sync::{Mutex as AsyncMutex, oneshot};
 
 // TODO(once_cell_try): replace with `std::sync::OnceLock`
 static PROFILER: OnceCell<Option<MemoryProfiler>> = OnceCell::new();
-static HEAP_PROFILE_REQUEST_SENDER: OnceLock<
-    AsyncMutex<mpsc::Sender<oneshot::Sender<Result<String>>>>,
-> = OnceLock::new();
+static HEAP_PROFILE_REQUEST_SENDER: OnceLock<AsyncMutex<mpsc::Sender<HeapProfileRequest>>> =
+    OnceLock::new();
+
+#[derive(Copy, Clone)]
+enum HeapProfileFormat {
+    Jemalloc,
+    Pprof,
+}
+
+struct HeapProfileRequest {
+    format: HeapProfileFormat,
+    send_response: oneshot::Sender<Result<Vec<u8>>>,
+}
 
 mod control {
     use super::*;
@@ -105,19 +115,44 @@ impl MemoryProfiler {
     /// }
     /// ```
     pub async fn heap_profile(&self) -> Result<String> {
-        let Some(sender_mutex) = HEAP_PROFILE_REQUEST_SENDER.get() else {
-            return Err("Profile request sender is not initialized".into());
-        };
+        let profile = request_heap_profile(HeapProfileFormat::Jemalloc).await?;
 
-        // NOTE: we use tokio mutex here, so we can hold the lock across `await` points.
-        let Ok(sender_guard) = sender_mutex.try_lock() else {
-            return Err("profiling is already in progress".into());
-        };
+        Ok(String::from_utf8(profile)?)
+    }
 
-        let (response_sender, response_receiver) = oneshot::channel();
-        sender_guard.send(response_sender)?;
-
-        response_receiver.await?
+    /// Returns a heap profile in [pprof] format (gzip-compressed protobuf).
+    ///
+    /// The profile is converted from the jemalloc heap profile by [jemalloc_pprof] and can be
+    /// consumed directly by `go tool pprof` and other pprof-compatible tools without
+    /// fetching symbols separately.
+    ///
+    /// # Examples
+    /// ```
+    /// use foundations::telemetry::MemoryProfiler;
+    /// use foundations::telemetry::settings::MemoryProfilerSettings;
+    ///
+    /// #[tokio::main]
+    /// async fn main() {
+    ///     let settings = MemoryProfilerSettings {
+    ///         enabled: true,
+    ///         ..Default::default()
+    ///     };
+    ///
+    ///     let profiler = MemoryProfiler::get_or_init_with(&settings)
+    ///         .unwrap()
+    ///         .expect("profiling should be enabled via `_RJEM_MALLOC_CONF=prof:true` env var");
+    ///
+    ///     let profile = profiler.heap_profile_pprof().await.unwrap();
+    ///
+    ///     // gzip magic bytes
+    ///     assert_eq!(&profile[..2], &[0x1f, 0x8b]);
+    /// }
+    /// ```
+    ///
+    /// [pprof]: https://github.com/google/pprof
+    /// [jemalloc_pprof]: https://github.com/polarsignals/rust-jemalloc-pprof
+    pub async fn heap_profile_pprof(&self) -> Result<Vec<u8>> {
+        request_heap_profile(HeapProfileFormat::Pprof).await
     }
 
     /// Returns heap statistics.
@@ -147,6 +182,27 @@ impl MemoryProfiler {
 
         Ok(String::from_utf8(stats)?)
     }
+}
+
+async fn request_heap_profile(format: HeapProfileFormat) -> Result<Vec<u8>> {
+    let Some(sender_mutex) = HEAP_PROFILE_REQUEST_SENDER.get() else {
+        return Err("Profile request sender is not initialized".into());
+    };
+
+    // NOTE: we use tokio mutex here, so we can hold the lock across `await` points.
+    let Ok(sender_guard) = sender_mutex.try_lock() else {
+        return Err("profiling is already in progress".into());
+    };
+
+    let (send_response, response_receiver) = oneshot::channel();
+    sender_guard
+        .send(HeapProfileRequest {
+            format,
+            send_response,
+        })
+        .map_err(|_| "heap profile thread is not running")?;
+
+    response_receiver.await?
 }
 
 fn init_profiler(settings: &MemoryProfilerSettings) -> BootstrapResult<Option<MemoryProfiler>> {
@@ -182,9 +238,18 @@ fn init_profiler(settings: &MemoryProfilerSettings) -> BootstrapResult<Option<Me
     Ok(Some(MemoryProfiler { _seal: Seal }))
 }
 
-fn heap_profile_thread(receive_request: mpsc::Receiver<oneshot::Sender<Result<String>>>) {
-    while let Ok(send_response) = receive_request.recv() {
-        if send_response.send(collect_heap_profile()).is_err() {
+fn heap_profile_thread(receive_request: mpsc::Receiver<HeapProfileRequest>) {
+    while let Ok(HeapProfileRequest {
+        format,
+        send_response,
+    }) = receive_request.recv()
+    {
+        let profile = match format {
+            HeapProfileFormat::Jemalloc => collect_heap_profile(),
+            HeapProfileFormat::Pprof => collect_heap_profile_pprof(),
+        };
+
+        if send_response.send(profile).is_err() {
             // A failure to send indicates the main thread's receiver is gone, so something else
             // has already gone wrong there.
             return;
@@ -192,7 +257,7 @@ fn heap_profile_thread(receive_request: mpsc::Receiver<oneshot::Sender<Result<St
     }
 }
 
-fn collect_heap_profile() -> Result<String> {
+fn collect_heap_profile() -> Result<Vec<u8>> {
     let mut profile = Vec::new();
 
     prof_ctl()?
@@ -200,7 +265,11 @@ fn collect_heap_profile() -> Result<String> {
         .dump()?
         .read_to_end(&mut profile)?;
 
-    Ok(String::from_utf8(profile)?)
+    Ok(profile)
+}
+
+fn collect_heap_profile_pprof() -> Result<Vec<u8>> {
+    Ok(prof_ctl()?.blocking_lock().dump_pprof()?)
 }
 
 // NOTE: this is only called from the dedicated profiling thread, so the lock is never contended
@@ -250,6 +319,9 @@ mod tests {
 
         let profile = profiler.heap_profile().await.unwrap();
         assert!(!profile.is_empty());
+
+        let profile = profiler.heap_profile_pprof().await.unwrap();
+        assert_eq!(&profile[..2], &[0x1f, 0x8b]);
     }
 
     // NOTE: `heap_profile` uses raw pointers, the test ensures that it doesn't affect the returned future

@@ -305,8 +305,27 @@ mod memory_profiling {
         })
     }
 
-    pub(super) async fn heap_profile(settings: Arc<TelemetrySettings>) -> Result<String> {
-        profiler(settings)?.heap_profile().await
+    /// Returns the heap profile and its content type, in [pprof] format if `pprof` is `true` and
+    /// in jemalloc format otherwise.
+    ///
+    /// [pprof]: https://github.com/google/pprof
+    pub(super) async fn heap_profile(
+        pprof: bool,
+        settings: Arc<TelemetrySettings>,
+    ) -> Result<(&'static str, Vec<u8>)> {
+        let profiler = profiler(settings)?;
+
+        if pprof {
+            Ok((
+                "application/octet-stream",
+                profiler.heap_profile_pprof().await?,
+            ))
+        } else {
+            Ok((
+                "application/x-gperftools-profile",
+                profiler.heap_profile().await?.into_bytes(),
+            ))
+        }
     }
 
     pub(super) async fn heap_stats(settings: Arc<TelemetrySettings>) -> Result<String> {

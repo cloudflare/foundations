@@ -317,12 +317,14 @@ pub struct TelemetryConfig<'c> {
 /// - `/health` - telemetry server healtcheck endpoint, returns `200 OK` response if server is functional.
 /// - `/metrics` - returns service metrics in [Prometheus text format] (requires **metrics** feature).
 /// - `/pprof/heap` - returns [jemalloc] heap profile (requires **memory-profiling** feature).
+///   Pass `?format=pprof` to get the profile in [pprof] format (gzip-compressed protobuf) instead.
 /// - `/pprof/heap_stats` returns [jemalloc] heap stats (requires **memory-profiling** feature).
 ///
 /// Additional custom routes can be added via [`TelemetryConfig::custom_server_routes`].
 ///
 /// [Prometheus text format]: https://prometheus.io/docs/instrumenting/exposition_formats/#text-based-format
 /// [jemalloc]: https://github.com/jemalloc/jemalloc
+/// [pprof]: https://github.com/google/pprof
 /// [`TelemetryServerSettings::enabled`]: `crate::telemetry::settings::TelemetryServerSettings::enabled`
 /// [syscall sandboxing]: `crate::security`
 #[cfg(any(
