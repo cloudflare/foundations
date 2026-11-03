@@ -81,7 +81,9 @@ fn panic_payload_as_str<'a>(panic_info: &'a PanicHookInfo<'_>) -> &'a str {
 mod logging_tests {
     use crate::service_info;
     use crate::telemetry::TelemetryConfig;
-    use crate::telemetry::log::init::{LogHarness, build_log_with_drain, wrap_root_drain};
+    use crate::telemetry::log::init::{
+        LogHarness, build_log_with_drain, new_log_scope_stack, wrap_root_drain,
+    };
     use crate::telemetry::log::internal::LoggerWithKvNestingTracking;
     use crate::telemetry::settings::LoggingSettings;
     use slog::{Drain, OwnedKVList, Record};
@@ -111,7 +113,7 @@ mod logging_tests {
             root_log: Arc::new(parking_lot::RwLock::new(root_log)),
             root_drain,
             settings,
-            log_scope_stack: Default::default(),
+            log_scope_stack: new_log_scope_stack(),
         })
         .unwrap();
 

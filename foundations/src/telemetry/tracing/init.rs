@@ -9,6 +9,7 @@ use crate::{BootstrapResult, ServiceInfo};
 use cf_rustracing::sampler::{NullSampler, PassiveSampler, Sampler};
 use crossbeam_utils::CachePadded;
 use futures_util::future::BoxFuture;
+use std::cell::RefCell;
 use std::sync::{LazyLock, OnceLock};
 
 #[cfg(feature = "telemetry-otlp-grpc")]
@@ -28,8 +29,34 @@ use std::borrow::Cow;
 // ensure initialization. Make sure nobody else invalidates our cache lines.
 static HARNESS: CachePadded<OnceLock<TracingHarness>> = CachePadded::new(OnceLock::new());
 
+// Keep scope stacks in the standard library's thread-local storage. Using
+// `thread_local::ThreadLocal` can place the frequently mutated `RefCell` and `Vec`
+// metadata in the same cache line as another thread's atomic
+// `thread_local::Entry::present` metadata, causing false sharing between threads.
+// The `thread_local` crate doesn't have built-in support for cache-line padding and
+// padding the value we store would in it would work but use two cache-lines (one for
+// value, one for `thread_local`'s meta-data.
+thread_local! {
+    static SPAN_SCOPE_STACK: RefCell<Vec<SharedSpan>> = const { RefCell::new(Vec::new()) };
+}
+
+#[cfg(feature = "testing")]
+thread_local! {
+    static TEST_TRACER_SCOPE_STACK: RefCell<Vec<Tracer>> = const { RefCell::new(Vec::new()) };
+}
+
 #[cfg(feature = "user-tracing")]
 static USER_HARNESS: CachePadded<OnceLock<TracingHarness>> = CachePadded::new(OnceLock::new());
+
+#[cfg(feature = "user-tracing")]
+thread_local! {
+    static USER_SPAN_SCOPE_STACK: RefCell<Vec<SharedSpan>> = const { RefCell::new(Vec::new()) };
+}
+
+#[cfg(all(feature = "user-tracing", feature = "testing"))]
+thread_local! {
+    static USER_TEST_TRACER_SCOPE_STACK: RefCell<Vec<Tracer>> = const { RefCell::new(Vec::new()) };
+}
 
 static NOOP_HARNESS: CachePadded<LazyLock<TracingHarness>> =
     CachePadded::new(LazyLock::new(|| {
@@ -37,10 +64,10 @@ static NOOP_HARNESS: CachePadded<LazyLock<TracingHarness>> =
 
         TracingHarness {
             tracer: noop_tracer,
-            span_scope_stack: Default::default(),
+            span_scope_stack: ScopeStack::new(&SPAN_SCOPE_STACK),
 
             #[cfg(feature = "testing")]
-            test_tracer_scope_stack: Default::default(),
+            test_tracer_scope_stack: ScopeStack::new(&TEST_TRACER_SCOPE_STACK),
 
             active_roots: Default::default(),
         }
@@ -53,10 +80,10 @@ static USER_NOOP_HARNESS: CachePadded<LazyLock<TracingHarness>> =
 
         TracingHarness {
             tracer: noop_tracer,
-            span_scope_stack: Default::default(),
+            span_scope_stack: ScopeStack::new(&USER_SPAN_SCOPE_STACK),
 
             #[cfg(feature = "testing")]
-            test_tracer_scope_stack: Default::default(),
+            test_tracer_scope_stack: ScopeStack::new(&USER_TEST_TRACER_SCOPE_STACK),
 
             active_roots: Default::default(),
         }
@@ -165,10 +192,10 @@ pub(crate) fn init(
 
         TracingHarness {
             tracer,
-            span_scope_stack: Default::default(),
+            span_scope_stack: ScopeStack::new(&SPAN_SCOPE_STACK),
 
             #[cfg(feature = "testing")]
-            test_tracer_scope_stack: Default::default(),
+            test_tracer_scope_stack: ScopeStack::new(&TEST_TRACER_SCOPE_STACK),
 
             active_roots: ActiveRoots::new(settings.liveness_tracking.clone()),
         }
@@ -220,10 +247,10 @@ pub(crate) fn init_user(
 
         TracingHarness {
             tracer,
-            span_scope_stack: Default::default(),
+            span_scope_stack: ScopeStack::new(&USER_SPAN_SCOPE_STACK),
 
             #[cfg(feature = "testing")]
-            test_tracer_scope_stack: Default::default(),
+            test_tracer_scope_stack: ScopeStack::new(&USER_TEST_TRACER_SCOPE_STACK),
 
             active_roots: Default::default(),
         }
