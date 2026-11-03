@@ -1,6 +1,6 @@
 use std::cell::RefCell;
 use std::marker::PhantomData;
-use thread_local::ThreadLocal;
+use std::thread::LocalKey;
 
 // NOTE: this prevents scope handles to be held between `await` points by making scope
 // handles `!Send`. Negative trait bounds are not available in Rust yet, so instead we
@@ -9,25 +9,22 @@ use thread_local::ThreadLocal;
 struct DontHoldScopeHandlesAcrossAwaitPoints;
 type AwaitPointGuard = PhantomData<*mut DontHoldScopeHandlesAcrossAwaitPoints>;
 
-pub(crate) struct ScopeStack<T>(ThreadLocal<RefCell<Vec<T>>>)
+// Keep scope stacks in the standard library's thread-local storage, avoid
+// `thread_local::ThreadLocal` due to false sharing possibility.
+pub(crate) struct ScopeStack<T>(&'static LocalKey<RefCell<Vec<T>>>)
 where
     T: Send + Clone + 'static;
-
-impl<T> Default for ScopeStack<T>
-where
-    T: Send + Clone + 'static,
-{
-    fn default() -> Self {
-        Self(Default::default())
-    }
-}
 
 impl<T> ScopeStack<T>
 where
     T: Send + Clone + 'static,
 {
+    pub(crate) const fn new(stack: &'static LocalKey<RefCell<Vec<T>>>) -> Self {
+        Self(stack)
+    }
+
     pub(crate) fn current(&self) -> Option<T> {
-        self.0.get_or_default().borrow().last().cloned()
+        self.0.with_borrow(|stack| stack.last().cloned())
     }
 }
 
@@ -44,7 +41,7 @@ where
     T: Send + Clone + 'static,
 {
     pub(crate) fn new(scope_stack: &'static ScopeStack<T>, item: T) -> Self {
-        scope_stack.0.get_or_default().borrow_mut().push(item);
+        scope_stack.0.with_borrow_mut(|stack| stack.push(item));
 
         Self {
             scope_stack,
@@ -58,6 +55,8 @@ where
     T: Send + Clone + 'static,
 {
     fn drop(&mut self) {
-        self.scope_stack.0.get_or_default().borrow_mut().pop();
+        self.scope_stack.0.with_borrow_mut(|stack| {
+            stack.pop();
+        });
     }
 }

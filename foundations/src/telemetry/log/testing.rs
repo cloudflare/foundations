@@ -1,4 +1,6 @@
-use crate::telemetry::log::init::{LogHarness, build_log_with_drain, wrap_root_drain};
+use crate::telemetry::log::init::{
+    LogHarness, build_log_with_drain, new_log_scope_stack, wrap_root_drain,
+};
 use crate::telemetry::log::internal::LoggerWithKvNestingTracking;
 use crate::telemetry::settings::LoggingSettings;
 use parking_lot::RwLock as ParkingRwLock;
@@ -93,7 +95,7 @@ where
         root_log: Arc::new(ParkingRwLock::new(log.clone())),
         root_drain: drain,
         settings: settings.clone(),
-        log_scope_stack: Default::default(),
+        log_scope_stack: new_log_scope_stack(),
     });
 
     (log, log_records)

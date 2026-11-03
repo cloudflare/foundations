@@ -21,6 +21,8 @@
 
 ## User Tracing
 
+- Telemetry scope stacks must use `std::thread_local!` through `ScopeStack`; do not replace them
+  with `thread_local::ThreadLocal`, whose metadata can cause false sharing on these hot paths.
 - `UserSpan::deferred()` creates a stable request root that can be captured by telemetry contexts
   before `activate()` makes the sampling decision.
 - `TelemetryContext::with_user_span()` attaches an explicit `UserSpan` without changing ambient

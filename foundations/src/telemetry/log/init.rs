@@ -18,6 +18,7 @@ use slog::{
 use slog_async::{Async as AsyncDrain, AsyncGuard};
 use slog_json::{Json as JsonDrain, Json};
 use slog_term::{FullFormat as TextDrain, PlainDecorator, TermDecorator};
+use std::cell::RefCell;
 use std::fmt::Debug;
 use std::fs::File;
 use std::io;
@@ -31,6 +32,17 @@ type SharedDrain = Arc<dyn SendSyncRefUnwindSafeDrain<Ok = (), Err = BoxedDebug>
 // ensure initialization. Make sure nobody else invalidates our cache lines.
 static HARNESS: CachePadded<OnceLock<LogHarness>> = CachePadded::new(OnceLock::new());
 
+// Use `std::thread_local!` instead of the `thread_local` crate to avoid false sharing.
+// See [`foundations::telemetry::tracing::init::SPAN_SCOPE_STACK`] for full
+// explanation.
+thread_local! {
+    static LOG_SCOPE_STACK: RefCell<Vec<SharedLog>> = const { RefCell::new(Vec::new()) };
+}
+
+pub(crate) fn new_log_scope_stack() -> ScopeStack<SharedLog> {
+    ScopeStack::new(&LOG_SCOPE_STACK)
+}
+
 static NOOP_HARNESS: CachePadded<LazyLock<LogHarness>> = CachePadded::new(LazyLock::new(|| {
     let root_drain = Discard.shared();
     let noop_log = LoggerWithKvNestingTracking::new(Logger::root(Discard, slog::o!()));
@@ -39,7 +51,7 @@ static NOOP_HARNESS: CachePadded<LazyLock<LogHarness>> = CachePadded::new(LazyLo
         root_drain,
         root_log: Arc::new(parking_lot::RwLock::new(noop_log)),
         settings: Default::default(),
-        log_scope_stack: Default::default(),
+        log_scope_stack: new_log_scope_stack(),
     }
 }));
 
@@ -134,7 +146,7 @@ pub(crate) fn init(
             root_log,
         ))),
         settings: settings.clone(),
-        log_scope_stack: Default::default(),
+        log_scope_stack: new_log_scope_stack(),
     };
 
     let _ = HARNESS.set(harness);
