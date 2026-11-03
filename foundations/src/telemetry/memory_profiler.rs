@@ -1,14 +1,12 @@
 use super::settings::MemoryProfilerSettings;
 use crate::{BootstrapError, BootstrapResult, Result};
 use anyhow::bail;
+use jemalloc_pprof::JemallocProfCtl;
 use once_cell::sync::OnceCell;
-use std::ffi::{CStr, CString};
-use std::fs::File;
+use std::ffi::CStr;
 use std::io::Read;
-use std::os::raw::c_char;
 use std::sync::OnceLock;
 use std::sync::mpsc::{self};
-use tempfile::NamedTempFile;
 use tokio::sync::{Mutex as AsyncMutex, oneshot};
 
 // TODO(once_cell_try): replace with `std::sync::OnceLock`
@@ -21,7 +19,6 @@ mod control {
     use super::*;
 
     pub(super) const OPT_PROF: &CStr = cstr(b"opt.prof\0");
-    pub(super) const PROF_DUMP: &CStr = cstr(b"prof.dump\0");
     pub(super) const PROF_ACTIVE: &CStr = cstr(b"prof.active\0");
     pub(super) const PROF_RESET: &CStr = cstr(b"prof.reset\0");
 
@@ -196,28 +193,22 @@ fn heap_profile_thread(receive_request: mpsc::Receiver<oneshot::Sender<Result<St
 }
 
 fn collect_heap_profile() -> Result<String> {
-    let out_file = NamedTempFile::new()?;
-
-    let out_file_path = out_file
-        .path()
-        .to_str()
-        .ok_or("failed to obtain heap profile output file path")?;
-
-    let mut out_file_path_c_str = CString::new(out_file_path)?.into_bytes_with_nul();
-    let out_file_path_ptr = out_file_path_c_str.as_mut_ptr() as *mut c_char;
-
-    control::write(control::PROF_DUMP, out_file_path_ptr).map_err(|e| {
-        format!(
-            "failed to dump jemalloc heap profile to {:?}: {}",
-            out_file_path, e
-        )
-    })?;
-
     let mut profile = Vec::new();
 
-    File::open(out_file_path)?.read_to_end(&mut profile)?;
+    prof_ctl()?
+        .blocking_lock()
+        .dump()?
+        .read_to_end(&mut profile)?;
 
     Ok(String::from_utf8(profile)?)
+}
+
+// NOTE: this is only called from the dedicated profiling thread, so the lock is never contended
+// by async code and blocking on it is fine.
+fn prof_ctl() -> Result<&'static AsyncMutex<JemallocProfCtl>> {
+    jemalloc_pprof::PROF_CTL
+        .as_deref()
+        .ok_or_else(|| "jemalloc must be compiled with profiling enabled".into())
 }
 
 #[cfg(test)]
