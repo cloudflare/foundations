@@ -55,6 +55,7 @@ criterion = { version = "0.8", default-features = false }
 crossbeam-utils = { version = "0.8.21", default-features = false }
 darling = "0.23.0"
 erased-serde = "0.4.10"
+form_urlencoded = "1.2.2"
 futures-util = "0.3.32"
 governor = "0.10.4"
 hex = "0.4.3"

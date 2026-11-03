@@ -173,12 +173,29 @@ impl Routes {
         self.set(TelemetryServerRoute {
             path: "/pprof/heap".into(),
             methods: vec![Method::GET],
-            handler: Box::new(|_, settings| {
+            handler: Box::new(|req, settings| {
+                let format =
+                    form_urlencoded::parse(req.uri().query().unwrap_or_default().as_bytes())
+                        .find_map(|(key, value)| (key == "format").then_some(value));
+
+                let pprof = match format.as_deref() {
+                    None | Some("jemalloc") => Ok(false),
+                    Some("pprof") => Ok(true),
+                    Some(other) => Err(format!(
+                        "unsupported heap profile format {other:?}, expected `jemalloc` or `pprof`"
+                    )),
+                };
+
                 async move {
-                    into_response(
-                        "application/x-gperftools-profile",
-                        memory_profiling::heap_profile(settings).await,
-                    )
+                    let res = match pprof {
+                        Ok(pprof) => memory_profiling::heap_profile(pprof, settings).await,
+                        Err(err) => Err(err.into()),
+                    };
+
+                    match res {
+                        Ok((content_type, body)) => into_response(content_type, Ok(body)),
+                        Err(err) => into_response("text/plain", Err::<Vec<u8>, _>(err)),
+                    }
                 }
                 .boxed()
             }),

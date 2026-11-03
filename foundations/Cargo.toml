@@ -98,6 +98,7 @@ telemetry-server = [
     "dep:hyper-util",
     "dep:socket2",
     "dep:percent-encoding",
+    "dep:form_urlencoded",
     "dep:serde",
     "dep:tokio",
     "tokio/net",
@@ -254,6 +255,7 @@ cf-rustracing-jaeger = { workspace = true, optional = true }
 clap = { workspace = true, optional = true }
 crossbeam-utils = { workspace = true, optional = true }
 erased-serde = { workspace = true, optional = true }
+form_urlencoded = { workspace = true, optional = true }
 futures-util = { workspace = true, optional = true }
 governor = { workspace = true, optional = true }
 hex = { workspace = true, optional = true }

@@ -138,6 +138,21 @@ async fn telemetry_server() {
     );
 
     #[cfg(target_os = "linux")]
+    {
+        let pprof_res = reqwest::get(format!("http://{server_addr}/pprof/heap?format=pprof"))
+            .await
+            .unwrap();
+        assert_eq!(pprof_res.status(), 200);
+        // gzip magic bytes
+        assert_eq!(&pprof_res.bytes().await.unwrap()[..2], &[0x1f, 0x8b]);
+
+        let unknown_res = reqwest::get(format!("http://{server_addr}/pprof/heap?format=svg"))
+            .await
+            .unwrap();
+        assert_eq!(unknown_res.status(), 500);
+    }
+
+    #[cfg(target_os = "linux")]
     assert!(
         reqwest::get(format!("http://{server_addr}/pprof/heap_stats"))
             .await
