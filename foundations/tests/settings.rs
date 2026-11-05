@@ -49,6 +49,14 @@ struct FlattenedStruct {
 }
 
 #[settings]
+struct RawIdentifierFields {
+    /// A field with a raw identifier.
+    r#type: u32,
+    /// A nested struct with a raw identifier.
+    r#impl: NestedStruct,
+}
+
+#[settings]
 enum SomeEnum {
     VariantA,
     #[default]
@@ -219,6 +227,14 @@ fn nested_duplicate_field() {
 #[test]
 fn flattened_doc_comments() {
     assert_ser_eq!(FlattenedStruct::default(), "settings_flattened_struct.yaml");
+}
+
+#[test]
+fn raw_identifier_doc_comments() {
+    assert_ser_eq!(
+        RawIdentifierFields::default(),
+        "settings_raw_identifier_fields.yaml"
+    );
 }
 
 #[test]

@@ -3,6 +3,7 @@ use darling::FromMeta;
 use darling::util::{Flag, Override};
 use proc_macro::TokenStream;
 use quote::{ToTokens, TokenStreamExt, quote, quote_spanned};
+use syn::ext::IdentExt;
 use syn::parse::{Parse, ParseStream};
 use syn::spanned::Spanned;
 use syn::{
@@ -242,7 +243,8 @@ fn impl_settings_trait_for_field(
 ) -> proc_macro2::TokenStream {
     let crate_path = &options.crate_path;
     let span = field.ty.span();
-    let name_str = name.to_string();
+    // serde drops the `r#` prefix of raw identifiers from the serialized key.
+    let name_str = name.unraw().to_string();
     let docs = extract_doc_comments(&field.attrs);
 
     let cfg_attrs = field
