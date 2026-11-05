@@ -46,6 +46,16 @@ pub struct LoggingSettings {
     /// running if a log sink returns an error such as [`std::io::ErrorKind::BrokenPipe`].
     pub ignore_io_errors: bool,
 
+    /// Whether to panic when [`add_fields!`] sets a key that the current logger already has.
+    ///
+    /// Adding the same key over and over without forking the logger builds a long logger
+    /// chain, which can overflow the stack when it is dropped. Enabling this setting catches
+    /// such call sites early. Intentional overwrites can opt out with
+    /// `add_fields!(allow_overwrite; ...)`.
+    ///
+    /// [`add_fields!`]: crate::telemetry::log::add_fields
+    pub panic_on_field_overwrite: bool,
+
     /// Settings for rate limiting emission of log events
     pub rate_limit: RateLimitingSettings,
 

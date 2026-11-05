@@ -1,7 +1,10 @@
 use super::init::LogHarness;
 use crate::telemetry::scope::Scope;
-use slog::{Logger, OwnedKV, Record, SendSyncRefUnwindSafeKV};
-use std::fmt::Debug;
+use slog::{
+    KV, Key, Level, Logger, OwnedKV, OwnedKVList, Record, SendSyncRefUnwindSafeKV, Serializer,
+};
+use std::collections::HashSet;
+use std::fmt::{Arguments, Debug};
 use std::ops::Deref;
 use std::sync::Arc;
 
@@ -27,6 +30,10 @@ pub struct LoggerWithKvNestingTracking {
     //
     // Forked loggers always start unfrozen, regardless of the parent's frozen state.
     pub(crate) frozen: bool,
+
+    // Whether add_fields! panics when it sets a key that the logger already has. Set from
+    // `LoggingSettings::panic_on_field_overwrite`, and inherited by forked loggers.
+    pub(crate) panic_on_field_overwrite: bool,
 }
 
 impl LoggerWithKvNestingTracking {
@@ -36,6 +43,9 @@ impl LoggerWithKvNestingTracking {
     pub const FROZEN_LOGGER_ERROR: &'static str = "foundations: attempt to modify a frozen logger \
          (are you modifying the root logger from a spawned task/thread that lacks a forked context?)";
 
+    pub const FIELD_OVERWRITE_ERROR: &'static str = "foundations: add_fields! overwrote an existing \
+         log field (use `add_fields!(allow_overwrite; ...)` if this is intended)";
+
     /// Create a new LoggerWithKvNestingTracking based on a fresh logger. The KV nesting level is
     /// initialized to zero and the logger starts unfrozen.
     pub(crate) fn new(logger: Logger) -> Self {
@@ -43,6 +53,7 @@ impl LoggerWithKvNestingTracking {
             inner: logger,
             nesting_level: 0,
             frozen: false,
+            panic_on_field_overwrite: false,
         }
     }
 
@@ -136,7 +147,7 @@ impl LogScope {
     }
 }
 
-pub fn add_log_fields<T>(fields: OwnedKV<T>)
+pub fn add_log_fields<T>(fields: OwnedKV<T>, allow_overwrite: bool)
 where
     T: SendSyncRefUnwindSafeKV + 'static,
 {
@@ -147,11 +158,48 @@ where
         return; // logger is frozen, mutation rejected
     };
 
+    if log_lock.panic_on_field_overwrite
+        && !allow_overwrite
+        && let Some(key) = overwritten_key(log_lock.list(), &fields.0)
+    {
+        drop(log_lock);
+        panic!(
+            "{} (key: `{key}`)",
+            LoggerWithKvNestingTracking::FIELD_OVERWRITE_ERROR
+        );
+    }
+
     let Some(mut log_lock) = LoggerWithKvNestingTracking::check_nesting_level(log_lock) else {
         return; // avoid changes, nesting level was beyond threshold
     };
 
     log_lock.inner = log_lock.inner.new(fields);
+}
+
+/// Returns the first key in `fields` that is already in `existing`.
+fn overwritten_key(existing: &OwnedKVList, fields: &dyn KV) -> Option<String> {
+    #[derive(Default)]
+    struct KeyCollector(Vec<String>);
+
+    impl Serializer for KeyCollector {
+        fn emit_arguments(&mut self, key: Key, _val: &Arguments) -> slog::Result {
+            self.0.push(key.to_string());
+            Ok(())
+        }
+    }
+
+    let keys = |kv: &dyn KV| {
+        let mut keys = KeyCollector::default();
+        // `KV::serialize` needs a record, but only the keys are collected here.
+        let _ = kv.serialize(
+            &slog::record!(Level::Info, "", &format_args!(""), slog::b!()),
+            &mut keys,
+        );
+        keys.0
+    };
+
+    let existing: HashSet<String> = keys(existing).into_iter().collect();
+    keys(fields).into_iter().find(|key| existing.contains(key))
 }
 
 pub fn current_log() -> SharedLog {
