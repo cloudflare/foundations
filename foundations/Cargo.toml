@@ -42,7 +42,6 @@ platform-common-default = [
     "jemalloc",
     "telemetry",
     "cli",
-    "testing",
     "settings_deny_unknown_fields_by_default",
     "panic_on_frozen_logger",
     "panic_on_too_much_logger_nesting",
@@ -55,7 +54,7 @@ sentry = ["dep:sentry-core", "dep:serde", "dep:governor", "ratelimit", "metrics"
 
 # A subset of features that can be used both on server and client sides. Useful for libraries
 # that can be used either way.
-server-client-common-default = ["settings", "client-telemetry", "testing"]
+server-client-common-default = ["settings", "client-telemetry"]
 
 # Enables serializable documented settings functionality.
 settings = [

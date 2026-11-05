@@ -117,7 +117,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Run Clippy
         run: |
-          cargo clippy --all-targets -- \
+          cargo clippy --all-targets --features testing -- \
             -D warnings \
             -D unreachable_pub \
             -D clippy::await_holding_lock \
@@ -318,7 +318,7 @@ jobs:
       - name: Install cargo-nextest
         uses: taiki-e/install-action@cargo-nextest
       - name: Run foundations tests
-        run: _RJEM_MALLOC_CONF=prof:true cargo nextest run --target ${{ matrix.target }}
+        run: _RJEM_MALLOC_CONF=prof:true cargo nextest run --features testing --target ${{ matrix.target }}
         shell: bash
       - name: Run doc tests
-        run: _RJEM_MALLOC_CONF=prof:true cargo test --doc --target ${{ matrix.target }}
+        run: _RJEM_MALLOC_CONF=prof:true cargo test --doc --features testing --target ${{ matrix.target }}
