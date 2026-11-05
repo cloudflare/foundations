@@ -1,4 +1,15 @@
 
+5.11.5
+- 2026-11-05 Fix tests to check for ToOwned metrics arguments
+- 2026-11-05 Update docs to reflect ToOwned for all metrics reference arguments
+- 2026-10-28 ToOwned everything
+- 2026-10-27 Accept `&str` in metrics arguments
+- 2026-11-05 fix(settings): keep doc comments on fields with raw identifiers
+- 2026-11-04 fix: minver violations in jemalloc_pprof dependencies
+- 2026-11-03 feat(telemetry): serve heap profiles in pprof format
+- 2026-11-03 refactor(telemetry): dump jemalloc heap profiles via jemalloc_pprof
+- 2026-11-03 telemetry: Elimiate false sharing of ScopeStacks between threads
+
 5.11.4
 - 2026-10-29 fix(telemetry): accept memory profiler settings on all platforms
 - 2026-10-30 chore: Clean up unused workspace dependency
