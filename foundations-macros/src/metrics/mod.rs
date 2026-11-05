@@ -1148,7 +1148,10 @@ mod tests {
         }));
         assert!(!labels.contains("std :: hash :: Hash"));
         assert!(labels.contains(&code_str! {
-            struct latency { kind: Kind, outcome: Outcome, }
+            struct latency {
+                kind: <Kind as ::std::borrow::ToOwned>::Owned,
+                outcome: Outcome,
+            }
         }));
         assert!(labels.contains(&code_str! {
             impl tarmac::telemetry::metrics::LowCardinalityLabel for latency
@@ -1305,10 +1308,13 @@ mod tests {
         let arg = &parsed.fns[0].args[0];
         assert!(matches!(&arg.mode, ArgMode::ToOwned(Type::Path(_))));
         assert_eq!(arg.ty.to_token_stream().to_string(), "& 'static Kind");
-        assert_eq!(arg.to_struct_member().to_string(), "kind : Kind");
+        assert_eq!(
+            arg.to_struct_member().to_string(),
+            "kind : < Kind as :: std :: borrow :: ToOwned > :: Owned"
+        );
         assert_eq!(
             arg.to_initializer().to_string(),
-            "kind : :: std :: clone :: ToOwned :: to_owned (kind)"
+            "kind : :: std :: borrow :: ToOwned :: to_owned (kind)"
         );
     }
 
