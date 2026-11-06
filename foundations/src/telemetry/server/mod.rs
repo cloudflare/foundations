@@ -193,12 +193,7 @@ impl TelemetryServerFuture {
     ) {
         let (signal_tx, signal_rx) = watch::channel(());
         let signal_tx = Arc::new(signal_tx);
-
-        tokio::spawn(async move {
-            shutdown_signal.await;
-
-            drop(signal_rx);
-        });
+        pin_mut!(shutdown_signal);
 
         let (close_tx, close_rx) = watch::channel(());
         let listener = self.listener;
@@ -212,7 +207,7 @@ impl TelemetryServerFuture {
                         continue;
                     }
                 },
-                _ = signal_tx.closed() => { break },
+                _ = &mut shutdown_signal => { break },
             };
 
             let router = self.router.clone();
@@ -240,8 +235,12 @@ impl TelemetryServerFuture {
             });
         }
 
+        // Signal shutdown to connection tasks and close listener socket
+        drop(listener);
+        drop(signal_rx);
         drop(close_rx);
 
+        // Wait for connection tasks to exit
         close_tx.closed().await;
     }
 }
