@@ -3,6 +3,8 @@
 mod field_dedup;
 mod field_filtering;
 mod field_redact;
+#[cfg(target_os = "linux")]
+mod journal;
 mod rate_limit;
 
 pub(crate) mod init;
