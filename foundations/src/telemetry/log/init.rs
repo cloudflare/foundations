@@ -2,6 +2,8 @@ use super::field_dedup::FieldDedupFilterFactory;
 use super::field_filtering::{FieldFilteringDrain, FilterFactory};
 use super::field_redact::FieldRedactFilterFactory;
 use super::internal::{LoggerWithKvNestingTracking, SharedLog};
+#[cfg(target_os = "linux")]
+use super::journal::{JournalStreams, JournalWriter, stdio_fd};
 
 #[cfg(feature = "metrics")]
 use crate::telemetry::log::log_volume::LogVolumeMetricsDrain;
@@ -90,7 +92,27 @@ pub(crate) fn init(
     // NOTE: OXY-178, default is 128 (https://docs.rs/slog-async/2.7.0/src/slog_async/lib.rs.html#251)
     const CHANNEL_SIZE: usize = 1024;
 
+    // Before building any drain, so that stderr is covered when logs go elsewhere too.
+    #[cfg(target_os = "linux")]
+    let journal = JournalStreams::detect(!settings.allow_blocking_journal_stdio);
+
     let (async_drain, async_guard) = match (&settings.output, &settings.format) {
+        #[cfg(target_os = "linux")]
+        (output @ (LogOutput::Terminal | LogOutput::Stderr), LogFormat::Text)
+            if journal.includes(output) =>
+        {
+            let drain = JournalWriter::drain(stdio_fd(output), |writer| {
+                TextDrain::new(PlainDecorator::new(writer)).build()
+            });
+            build_async_drain(drain, settings, CHANNEL_SIZE)
+        }
+        #[cfg(target_os = "linux")]
+        (output @ (LogOutput::Terminal | LogOutput::Stderr), LogFormat::Json)
+            if journal.includes(output) =>
+        {
+            let drain = JournalWriter::drain(stdio_fd(output), build_json_log_drain);
+            build_async_drain(drain, settings, CHANNEL_SIZE)
+        }
         (output @ (LogOutput::Terminal | LogOutput::Stderr), LogFormat::Text) => {
             let decorator = if matches!(output, LogOutput::Terminal) {
                 TermDecorator::new().stdout().build()

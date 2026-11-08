@@ -46,6 +46,26 @@ pub struct LoggingSettings {
     /// running if a log sink returns an error such as [`std::io::ErrorKind::BrokenPipe`].
     pub ignore_io_errors: bool,
 
+    /// Whether to let stdout and stderr block when they are the systemd journal stream.
+    ///
+    /// On Linux, logs written to the journal stream that systemd names in `JOURNAL_STREAM` never
+    /// wait for journald, whatever this setting is. Records that don't fit in the stream's buffer
+    /// are dropped and counted in the `logging_records_dropped` metric. Other writes to the
+    /// stream can wait, though, and if journald stops reading it for good, they wait for good.
+    /// That includes the default panic hook's message, so a thread that panics never finishes.
+    /// By default, foundations makes them nonblocking to prevent that, whatever the log output is.
+    ///
+    /// Nonblocking mode belongs to the stream, so it applies to every writer in the process and
+    /// in child processes that inherit the stream. When the stream's buffer is full, the default
+    /// panic hook's message can be lost, and `println!` and `eprintln!` panic instead of waiting.
+    /// Enabling this setting leaves the streams as they are; it doesn't make a nonblocking stream
+    /// blocking again.
+    ///
+    /// If seccomp sandboxing applies to the thread that initializes telemetry, the logging thread
+    /// needs `sendto` to write to the journal stream, and initialization needs `fcntl` unless this
+    /// setting is enabled.
+    pub allow_blocking_journal_stdio: bool,
+
     /// Settings for rate limiting emission of log events
     pub rate_limit: RateLimitingSettings,
 
