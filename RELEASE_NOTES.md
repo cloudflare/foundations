@@ -1,4 +1,7 @@
 
+5.11.6
+- 2026-11-06 fix(telemetry): Don't hold listener socket open unnecessarily
+
 5.11.5
 - 2026-11-05 Fix tests to check for ToOwned metrics arguments
 - 2026-11-05 Update docs to reflect ToOwned for all metrics reference arguments
