@@ -179,10 +179,10 @@ mod tracing_rs_compat {
     #[test]
     fn test_tracing_rs_compat() {
         let entries = Arc::new(Mutex::new(Vec::new()));
-        let tracing_log_entries = entries.clone();
+        let tracing_log_entries = Arc::clone(&entries);
         let _subscriber = tracing_subscriber::fmt()
             .with_max_level(LevelFilter::TRACE)
-            .with_writer(move || TestWriter::with_entries(entries.clone()))
+            .with_writer(move || TestWriter::with_entries(Arc::clone(&entries)))
             .without_time()
             .with_level(true)
             .with_ansi(false)
