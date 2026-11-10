@@ -1,4 +1,7 @@
 
+5.11.7
+- 2026-11-10 fix: Build on Windows with all features (#307)
+
 5.11.6
 - 2026-11-06 fix(telemetry): Don't hold listener socket open unnecessarily
 
