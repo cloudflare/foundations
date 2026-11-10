@@ -75,7 +75,7 @@ mod telemetry_context;
 
 #[cfg(all(
     feature = "tracing",
-    any(feature = "telemetry-otlp-grpc", feature = "user-tracing")
+    any(feature = "telemetry-otlp-grpc", all(feature = "user-tracing", unix))
 ))]
 mod otlp_conversion;
 

@@ -7,7 +7,7 @@ use crate::settings::settings;
 #[cfg_attr(feature = "settings", settings(crate_path = "crate"))]
 #[cfg_attr(not(feature = "settings"), derive(Clone, Debug, serde::Deserialize))]
 pub struct UserTracingSettings {
-    /// Enables user tracing.
+    /// Enables user tracing. Ignored on non-Unix platforms, where user traces are never exported.
     #[serde(default = "UserTracingSettings::default_enabled")]
     pub enabled: bool,
 

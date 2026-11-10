@@ -18,7 +18,7 @@ mod rate_limit;
 #[cfg(feature = "telemetry-otlp-grpc")]
 mod output_otlp_grpc;
 
-#[cfg(feature = "user-tracing")]
+#[cfg(all(feature = "user-tracing", unix))]
 mod output_otlp_uds;
 
 #[cfg(feature = "user-tracing")]
@@ -2422,6 +2422,7 @@ mod user_tracing_tests {
     //
     // Driven through a raw tracer because routing lives on `FinishedSpan`, which the test harness
     // doesn't surface.
+    #[cfg(unix)]
     #[tokio::test]
     async fn child_inherits_routing() {
         use super::channel::{PipelineType, unbounded_channel};

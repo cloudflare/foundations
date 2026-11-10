@@ -151,9 +151,17 @@ jobs:
     name: Check feature combinations
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        include:
+          # These features enable jemalloc, which is a compile error on Windows.
+          - os: windows-latest
+            check_args: --exclude-features default,platform-common-default,telemetry,memory-profiling,jemalloc
     runs-on: ${{ matrix.os }}
     steps:
+      # Windows runners check out with CRLF, which breaks the bash script.
+      - name: Keep LF line endings
+        if: runner.os == 'Windows'
+        run: git config --global core.autocrlf false
       - uses: actions/checkout@v4
         with:
           submodules: "recursive"
@@ -163,7 +171,7 @@ jobs:
       - name: Install cargo hack
         uses: taiki-e/install-action@cargo-hack
       - name: Check
-        run: ./scripts/check-features.sh
+        run: ./scripts/check-features.sh ${{ matrix.check_args }}
         shell: bash
 
   check-tokio-unstable:
@@ -262,7 +270,7 @@ jobs:
             target: x86_64-pc-windows-msvc
             rust: stable
             os: windows-latest
-            cargo_args: --no-default-features --features server-client-common-default
+            cargo_args: --no-default-features --features default-no-jemalloc
 
     steps:
       - uses: actions/checkout@v4

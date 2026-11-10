@@ -14,7 +14,7 @@ fn service_name_attribute(service_name: &str) -> otlp::common::v1::KeyValue {
     }
 }
 
-#[cfg(feature = "user-tracing")]
+#[cfg(all(feature = "user-tracing", unix))]
 pub(super) fn convert_service_name_to_resource(service_name: &str) -> otlp::resource::v1::Resource {
     otlp::resource::v1::Resource {
         attributes: vec![service_name_attribute(service_name)],

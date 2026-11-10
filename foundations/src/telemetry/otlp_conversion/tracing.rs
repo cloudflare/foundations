@@ -1,6 +1,6 @@
 #[cfg(feature = "telemetry-otlp-grpc")]
 use super::common::convert_service_info_to_resource;
-#[cfg(feature = "user-tracing")]
+#[cfg(all(feature = "user-tracing", unix))]
 use super::common::convert_service_name_to_resource;
 use super::common::convert_time;
 #[cfg(feature = "telemetry-otlp-grpc")]
@@ -104,7 +104,7 @@ pub(crate) fn convert_span(
     convert_span_with_resource(span, convert_service_info_to_resource(service_info))
 }
 
-#[cfg(feature = "user-tracing")]
+#[cfg(all(feature = "user-tracing", unix))]
 pub(crate) fn convert_user_span(
     span: FinishedSpan,
     service_name: &str,
