@@ -334,7 +334,7 @@ tower = { workspace = true, optional = true }
 # TODO: remove before next major release
 sentry-core = { workspace = true, optional = true }
 
-# Not a Windows dependency, so `--cfg foundations_jemalloc_disable` skips building jemalloc there.
+# tikv-jemallocator doesn't test Windows targets, so Windows keeps the system allocator.
 [target.'cfg(not(windows))'.dependencies]
 tikv-jemallocator = { workspace = true, optional = true, features = [
     "profiling",
