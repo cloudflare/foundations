@@ -21,6 +21,8 @@
 //! library in a modular fashion by enabling or disabling [Cargo features]:
 //!
 //! - **default**: All features are enabled by default.
+//! - **default-no-jemalloc**: The same as **default**, but without **jemalloc** and
+//!   **memory-profiling**. Use it instead of **default** on Windows.
 //! - **platform-common-default**: The same as **default**, but excludes platform-specific features,
 //!   such as **security**.
 //! - **server-client-common-default**: A subset of features that can be used both on server and client sides.
@@ -39,9 +41,10 @@
 //! - **security**: Enables security features. Available only on Linux (x86_64, aarch64) with the `libclang-dev` package installed (for bindgen).
 //! - **jemalloc**: Enables [jemalloc] memory allocator which is known to perform much better than
 //!   system allocators for long living service.
+//!   - Not supported on Windows, where enabling it is a compile error.
 //!   - There is an opt-out available by passing `--cfg foundations_jemalloc_disable`
 //!     to rustc (e.g., via `RUSTFLAGS`). This can be used as a workaround for the additive
-//!     nature of features.
+//!     nature of features, including on Windows.
 //! - **memory-profiling**: Enables memory profiling functionality and telemetry. Implicity enables
 //!   **jemalloc** feature.
 //! - **cli**: Enables command line interface (CLI) functionality. Implicitly enabled **settings**
@@ -140,9 +143,17 @@ pub mod reexports_for_macros {
 ///
 /// [jemalloc]: https://github.com/jemalloc/jemalloc
 /// [asan]: https://doc.rust-lang.org/beta/unstable-book/compiler-flags/sanitizer.html#addresssanitizer
-#[cfg(all(feature = "jemalloc", not(foundations_jemalloc_disable)))]
+#[cfg(all(feature = "jemalloc", not(foundations_jemalloc_disable), not(windows)))]
 #[global_allocator]
 pub static JEMALLOC_MEMORY_ALLOCATOR: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
+
+#[cfg(all(feature = "jemalloc", not(foundations_jemalloc_disable), windows))]
+compile_error!(
+    "foundations: the `jemalloc` feature (also enabled by `default`, `telemetry` and \
+     `memory-profiling`) is not supported on Windows. Use `default-features = false, \
+     features = [\"default-no-jemalloc\"]`, or pass `--cfg foundations_jemalloc_disable` \
+     to rustc if a dependency enables it."
+);
 
 /// Error that can be returned on a service initialisation.
 ///

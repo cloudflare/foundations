@@ -15,11 +15,13 @@ use std::sync::{LazyLock, OnceLock};
 #[cfg(feature = "telemetry-otlp-grpc")]
 use super::output_otlp_grpc;
 
-#[cfg(feature = "user-tracing")]
+#[cfg(all(feature = "user-tracing", unix))]
 use super::output_otlp_uds;
+#[cfg(all(feature = "user-tracing", unix))]
+use crate::telemetry::settings::UserTracesOutput;
 #[cfg(feature = "user-tracing")]
-use crate::telemetry::settings::{UserTracesOutput, UserTracingSettings};
-#[cfg(feature = "user-tracing")]
+use crate::telemetry::settings::UserTracingSettings;
+#[cfg(all(feature = "user-tracing", unix))]
 use cf_rustracing::sampler::AllSampler;
 
 #[cfg(feature = "testing")]
@@ -203,7 +205,7 @@ pub(crate) fn init(
     res
 }
 
-#[cfg(feature = "user-tracing")]
+#[cfg(all(feature = "user-tracing", unix))]
 fn create_tracer_and_span_rx_for_user(
     settings: &UserTracingSettings,
 ) -> BootstrapResult<(Tracer, SharedSpanReceiver)> {
@@ -220,8 +222,16 @@ fn create_tracer_and_span_rx_for_user(
     }
 }
 
+// User traces are only exported over a Unix domain socket, so elsewhere they stay disabled.
+#[cfg(all(feature = "user-tracing", not(unix)))]
+pub(crate) fn init_user(
+    _settings: &UserTracingSettings,
+) -> BootstrapResult<Option<BoxFuture<'static, BootstrapResult<()>>>> {
+    Ok(None)
+}
+
 // NOTE: does nothing if user tracing has already been initialized in this process.
-#[cfg(feature = "user-tracing")]
+#[cfg(all(feature = "user-tracing", unix))]
 pub(crate) fn init_user(
     settings: &UserTracingSettings,
 ) -> BootstrapResult<Option<BoxFuture<'static, BootstrapResult<()>>>> {

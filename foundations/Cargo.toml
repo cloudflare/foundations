@@ -35,6 +35,26 @@ pre-release-hook = [
 # Default set of features.
 default = ["platform-common-default", "security"]
 
+# The same as `default`, but without `jemalloc` and `memory-profiling`, which are not supported
+# on Windows. Keep in sync with `default`.
+default-no-jemalloc = [
+    "derive",
+    "settings",
+    "logging",
+    "metrics",
+    "tracing",
+    "telemetry-server",
+    "client-telemetry",
+    "telemetry-otlp-grpc",
+    "cli",
+    "testing",
+    "settings_deny_unknown_fields_by_default",
+    "panic_on_frozen_logger",
+    "panic_on_too_much_logger_nesting",
+    "sentry",
+    "security",
+]
+
 # All non platform-specific features
 platform-common-default = [
     "derive",
@@ -189,7 +209,7 @@ memory-profiling = [
 # Enables security-related features
 security = ["dep:bindgen", "dep:cc", "dep:once_cell"]
 
-# Enables jemalloc as a memory allocator
+# Enables jemalloc as a memory allocator. Not supported on Windows.
 jemalloc = ["dep:tikv-jemallocator"]
 
 # Enables command line interface functionality.
@@ -290,11 +310,6 @@ tracing-slog = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true, features = ["sync", "rt", "macros"] }
 tonic = { workspace = true, optional = true, features = ["channel"] }
 tonic-prost = { workspace = true, optional = true }
-tikv-jemallocator = { workspace = true, optional = true, features = [
-    "profiling",
-    "stats",
-    "background_threads",
-] }
 pin-project-lite = { workspace = true }
 zeroize = { workspace = true, optional = true }
 
@@ -318,6 +333,14 @@ tower = { workspace = true, optional = true }
 # Only used in deprecated code
 # TODO: remove before next major release
 sentry-core = { workspace = true, optional = true }
+
+# tikv-jemallocator doesn't test Windows targets, so Windows keeps the system allocator.
+[target.'cfg(not(windows))'.dependencies]
+tikv-jemallocator = { workspace = true, optional = true, features = [
+    "profiling",
+    "stats",
+    "background_threads",
+] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 tikv-jemalloc-ctl = { workspace = true, optional = true, features = [

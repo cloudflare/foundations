@@ -58,7 +58,7 @@ pub(super) enum PipelineType {
     System,
 
     /// User tracing pipeline.
-    #[cfg(feature = "user-tracing")]
+    #[cfg(all(feature = "user-tracing", unix))]
     #[serde(rename = "user")]
     User,
 }
