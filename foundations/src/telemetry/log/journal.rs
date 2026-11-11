@@ -180,6 +180,9 @@ impl<W: AsFd> JournalWriter<W> {
 }
 
 /// Sends without waiting, whatever the descriptor's own blocking mode is.
+///
+/// If something replaced stdout or stderr with a file that isn't a socket after logging
+/// started, this writes to it the way any other writer would, which waits if that file does.
 fn send_nonblocking(fd: BorrowedFd<'_>, buf: &[u8]) -> io::Result<usize> {
     // SAFETY: `buf` is valid for `buf.len()` bytes, and send does not take ownership of `fd`.
     let sent = unsafe {
@@ -190,10 +193,20 @@ fn send_nonblocking(fd: BorrowedFd<'_>, buf: &[u8]) -> io::Result<usize> {
             libc::MSG_DONTWAIT | libc::MSG_NOSIGNAL,
         )
     };
-    if sent < 0 {
+    if sent >= 0 {
+        return Ok(sent as usize);
+    }
+    let err = io::Error::last_os_error();
+    if err.raw_os_error() != Some(libc::ENOTSOCK) {
+        return Err(err);
+    }
+
+    // SAFETY: `buf` is valid for `buf.len()` bytes, and write does not take ownership of `fd`.
+    let written = unsafe { libc::write(fd.as_raw_fd(), buf.as_ptr().cast(), buf.len()) };
+    if written < 0 {
         return Err(io::Error::last_os_error());
     }
-    Ok(sent as usize)
+    Ok(written as usize)
 }
 
 impl<W: AsFd> io::Write for JournalWriter<W> {
