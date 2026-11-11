@@ -44,6 +44,9 @@ pub struct LoggingSettings {
     /// By default, I/O errors from terminal, stderr, and file outputs are treated
     /// as fatal logging failures. Enabling this setting allows services to keep
     /// running if a log sink returns an error such as [`std::io::ErrorKind::BrokenPipe`].
+    ///
+    /// A systemd journal stream with no room for a record isn't an I/O error: the record is
+    /// dropped and counted in the `logging_records_dropped` metric, and logging carries on.
     pub ignore_io_errors: bool,
 
     /// Whether to let stdout and stderr block when they are the systemd journal stream.
@@ -59,11 +62,13 @@ pub struct LoggingSettings {
     /// in child processes that inherit the stream. When the stream's buffer is full, the default
     /// panic hook's message can be lost, and `println!` and `eprintln!` panic instead of waiting.
     /// Enabling this setting leaves the streams as they are; it doesn't make a nonblocking stream
-    /// blocking again.
+    /// blocking again. A stream stays nonblocking until the service restarts and systemd gives it
+    /// a new one, including when a process that inherits the stream enables this setting.
     ///
     /// If seccomp sandboxing applies to the thread that initializes telemetry, the logging thread
-    /// needs `sendto` to write to the journal stream, and initialization needs `fcntl` unless this
-    /// setting is enabled.
+    /// needs `sendto` to write to the journal stream. `SERVICE_BASICS` doesn't allow it, and
+    /// `NET_SOCKET_API` does. Initialization also needs `fcntl` unless this setting is enabled,
+    /// and `RUST_BASICS` only allows `fcntl` in debug builds.
     pub allow_blocking_journal_stdio: bool,
 
     /// Settings for rate limiting emission of log events
