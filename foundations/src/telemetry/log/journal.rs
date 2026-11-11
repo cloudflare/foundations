@@ -213,8 +213,9 @@ impl<W: AsFd> io::Write for JournalWriter<W> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         if self.new_record.load(Ordering::Relaxed) {
             self.new_record.store(false, Ordering::Relaxed);
-            // A formatter that fails part way through a record doesn't flush it. Discard what
-            // it wrote instead of sending it with the next record.
+            // The JSON formatter doesn't flush a record it fails to finish, so discard what it
+            // wrote instead of sending it with the next record. The text formatter flushes such
+            // a record anyway; it goes out cut short, and the next record starts a new line.
             self.clear();
         }
         self.buf.extend_from_slice(buf);
@@ -256,7 +257,8 @@ impl<D: Drain> Drain for JournalDrain<D> {
 pub(crate) enum DropReason {
     /// The journal stream had no room for the record.
     JournalFull,
-    /// Sending to the journal stream failed, for example because journald closed it.
+    /// Sending to the journal stream failed, for example because journald closed it. Unless
+    /// `ignore_io_errors` is set, the logging thread stops after the first one.
     JournalError,
 }
 
@@ -268,7 +270,8 @@ mod metrics {
 
     #[crate::telemetry::metrics::metrics(crate_path = "crate", unprefixed)]
     pub(crate) mod logging {
-        /// Number of log records dropped instead of written.
+        /// Number of log records dropped instead of written to the systemd journal stream.
+        /// Unless `ignore_io_errors` is set, logging stops after the first `journal_error`.
         pub fn records_dropped(reason: DropReason) -> Counter;
     }
 
