@@ -9,7 +9,7 @@ use foundations::service_info;
 use foundations::telemetry::settings::{LogFormat, LogOutput, LoggingSettings, TelemetrySettings};
 use foundations::telemetry::{self, TelemetryConfig, TelemetryDriver};
 use std::io;
-use std::io::{Read, Write};
+use std::io::{Read, Seek, Write};
 use std::os::fd::{AsFd, AsRawFd, BorrowedFd, OwnedFd};
 use std::os::unix::fs::MetadataExt;
 use std::os::unix::net::UnixStream;
@@ -366,6 +366,28 @@ async fn terminal_output_leaves_stdout_open_after_shutdown() {
     nix::unistd::dup2_stdout(&original_stdout).unwrap();
     let stdout = stdout.expect("shutting down the logger closed stdout");
     assert_eq!(stream_id(stdout.as_fd()), stream_id(stream.as_fd()));
+}
+
+#[tokio::test]
+async fn logs_follow_stderr_when_something_replaces_the_journal() {
+    let (stream, _journald) = UnixStream::pair().unwrap();
+    let original_stderr = pose_as_journal(&stream);
+    let mut driver = init_logging(LogOutput::Stderr, LogFormat::Json);
+    let mut file = tempfile::tempfile().unwrap();
+    nix::unistd::dup2_stderr(&file).unwrap();
+
+    telemetry::log::warn!("logged after stderr was replaced");
+    driver.shutdown_logger();
+    nix::unistd::dup2_stderr(&original_stderr).unwrap();
+
+    let mut written = String::new();
+    file.seek(io::SeekFrom::Start(0)).unwrap();
+    file.read_to_string(&mut written).unwrap();
+    assert!(
+        written.contains("\"msg\":\"logged after stderr was replaced\""),
+        "{written}"
+    );
+    assert_eq!(dropped("journal_error"), Some(0));
 }
 
 #[tokio::test]
