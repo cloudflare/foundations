@@ -439,6 +439,21 @@ mod tests {
     }
 
     #[test]
+    fn keeps_the_buffer_of_a_normal_record_and_frees_a_huge_one() {
+        let (writer, _journald) = journal_pair();
+
+        let (writer, res) = log_without_waiting(writer, &[b'x'; 8 * 1024]);
+        res.unwrap();
+        let capacity = writer.buf.capacity();
+        assert!(capacity > 8 * 1024, "{capacity}");
+
+        let (writer, res) = log_without_waiting(writer, &vec![b'x'; 1024 * 1024]);
+        res.unwrap();
+        let capacity = writer.buf.capacity();
+        assert!(capacity <= 64 * 1024, "{capacity}");
+    }
+
+    #[test]
     fn reports_a_closed_journal_as_an_error() {
         let (writer, journald) = journal_pair();
         drop(journald);
