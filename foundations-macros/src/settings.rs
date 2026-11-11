@@ -82,11 +82,20 @@ struct SerdeArgs {
 
 impl SerdeArgs {
     fn parse_from_attrs(attrs: &[Attribute]) -> Result<Option<Self>> {
-        let Some(attr) = attrs.iter().find(|a| a.path().is_ident("serde")) else {
+        let mut serde_attrs = attrs
+            .iter()
+            .filter(|a| a.path().is_ident("serde"))
+            .peekable();
+        if serde_attrs.peek().is_none() {
             return Ok(None);
-        };
+        }
 
-        Ok(Some(Self::from_meta(&attr.meta)?))
+        let mut meta_list = Vec::new();
+        for attr in serde_attrs {
+            meta_list.extend(attr.parse_args_with(|input: ParseStream| parse_meta_list(&input))?);
+        }
+
+        Ok(Some(Self::from_list(&meta_list)?))
     }
 }
 

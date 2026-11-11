@@ -8,6 +8,7 @@ struct NestedStruct {
     a: usize,
     /// multi-line
     /// doc comment
+    #[serde(alias = "legacy_b")]
     #[serde(default = "NestedStruct::default_b")]
     b: u32,
     // no doc comment at all
@@ -42,6 +43,7 @@ struct NestedDup {
 struct FlattenedStruct {
     /// Doc comments on flattened members itself
     /// should not appear on the output.
+    #[serde(default)]
     #[serde(flatten)]
     inner: NestedStruct,
     /// Another field that isn't flattened.
@@ -261,6 +263,9 @@ fn defaults() {
 
     assert_eq!(simple_struct.b, 0xb);
     assert_eq!(simple_struct.c, 0);
+
+    let aliased_struct = from_yaml_str::<NestedStruct>("legacy_b: 123").unwrap();
+    assert_eq!(aliased_struct.b, 123);
 
     let nested_struct = from_yaml_str::<SimpleStruct>("---\nx: 1").unwrap();
 
