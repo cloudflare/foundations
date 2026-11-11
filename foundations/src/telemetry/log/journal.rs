@@ -89,8 +89,7 @@ fn is_journal(fd: BorrowedFd<'_>, journal_stream: &OsStr) -> bool {
     let metadata = unsafe { metadata.assume_init() };
 
     metadata.st_mode & libc::S_IFMT == libc::S_IFSOCK
-        && journal_stream.as_encoded_bytes()
-            == format!("{}:{}", metadata.st_dev, metadata.st_ino).as_bytes()
+        && journal_stream == format!("{}:{}", metadata.st_dev, metadata.st_ino).as_str()
 }
 
 /// Sets `O_NONBLOCK` on `fd`, leaving it as it was if that fails.
@@ -211,6 +210,10 @@ fn send_nonblocking(fd: BorrowedFd<'_>, buf: &[u8]) -> io::Result<usize> {
 
 impl<W: AsFd> io::Write for JournalWriter<W> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        // Only the logging thread touches this flag: the drain sets it before formatting a
+        // record, and the first write of the record clears it. So nothing can change it between
+        // the load and the store, and the load keeps every later write to a plain read, where a
+        // swap would be a read-modify-write each time.
         if self.new_record.load(Ordering::Relaxed) {
             self.new_record.store(false, Ordering::Relaxed);
             // The JSON formatter doesn't flush a record it fails to finish, so discard what it
