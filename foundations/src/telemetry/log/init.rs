@@ -25,6 +25,7 @@ use std::fmt::Debug;
 use std::fs::File;
 use std::io;
 use std::io::BufWriter;
+use std::mem::ManuallyDrop;
 use std::sync::{Arc, LazyLock, OnceLock};
 
 type BoxedDebug = Box<dyn Debug>;
@@ -176,48 +177,69 @@ pub(crate) fn init(
     Ok(Some(async_guard))
 }
 
+/// Writes to stdout or stderr through a [`File`] that never closes them.
+///
+/// The log drain is dropped when the logger shuts down. Closing the descriptor then would
+/// let the next file or socket opened take its number, and later writes to stdout or stderr,
+/// such as a panic message, would go there.
+struct StdioWriter(ManuallyDrop<File>);
+
+impl io::Write for StdioWriter {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.0.write(buf)
+    }
+
+    fn write_vectored(&mut self, bufs: &[io::IoSlice<'_>]) -> io::Result<usize> {
+        self.0.write_vectored(bufs)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.0.flush()
+    }
+}
+
 /// Opens fd 1 directly and wraps with a [`BufWriter`] with [`BUF_SIZE`] capacity.
 ///
 /// [`io::Stdout`] uses a [`io::LineWriter`] which may cause unnecessary flushing.
 #[cfg(not(target_family = "windows"))]
-fn stdout_writer_without_line_buffering() -> BufWriter<File> {
+fn stdout_writer_without_line_buffering() -> BufWriter<StdioWriter> {
     use std::os::fd::{AsRawFd, FromRawFd};
 
     let stdout = std::io::stdout();
     let stdout = unsafe { File::from_raw_fd(stdout.as_raw_fd()) };
-    BufWriter::with_capacity(BUF_SIZE, stdout)
+    BufWriter::with_capacity(BUF_SIZE, StdioWriter(ManuallyDrop::new(stdout)))
 }
 
 /// Opens fd 1 directly and wraps with a [`BufWriter`] with [`BUF_SIZE`] capacity.
 ///
 /// [`io::Stdout`] uses a [`io::LineWriter`] which may cause unnecessary flushing.
 #[cfg(target_family = "windows")]
-fn stdout_writer_without_line_buffering() -> BufWriter<File> {
+fn stdout_writer_without_line_buffering() -> BufWriter<StdioWriter> {
     use std::os::windows::io::{AsRawHandle, FromRawHandle};
 
     let stdout = std::io::stdout();
     let stdout = unsafe { File::from_raw_handle(stdout.as_raw_handle()) };
-    BufWriter::with_capacity(BUF_SIZE, stdout)
+    BufWriter::with_capacity(BUF_SIZE, StdioWriter(ManuallyDrop::new(stdout)))
 }
 
 /// Opens fd 2 directly and wraps with a [`BufWriter`] with [`BUF_SIZE`] capacity.
 #[cfg(not(target_family = "windows"))]
-fn stderr_writer_without_line_buffering() -> BufWriter<File> {
+fn stderr_writer_without_line_buffering() -> BufWriter<StdioWriter> {
     use std::os::fd::{AsRawFd, FromRawFd};
 
     let stderr = std::io::stderr();
     let stderr = unsafe { File::from_raw_fd(stderr.as_raw_fd()) };
-    BufWriter::with_capacity(BUF_SIZE, stderr)
+    BufWriter::with_capacity(BUF_SIZE, StdioWriter(ManuallyDrop::new(stderr)))
 }
 
 /// Opens fd 2 directly and wraps with a [`BufWriter`] with [`BUF_SIZE`] capacity.
 #[cfg(target_family = "windows")]
-fn stderr_writer_without_line_buffering() -> BufWriter<File> {
+fn stderr_writer_without_line_buffering() -> BufWriter<StdioWriter> {
     use std::os::windows::io::{AsRawHandle, FromRawHandle};
 
     let stderr = std::io::stderr();
     let stderr = unsafe { File::from_raw_handle(stderr.as_raw_handle()) };
-    BufWriter::with_capacity(BUF_SIZE, stderr)
+    BufWriter::with_capacity(BUF_SIZE, StdioWriter(ManuallyDrop::new(stderr)))
 }
 
 pub(crate) fn wrap_root_drain<D>(settings: &LoggingSettings, drain: D) -> SharedDrain

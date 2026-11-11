@@ -337,6 +337,38 @@ async fn stderr_that_is_not_the_journal_is_left_alone() {
 }
 
 #[tokio::test]
+async fn stderr_output_leaves_stderr_open_after_shutdown() {
+    let (stream, _reader) = UnixStream::pair().unwrap();
+    let original_stderr = io::stderr().as_fd().try_clone_to_owned().unwrap();
+    nix::unistd::dup2_stderr(&stream).unwrap();
+    let mut driver = init_logging(LogOutput::Stderr, LogFormat::Json);
+
+    telemetry::log::warn!("logged before shutdown");
+    driver.shutdown_logger();
+    let stderr = io::stderr().as_fd().try_clone_to_owned();
+
+    nix::unistd::dup2_stderr(&original_stderr).unwrap();
+    let stderr = stderr.expect("shutting down the logger closed stderr");
+    assert_eq!(stream_id(stderr.as_fd()), stream_id(stream.as_fd()));
+}
+
+#[tokio::test]
+async fn terminal_output_leaves_stdout_open_after_shutdown() {
+    let (stream, _reader) = UnixStream::pair().unwrap();
+    let original_stdout = io::stdout().as_fd().try_clone_to_owned().unwrap();
+    nix::unistd::dup2_stdout(&stream).unwrap();
+    let mut driver = init_logging(LogOutput::Terminal, LogFormat::Json);
+
+    telemetry::log::warn!("logged before shutdown");
+    driver.shutdown_logger();
+    let stdout = io::stdout().as_fd().try_clone_to_owned();
+
+    nix::unistd::dup2_stdout(&original_stdout).unwrap();
+    let stdout = stdout.expect("shutting down the logger closed stdout");
+    assert_eq!(stream_id(stdout.as_fd()), stream_id(stream.as_fd()));
+}
+
+#[tokio::test]
 async fn journal_output_leaves_stderr_open_after_shutdown() {
     let (stream, _journald) = UnixStream::pair().unwrap();
     let original_stderr = pose_as_journal(&stream);
