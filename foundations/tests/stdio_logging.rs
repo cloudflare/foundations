@@ -108,7 +108,9 @@ fn wait_for_drops(reason: &str, count: u64, original_stderr: &OwnedFd) {
     while dropped(reason) < Some(count) {
         if Instant::now() >= deadline {
             nix::unistd::dup2_stderr(original_stderr).unwrap();
-            panic!("the logging thread did not drop records for {reason}");
+            fail_without_panicking(&format!(
+                "the logging thread did not drop records for {reason}"
+            ));
         }
         std::thread::sleep(Duration::from_millis(5));
     }
@@ -189,8 +191,13 @@ async fn logging_does_not_wait_for_a_blocking_journal_stream() {
     let shutdown_finished = finishes_in_time(move || driver.shutdown_logger());
     nix::unistd::dup2_stderr(&original_stderr).unwrap();
 
-    assert!(!nonblocking, "the setting didn't leave the stream alone");
-    assert!(shutdown_finished, "logger shutdown waited for the journal");
+    // The stream blocks here, so a panic on the logging thread can be stuck in the panic hook.
+    if nonblocking {
+        fail_without_panicking("the setting didn't leave the stream alone");
+    }
+    if !shutdown_finished {
+        fail_without_panicking("logger shutdown waited for the journal");
+    }
 }
 
 #[tokio::test]
