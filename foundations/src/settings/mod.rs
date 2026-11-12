@@ -334,6 +334,15 @@ use std::path::Path;
 /// }
 /// ```
 ///
+/// # New type variant documentation (unstable)
+///
+/// **This feature is unstable and becomes a noop without `cfg(foundations_unstable)`.**
+///
+/// A new type enum variant is serialized under a key of its own. With the flag, that key gets
+/// the doc comment of the variant, and the value under it gets the documentation of the type
+/// the variant wraps. This requires that type to implement [`Settings`], so variants annotated
+/// with `#[serde(skip)]` are left out.
+///
 /// [`Settings`]: crate::settings::Settings
 pub use foundations_macros::settings;
 

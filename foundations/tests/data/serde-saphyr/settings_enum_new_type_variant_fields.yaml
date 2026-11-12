@@ -1,0 +1,8 @@
+# Where the output is written
+output:
+  # Writes the output to a file.
+  file:
+    # Path of the output file.
+    path: ""
+    # Whether an existing file is truncated.
+    truncate: false
