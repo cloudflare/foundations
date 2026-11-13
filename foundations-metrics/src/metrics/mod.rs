@@ -41,6 +41,7 @@ mod gauge;
 mod histogram;
 mod low_cardinality;
 mod native_histogram;
+mod split_histogram;
 mod tls_counter;
 
 pub use counter::{Counter, CounterAtomic};
@@ -52,6 +53,7 @@ pub use histogram::{
 };
 pub use low_cardinality::{LowCardinalityFamily, LowCardinalityLabel};
 pub use native_histogram::{NativeHistogram, NativeHistogramBuilder, NativeTimeHistogram};
+pub use split_histogram::{SplitHistogram, SplitHistogramShard};
 pub use tls_counter::ThreadLocalCounter;
 
 fn update_f64(atomic: &AtomicU64, f: impl Fn(f64) -> f64) -> f64 {
