@@ -426,6 +426,14 @@ impl TimeHistogram {
 }
 
 impl HistogramSnapshot {
+    pub(super) fn from_parts(sum: f64, count: u64, buckets: Vec<(f64, u64)>) -> Self {
+        Self {
+            sum,
+            count,
+            buckets,
+        }
+    }
+
     /// Returns the sum of all observations.
     pub fn sum(&self) -> f64 {
         self.sum
