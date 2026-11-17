@@ -19,6 +19,8 @@ use std::net::SocketAddr;
 #[cfg_attr(not(feature = "settings"), derive(Clone, Debug, serde::Deserialize))]
 pub struct TracingSettings {
     /// Enables tracing.
+    ///
+    /// Defaults to `true`.
     #[serde(default = "TracingSettings::default_enabled")]
     pub enabled: bool,
 
@@ -32,18 +34,23 @@ pub struct TracingSettings {
     pub max_queue_size: Option<NonZeroUsize>,
 
     /// The output for the collected traces.
+    ///
+    /// Defaults to `jaeger_thrift_udp` with its default settings.
     pub output: TracesOutput,
 
     /// The strategy used to sample traces.
+    ///
+    /// Defaults to `active` sampling with a sampling ratio of `1.0` and no rate limit.
     pub sampling_strategy: SamplingStrategy,
 
-    /// Enable liveness tracking of all generated spans. Even if the spans are
-    /// unsampled. This can be useful for debugging potential hangs caused by
-    /// some objects remaining in memory.  The default value is false, meaning
-    /// only sampled spans are tracked.
+    /// Liveness tracking of generated spans. This can be useful for debugging
+    /// potential hangs caused by some objects remaining in memory.
     ///
     /// To get a json dump of the currently active spans, query the telemetry
     /// server's route at `/debug/traces`.
+    ///
+    /// Disabled by default. When enabled, only sampled spans are tracked unless
+    /// `track_all_spans` is set.
     pub liveness_tracking: LivenessTrackingSettings,
 }
 
@@ -85,7 +92,7 @@ pub enum TracesOutput {
 
     /// Sends traces to the collector in the [Open Telemetry] format over [gRPC].
     ///
-    /// [Jaeger Thrift (UDP)]: https://opentelemetry.io/
+    /// [Open Telemetry]: https://opentelemetry.io/
     /// [gRPC]: https://grpc.io/
     #[cfg(feature = "telemetry-otlp-grpc")]
     OpenTelemetryGrpc(OpenTelemetryGrpcOutputSettings),
@@ -115,14 +122,14 @@ pub struct JaegerThriftUdpOutputSettings {
     /// By default, the reporter API is only exposed on the loopback
     /// interface. This won't work in environments where the
     /// Jaeger agent is on another host (for example, Docker).
-    /// Must have the same address family as `jaeger_tracing_server_addr`.
+    /// Must have the same address family as `server_addr`.
     pub reporter_bind_addr: Option<SocketAddr>,
 
     /// Number of concurrent tasks to spawn for output.
     ///
     /// A higher number means more spans can be collected in parallel in a
     /// multi-threaded runtime. All tasks share a UDP socket for sending datagrams.
-    /// The default is 1 task.
+    /// Defaults to `1`.
     #[serde(default = "JaegerThriftUdpOutputSettings::default_num_tasks")]
     pub num_tasks: usize,
 
@@ -176,10 +183,14 @@ pub struct ActiveSamplingSettings {
     ///
     /// This can be any fractional value between `0.0` and `1.0`.
     /// Where `1.0` means "sample everything", and `0.0` means "don't sample anything".
+    ///
+    /// Defaults to `1.0`.
     #[serde(default = "ActiveSamplingSettings::default_sampling_ratio")]
     pub sampling_ratio: f64,
 
-    /// Settings for rate limiting emission of traces
+    /// Settings for rate limiting emission of traces.
+    ///
+    /// Rate limiting is disabled by default.
     pub rate_limit: RateLimitingSettings,
 }
 
@@ -241,6 +252,8 @@ impl Default for SamplingStrategy {
 #[cfg_attr(not(feature = "settings"), derive(Clone, Debug, serde::Deserialize))]
 pub struct LivenessTrackingSettings {
     /// Enables liveness tracking.
+    ///
+    /// Defaults to `false`.
     pub enabled: bool,
     /// Enable liveness tracking of all generated spans. Even if the spans are
     /// unsampled. This can be useful for debugging potential hangs caused by

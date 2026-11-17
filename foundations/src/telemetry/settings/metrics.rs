@@ -7,9 +7,13 @@ use crate::settings::settings;
 pub struct MetricsSettings {
     /// How the metrics service identifier defined in `ServiceInfo` is used
     /// for this service.
+    ///
+    /// Defaults to `metric_prefix`.
     pub service_name_format: ServiceNameFormat,
 
     /// Whether to report optional metrics in the telemetry server.
+    ///
+    /// Defaults to `false`.
     pub report_optional: bool,
 }
 

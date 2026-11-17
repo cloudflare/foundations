@@ -25,18 +25,26 @@ feature_use!(cfg(feature = "settings"), {
 #[cfg_attr(not(feature = "settings"), derive(Clone, Default, Debug))]
 pub struct LoggingSettings {
     /// Specifies log output.
+    ///
+    /// Defaults to `terminal`.
     pub output: LogOutput,
 
     /// The format to use for log messages.
+    ///
+    /// Defaults to `text`.
     pub format: LogFormat,
 
     /// Set the logging verbosity level.
+    ///
+    /// Defaults to `INFO`.
     pub verbosity: LogVerbosity,
 
     /// A list of field keys to redact when emitting logs.
     ///
     /// This might be useful to hide certain fields in production logs as they may
     /// contain sensitive information, but allow them in testing environment.
+    ///
+    /// Defaults to an empty list.
     pub redact_keys: Vec<String>,
 
     /// Whether to ignore I/O errors from built-in log outputs.
@@ -44,12 +52,18 @@ pub struct LoggingSettings {
     /// By default, I/O errors from terminal, stderr, and file outputs are treated
     /// as fatal logging failures. Enabling this setting allows services to keep
     /// running if a log sink returns an error such as [`std::io::ErrorKind::BrokenPipe`].
+    ///
+    /// Defaults to `false`.
     pub ignore_io_errors: bool,
 
-    /// Settings for rate limiting emission of log events
+    /// Settings for rate limiting emission of log events.
+    ///
+    /// Rate limiting is disabled by default.
     pub rate_limit: RateLimitingSettings,
 
     /// Configure log volume metrics.
+    ///
+    /// Log volume metrics are disabled by default.
     pub log_volume_metrics: LogVolumeMetricSettings,
 }
 
@@ -194,6 +208,8 @@ impl From<LogVerbosity> for slog::Level {
 #[cfg_attr(feature = "settings", settings(crate_path = "crate"))]
 #[cfg_attr(not(feature = "settings"), derive(Clone, Debug, Default))]
 pub struct LogVolumeMetricSettings {
-    /// Whether to enable log volume metrics
+    /// Whether to enable log volume metrics.
+    ///
+    /// Defaults to `false`.
     pub enabled: bool,
 }

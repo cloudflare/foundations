@@ -6,11 +6,15 @@ use crate::settings::settings;
 #[cfg_attr(feature = "settings", settings(crate_path = "crate"))]
 #[cfg_attr(not(feature = "settings"), derive(Clone, Debug, serde::Deserialize))]
 pub struct TelemetryServerSettings {
-    /// Enables telemetry server
+    /// Enables telemetry server.
+    ///
+    /// Defaults to `true`.
     #[serde(default = "TelemetryServerSettings::default_enabled")]
     pub enabled: bool,
 
     /// Telemetry server address.
+    ///
+    /// Defaults to `127.0.0.1:0`, a port the OS picks on the loopback interface.
     #[serde(default = "TelemetryServerSettings::default_addr")]
     pub addr: ListenAddr,
 }
