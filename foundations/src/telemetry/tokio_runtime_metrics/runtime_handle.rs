@@ -24,6 +24,12 @@ impl RuntimeHandle {
         tokio_runtime_core::workers(&self.runtime_name, self.runtime_id)
             .set(metrics.num_workers() as u64);
 
+        let parked_workers = (0..metrics.num_workers())
+            .filter(|&worker_idx| metrics.worker_park_unpark_count(worker_idx) % 2 == 1)
+            .count();
+        tokio_runtime_core::parked_workers(&self.runtime_name, self.runtime_id)
+            .set(parked_workers as u64);
+
         tokio_runtime_core::blocking_threads(&self.runtime_name, self.runtime_id)
             .set(metrics.num_blocking_threads() as u64);
 
@@ -123,5 +129,51 @@ impl RuntimeHandle {
             worker_idx,
         )
         .set(metrics.worker_mean_poll_time(worker_idx).as_micros() as u64);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::thread;
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn samples_parked_workers_from_tokio_metrics() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        let metrics = runtime.metrics();
+        let mut monitor = RuntimeHandle {
+            runtime_name: Some("samples_parked_workers_from_tokio_metrics".into()),
+            runtime_id: Some(0),
+            handle: runtime.handle().clone(),
+        };
+        let parked_workers =
+            tokio_runtime_core::parked_workers(&monitor.runtime_name, monitor.runtime_id);
+
+        monitor.record_sample();
+        assert_eq!(parked_workers.get(), 0);
+
+        let (wake, receiver) = tokio::sync::oneshot::channel();
+        let worker = thread::spawn(move || {
+            runtime.block_on(receiver).unwrap();
+            runtime
+        });
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while metrics.worker_park_unpark_count(0).is_multiple_of(2) {
+            assert!(Instant::now() < deadline, "runtime did not park");
+            thread::sleep(Duration::from_millis(1));
+        }
+
+        monitor.record_sample();
+        assert_eq!(parked_workers.get(), 1);
+        monitor.record_sample();
+        assert_eq!(parked_workers.get(), 1);
+
+        wake.send(()).unwrap();
+        let _runtime = worker.join().unwrap();
+        monitor.record_sample();
+        assert_eq!(parked_workers.get(), 0);
     }
 }
