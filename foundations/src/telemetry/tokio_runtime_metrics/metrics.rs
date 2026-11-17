@@ -8,6 +8,11 @@ pub(super) mod tokio_runtime_core {
     /// This number shouldn't change during execution.
     pub fn workers(runtime_name: &Option<Arc<str>>, runtime_id: Option<usize>) -> Gauge;
 
+    /// Number of async scheduler workers observed as parked in the latest sample.
+    ///
+    /// Workers are sampled independently, not as an atomic runtime-wide snapshot.
+    pub fn parked_workers(runtime_name: &Option<Arc<str>>, runtime_id: Option<usize>) -> Gauge;
+
     /// Current number of blocking threads allocated by the runtime.
     ///
     /// This should ideally be less than the blocking threads limit, otherwise you may be experiencing

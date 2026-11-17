@@ -10,6 +10,7 @@
 //! | Metric                                           | Source                                                              | Labels (? indicates optional)          |
 //! |:-------------------------------------------------|:--------------------------------------------------------------------|:---------------------------------------|
 //! | tokio_runtime_workers                            | [`tokio::runtime::RuntimeMetrics::num_workers`]                     | runtime_name?, runtime_id?             |
+//! | tokio_runtime_core_parked_workers                | [`tokio::runtime::RuntimeMetrics::worker_park_unpark_count`]         | runtime_name?, runtime_id?             |
 //! | tokio_runtime_blocking_threads                   | [`tokio::runtime::RuntimeMetrics::num_blocking_threads`]            | runtime_name?, runtime_id?             |
 //! | tokio_runtime_num_alive_tasks                    | [`tokio::runtime::RuntimeMetrics::num_alive_tasks`]                 | runtime_name?, runtime_id?             |
 //! | tokio_runtime_idle_blocking_threads              | [`tokio::runtime::RuntimeMetrics::num_idle_blocking_threads`]       | runtime_name?, runtime_id?             |
@@ -30,6 +31,10 @@
 //! | tokio_runtime_worker_overflows_total             | [`tokio::runtime::RuntimeMetrics::worker_overflow_count`]           | runtime_name?, runtime_id?, worker_idx |
 //! | tokio_runtime_worker_local_queue_depth           | [`tokio::runtime::RuntimeMetrics::worker_local_queue_depth`]        | runtime_name?, runtime_id?, worker_idx |
 //! | tokio_runtime_worker_mean_poll_time_micros       | [`tokio::runtime::RuntimeMetrics::worker_mean_poll_time`]           | runtime_name?, runtime_id?, worker_idx |
+//!
+//! The parked-worker gauge counts workers whose park/unpark counter is odd in the latest
+//! sample. It excludes the blocking pool. Workers are read independently, so the aggregate
+//! is not an atomic snapshot of the runtime, and it stays unchanged until the next sample.
 //!
 //! # Example
 //! ```no_run
