@@ -5,7 +5,9 @@ use crate::settings::settings;
 #[cfg_attr(feature = "settings", settings(crate_path = "crate"))]
 #[cfg_attr(not(feature = "settings"), derive(Clone, Debug, serde::Deserialize))]
 pub struct MemoryProfilerSettings {
-    /// Enables memory profiling
+    /// Enables memory profiling.
+    ///
+    /// Defaults to `false`.
     pub enabled: bool,
 
     /// Value between `0` and `64` which specifies the number of bytes of
