@@ -35,9 +35,63 @@ pub struct Histogram {
 
 #[derive(Debug)]
 struct HistogramState {
+    bounds: ClassicHistogramBounds,
     sum: f64,
     count: u64,
-    buckets: Vec<(f64, u64)>,
+    buckets: Box<[u64]>,
+}
+
+#[derive(Debug)]
+pub(super) struct ClassicHistogramBounds {
+    upper_bounds: Box<[f64]>,
+}
+
+impl ClassicHistogramBounds {
+    pub(super) fn new(bounds: impl IntoIterator<Item = f64>) -> Self {
+        let mut upper_bounds: Vec<_> = bounds.into_iter().collect();
+        upper_bounds.push(f64::INFINITY);
+        upper_bounds.sort_by(f64::total_cmp);
+
+        Self {
+            upper_bounds: upper_bounds.into(),
+        }
+    }
+
+    pub(super) fn len(&self) -> usize {
+        self.upper_bounds.len()
+    }
+
+    pub(super) fn bucket_index(&self, value: f64) -> Option<usize> {
+        if value.is_nan() {
+            return None;
+        }
+
+        let index = self
+            .upper_bounds
+            .partition_point(|upper_bound| *upper_bound < value);
+        (index < self.len()).then_some(index)
+    }
+
+    pub(super) fn snapshot(
+        &self,
+        sum: f64,
+        count: u64,
+        bucket_counts: &[u64],
+    ) -> HistogramSnapshot {
+        debug_assert_eq!(bucket_counts.len(), self.len());
+        let buckets: Vec<_> = self
+            .upper_bounds
+            .iter()
+            .copied()
+            .zip(bucket_counts.iter().copied())
+            .collect();
+
+        HistogramSnapshot {
+            sum,
+            count,
+            buckets,
+        }
+    }
 }
 
 /// A point-in-time view of a histogram's sum, count, and buckets.
@@ -54,12 +108,12 @@ impl Histogram {
     /// Bounds may be given in any order; they are sorted ascending. A terminal
     /// `f64::INFINITY` bucket is appended automatically.
     pub fn new(bounds: impl IntoIterator<Item = f64>) -> Self {
-        let mut buckets: Vec<_> = bounds.into_iter().map(|bound| (bound, 0)).collect();
-        buckets.push((f64::INFINITY, 0));
-        buckets.sort_by(|(a, _), (b, _)| a.total_cmp(b));
+        let bounds = ClassicHistogramBounds::new(bounds);
+        let buckets = vec![0; bounds.len()].into_boxed_slice();
 
         Self {
             state: Arc::new(Mutex::new(HistogramState {
+                bounds,
                 sum: 0.0,
                 count: 0,
                 buckets,
@@ -77,15 +131,9 @@ impl Histogram {
         state.sum += value;
         state.count = state.count.wrapping_add(1);
 
-        if value.is_nan() {
-            return None;
-        }
+        let index = state.bounds.bucket_index(value)?;
 
-        let index = state
-            .buckets
-            .partition_point(|(upper_bound, _)| *upper_bound < value);
-
-        if let Some((_, count)) = state.buckets.get_mut(index) {
+        if let Some(count) = state.buckets.get_mut(index) {
             *count = count.wrapping_add(1);
             Some(index)
         } else {
@@ -97,11 +145,9 @@ impl Histogram {
     /// buckets.
     pub fn snapshot(&self) -> HistogramSnapshot {
         let state = self.state.lock();
-        HistogramSnapshot {
-            sum: state.sum,
-            count: state.count,
-            buckets: state.buckets.clone(),
-        }
+        state
+            .bounds
+            .snapshot(state.sum, state.count, &state.buckets)
     }
 }
 
