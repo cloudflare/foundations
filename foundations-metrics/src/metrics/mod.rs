@@ -42,6 +42,7 @@ mod histogram;
 mod low_cardinality;
 mod native_histogram;
 mod tls_counter;
+mod tls_histogram;
 
 pub use counter::{Counter, CounterAtomic};
 pub use exemplar::WithExemplar;
@@ -53,6 +54,7 @@ pub use histogram::{
 pub use low_cardinality::{LowCardinalityFamily, LowCardinalityLabel};
 pub use native_histogram::{NativeHistogram, NativeHistogramBuilder, NativeTimeHistogram};
 pub use tls_counter::ThreadLocalCounter;
+pub use tls_histogram::ThreadLocalHistogram;
 
 fn update_f64(atomic: &AtomicU64, f: impl Fn(f64) -> f64) -> f64 {
     let mut old_bits = atomic.load(Ordering::Relaxed);
