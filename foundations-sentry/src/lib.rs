@@ -49,20 +49,15 @@
 //! Configure the capture integrations with:
 //!
 //! ```rust
-//! use std::sync::Arc;
 //! use foundations_sentry::backtrace::UnresolvedStacktraceIntegration;
 //! use foundations_sentry::panic::NoFlushPanicIntegration;
 //! use sentry_core::ClientOptions;
 //!
-//! let options = ClientOptions {
-//!     attach_stacktrace: true,
-//!     default_integrations: false,
-//!     integrations: vec![
-//!         Arc::new(UnresolvedStacktraceIntegration),
-//!         Arc::new(NoFlushPanicIntegration::new().with_unresolved_stacktraces()),
-//!     ],
-//!     ..Default::default()
-//! };
+//! let options = ClientOptions::new()
+//!     .attach_stacktrace(true)
+//!     .default_integrations(false)
+//!     .add_integration(UnresolvedStacktraceIntegration)
+//!     .add_integration(NoFlushPanicIntegration::new().with_unresolved_stacktraces());
 //! ```
 //!
 //! Other integrations and previously installed panic hooks can still resolve their own
