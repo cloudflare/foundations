@@ -1,5 +1,8 @@
 
-1.2.0
+2.0.0
+- 2026-11-19 Upgrade sentry dependency
+
+foundations-sentry-v1.2.0
 - 2026-09-24 Allow unsymbolicated sentry panics
 - 2026-08-13 refactor(metrics): finalize public API for publishing (#253)
 - 2026-08-07 feat(foundations): migrate the metrics facade to foundations-metrics (#247)
