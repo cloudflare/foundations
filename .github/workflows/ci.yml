@@ -117,7 +117,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Run Clippy
         run: |
-          cargo clippy --all-targets -- \
+          cargo clippy --all-targets --all-features -- \
             -D warnings \
             -D unreachable_pub \
             -D clippy::await_holding_lock \
@@ -236,7 +236,7 @@ jobs:
         include:
           - apt_packages: ""
           - custom_env: {}
-          - cargo_args: ""
+          - cargo_args: --all-features
 
           - thing: aarch64-linux
             target: aarch64-unknown-linux-gnu
@@ -252,19 +252,19 @@ jobs:
             target: aarch64-linux-android
             rust: stable
             os: ubuntu-latest
-            cargo_args: --no-default-features --features server-client-common-default
 
           - thing: arm-android
             target: armv7-linux-androideabi
             rust: stable
             os: ubuntu-latest
-            cargo_args: --no-default-features --features server-client-common-default
 
           - thing: aarch64-ios
             target: aarch64-apple-ios
             rust: stable
             os: macos-latest
-            cargo_args: --no-default-features --features server-client-common-default
+            cargo_args: >
+              --no-default-features
+              --features platform-common-default,telemetry-server-pattern-routing,user-tracing,foundations-metrics-backend
 
           - thing: x86_64-windows
             target: x86_64-pc-windows-msvc
@@ -286,9 +286,14 @@ jobs:
         if: "matrix.apt_packages != ''"
         run: sudo apt update && sudo apt install -y ${{ matrix.apt_packages }}
         shell: bash
-      - name: Set Android Linker path
+      - name: Set Android toolchain paths
         if: endsWith(matrix.thing, '-android')
-        run: echo "CARGO_TARGET_$(echo ${{ matrix.target }} | tr \\-a-z _A-Z)_LINKER=$ANDROID_NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/$(echo ${{ matrix.target }} | sed s/armv7/armv7a/)21-clang++" >> "$GITHUB_ENV"
+        run: |
+          echo "AR=$ANDROID_NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar" >> "$GITHUB_ENV"
+          cc="$ANDROID_NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/$(echo ${{ matrix.target }} | sed s/armv7/armv7a/)21-clang"
+          echo "CC=${cc}" >> "$GITHUB_ENV"
+          echo "CXX=${cc}++" >> "$GITHUB_ENV"
+          echo "CARGO_TARGET_$(echo ${{ matrix.target }} | tr \\-a-z _A-Z)_LINKER=${cc}++" >> "$GITHUB_ENV"
       - name: Build
         run: cargo build -p foundations --target ${{ matrix.target }} ${{matrix.cargo_args}}
         shell: bash
