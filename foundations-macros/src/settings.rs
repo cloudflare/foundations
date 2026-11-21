@@ -1,5 +1,6 @@
 use crate::common::{Result, error, parse_meta_list};
 use darling::FromMeta;
+use darling::ast::NestedMeta;
 use darling::util::{Flag, Override};
 use proc_macro::TokenStream;
 use quote::{ToTokens, TokenStreamExt, quote, quote_spanned};
@@ -252,8 +253,7 @@ fn impl_settings_trait_for_field(
 ) -> proc_macro2::TokenStream {
     let crate_path = &options.crate_path;
     let span = field.ty.span();
-    // serde drops the `r#` prefix of raw identifiers from the serialized key.
-    let name_str = name.unraw().to_string();
+    let name_str = serialized_field_name(field, name);
     let docs = extract_doc_comments(&field.attrs);
 
     let cfg_attrs = field
@@ -352,6 +352,43 @@ fn is_array_zst(ty: &Type) -> bool {
         .base10_parse::<usize>()
         .map(|len| len == 0)
         .unwrap_or(false)
+}
+
+/// Returns the key serde serializes `field` under: its `serde(rename)` if
+/// present, otherwise its name.
+fn serialized_field_name(field: &Field, name: &Ident) -> String {
+    // serde drops the `r#` prefix of raw identifiers from the serialized key.
+    serde_rename(&field.attrs).unwrap_or_else(|| name.unraw().to_string())
+}
+
+/// Returns the serialize name of `serde(rename = "...")` or
+/// `serde(rename(serialize = "...", deserialize = "..."))` in `attrs`.
+///
+/// This is not part of [`SerdeArgs`], because serde allows the serialize and
+/// deserialize names to be given in separate `rename` arguments.
+fn serde_rename(attrs: &[Attribute]) -> Option<String> {
+    #[derive(FromMeta)]
+    #[darling(allow_unknown_fields)]
+    struct RenameArgs {
+        serialize: Option<String>,
+    }
+
+    attrs
+        .iter()
+        .filter(|a| a.path().is_ident("serde"))
+        .filter_map(|a| {
+            a.parse_args_with(|input: ParseStream| parse_meta_list(&input))
+                .ok()
+        })
+        .flatten()
+        .filter_map(|meta| match meta {
+            NestedMeta::Meta(meta) if meta.path().is_ident("rename") => Some(meta),
+            _ => None,
+        })
+        .find_map(|meta| match &meta {
+            Meta::NameValue(_) => String::from_meta(&meta).ok(),
+            _ => RenameArgs::from_meta(&meta).ok()?.serialize,
+        })
 }
 
 /// Returns whether `attrs` contains `serde(flatten)`.
