@@ -59,6 +59,17 @@ struct RawIdentifierFields {
 }
 
 #[settings]
+struct RenamedFields {
+    /// A field with a serde rename.
+    #[serde(rename = "listen-addr")]
+    listen_addr: u32,
+    /// A nested struct with separate serialize and deserialize names.
+    #[serde(rename(deserialize = "upstream-pool"))]
+    #[serde(rename(serialize = "upstream"))]
+    upstream_pool: NestedStruct,
+}
+
+#[settings]
 enum SomeEnum {
     VariantA,
     #[default]
@@ -237,6 +248,11 @@ fn raw_identifier_doc_comments() {
         RawIdentifierFields::default(),
         "settings_raw_identifier_fields.yaml"
     );
+}
+
+#[test]
+fn renamed_field_doc_comments() {
+    assert_ser_eq!(RenamedFields::default(), "settings_renamed_fields.yaml");
 }
 
 #[test]
