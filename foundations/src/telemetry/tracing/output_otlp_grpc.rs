@@ -64,10 +64,10 @@ pub(super) fn start(
         .collect();
 
     let init_fut = async move {
-        let grpc_channel = grpc_channel
-            .connect()
-            .await
-            .context("failed to connect gRPC channel for traces")?;
+        // A lazy channel reconnects in the background when the collector is unavailable. Building
+        // it here keeps Tokio work in the telemetry driver while allowing service startup to
+        // proceed without waiting for the collector.
+        let grpc_channel = grpc_channel.connect_lazy();
 
         channel_tx
             .send(grpc_channel)
@@ -127,8 +127,109 @@ fn create_request(resource_spans: Vec<ResourceSpans>) -> Request<ExportTraceServ
 
 #[cfg(test)]
 mod tests {
+    use std::net::{SocketAddr, TcpListener};
+
+    use cf_rustracing::Tracer;
+    use cf_rustracing::sampler::AllSampler;
+    use opentelemetry_proto::tonic::collector::trace::v1::trace_service_server::{
+        TraceService, TraceServiceServer,
+    };
+    use tokio::sync::mpsc;
+    use tonic::{Response, Status};
+
     use super::*;
     use crate::telemetry::tracing::channel::{PipelineType, unbounded_channel};
+
+    const SERVICE_INFO: ServiceInfo = ServiceInfo {
+        name: "test-service",
+        name_in_metrics: String::new(),
+        version: "1.0.0",
+        author: "",
+        description: "",
+    };
+
+    struct Collector {
+        requests: mpsc::UnboundedSender<ExportTraceServiceRequest>,
+    }
+
+    #[tonic::async_trait]
+    impl TraceService for Collector {
+        async fn export(
+            &self,
+            request: Request<ExportTraceServiceRequest>,
+        ) -> Result<Response<ExportTraceServiceResponse>, Status> {
+            self.requests.send(request.into_inner()).unwrap();
+            Ok(Response::new(ExportTraceServiceResponse::default()))
+        }
+    }
+
+    fn unused_local_addr() -> SocketAddr {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        drop(listener);
+        addr
+    }
+
+    fn settings(addr: SocketAddr) -> OpenTelemetryGrpcOutputSettings {
+        OpenTelemetryGrpcOutputSettings {
+            endpoint_url: format!("http://{addr}"),
+            request_timeout_seconds: 1,
+            num_tasks: 1,
+            max_batch_size: 8,
+        }
+    }
+
+    #[tokio::test]
+    async fn collector_unavailable_does_not_fail_initialization() {
+        let (_sender, span_rx) = unbounded_channel(PipelineType::System);
+        let mut futs = start(&SERVICE_INFO, &settings(unused_local_addr()), span_rx).unwrap();
+
+        futs.initializer.take().unwrap().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn exports_after_collector_becomes_available() {
+        let addr = unused_local_addr();
+        let (sender, span_rx) = unbounded_channel(PipelineType::System);
+        let tracer = Tracer::with_consumer(AllSampler, sender);
+        let mut futs = start(&SERVICE_INFO, &settings(addr), span_rx).unwrap();
+
+        let workers: Vec<_> = futs.workers.drain(..).map(tokio::spawn).collect();
+        futs.initializer.take().unwrap().await.unwrap();
+
+        let (request_tx, mut request_rx) = mpsc::unbounded_channel();
+        let server = tokio::spawn(
+            tonic::transport::Server::builder()
+                .add_service(TraceServiceServer::new(Collector {
+                    requests: request_tx,
+                }))
+                .serve(addr),
+        );
+
+        // Wait until the collector is listening before producing the span. The channel was
+        // initialized while this address was unavailable and must connect on first use.
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while tokio::net::TcpStream::connect(addr).await.is_err() {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .unwrap();
+
+        let _span = tracer.span("recovered").start();
+        drop(_span);
+
+        let request = tokio::time::timeout(Duration::from_secs(5), request_rx.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(request.resource_spans.len(), 1);
+
+        server.abort();
+        for worker in workers {
+            worker.abort();
+        }
+    }
 
     #[test]
     fn endpoint_without_scheme_or_authority_fails_initialization() {
@@ -138,6 +239,6 @@ mod tests {
             ..OpenTelemetryGrpcOutputSettings::default()
         };
 
-        assert!(start(&ServiceInfo::default(), &settings, span_rx).is_err());
+        assert!(start(&SERVICE_INFO, &settings, span_rx).is_err());
     }
 }
