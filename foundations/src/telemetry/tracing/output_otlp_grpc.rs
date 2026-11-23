@@ -27,7 +27,18 @@ pub(super) fn start(
 ) -> BootstrapResult<TraceOutputFutures> {
     let max_batch_size = settings.max_batch_size;
 
-    let grpc_channel = Channel::from_shared(format!("{}/v1/traces", settings.endpoint_url))?
+    let endpoint_url = format!("{}/v1/traces", settings.endpoint_url);
+    if !endpoint_url.starts_with("unix:") {
+        let endpoint_uri: http::Uri = endpoint_url
+            .parse()
+            .context("invalid gRPC endpoint URL for traces")?;
+        anyhow::ensure!(
+            endpoint_uri.scheme().is_some() && endpoint_uri.authority().is_some(),
+            "invalid gRPC endpoint URL for traces: scheme and authority are required"
+        );
+    }
+
+    let grpc_channel = Channel::from_shared(endpoint_url)?
         .timeout(Duration::from_secs(settings.request_timeout_seconds));
 
     // NOTE: don't do any IO or tokio stuff yet - it should be driven by the telemetry driver
@@ -112,4 +123,21 @@ fn create_request(resource_spans: Vec<ResourceSpans>) -> Request<ExportTraceServ
         .insert(GrpcMethod::new(TRACE_SERVICE, "Export"));
 
     request
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::telemetry::tracing::channel::{PipelineType, unbounded_channel};
+
+    #[test]
+    fn endpoint_without_scheme_or_authority_fails_initialization() {
+        let (_sender, span_rx) = unbounded_channel(PipelineType::System);
+        let settings = OpenTelemetryGrpcOutputSettings {
+            endpoint_url: String::new(),
+            ..OpenTelemetryGrpcOutputSettings::default()
+        };
+
+        assert!(start(&ServiceInfo::default(), &settings, span_rx).is_err());
+    }
 }
