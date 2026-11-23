@@ -355,10 +355,12 @@ neli-proc-macros = { workspace = true, optional = true }
 [dev-dependencies]
 backtrace = { workspace = true }
 criterion = { workspace = true, features = ["cargo_bench_support"] }
+opentelemetry-proto = { workspace = true, features = ["gen-tonic", "trace"] }
 reqwest = { workspace = true }
 serde = { workspace = true, features = ["rc"] }
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+tonic = { workspace = true, features = ["router", "server"] }
 ipnetwork = { workspace = true }
 nix = { workspace = true , features = ["fs"] }
 tracing-subscriber = { workspace = true }
