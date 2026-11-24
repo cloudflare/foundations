@@ -2,6 +2,8 @@ use super::field_dedup::FieldDedupFilterFactory;
 use super::field_filtering::{FieldFilteringDrain, FilterFactory};
 use super::field_redact::FieldRedactFilterFactory;
 use super::internal::{LoggerWithKvNestingTracking, SharedLog};
+#[cfg(target_os = "linux")]
+use super::journal::{JournalStreams, JournalWriter};
 
 #[cfg(feature = "metrics")]
 use crate::telemetry::log::log_volume::LogVolumeMetricsDrain;
@@ -9,6 +11,8 @@ use crate::telemetry::log::log_volume::LogVolumeMetricsDrain;
 use crate::telemetry::log::rate_limit::RateLimitingDrain;
 use crate::telemetry::log::retry_writer::RetryPipeWriter;
 use crate::telemetry::scope::ScopeStack;
+#[cfg(target_os = "linux")]
+use crate::telemetry::settings::JournalStreamBehavior;
 use crate::telemetry::settings::{LogFormat, LogOutput, LogVerbosity, LoggingSettings};
 use crate::{BootstrapResult, ServiceInfo};
 use crossbeam_utils::CachePadded;
@@ -23,6 +27,7 @@ use std::fmt::Debug;
 use std::fs::File;
 use std::io;
 use std::io::BufWriter;
+use std::mem::ManuallyDrop;
 use std::sync::{Arc, LazyLock, OnceLock};
 
 type BoxedDebug = Box<dyn Debug>;
@@ -75,7 +80,7 @@ impl LogHarness {
 
 // Buffer output up to 4KiB. For JSON output, flush will be called for each record,
 // even if the buffer isn't full.
-const BUF_SIZE: usize = 4096;
+pub(super) const BUF_SIZE: usize = 4096;
 
 // NOTE: Does nothing if logging has already been initialized in this process.
 pub(crate) fn init(
@@ -90,8 +95,35 @@ pub(crate) fn init(
     // NOTE: OXY-178, default is 128 (https://docs.rs/slog-async/2.7.0/src/slog_async/lib.rs.html#251)
     const CHANNEL_SIZE: usize = 1024;
 
-    let (async_drain, async_guard) = match (&settings.output, &settings.format) {
-        (output @ (LogOutput::Terminal | LogOutput::Stderr), LogFormat::Text) => {
+    // Before building any drain, so that stderr is covered when logs go elsewhere too.
+    #[cfg(target_os = "linux")]
+    let journal_fd = match settings.journal_stream_behavior {
+        JournalStreamBehavior::Blocking => None,
+        JournalStreamBehavior::NonBlockingLogger => {
+            JournalStreams::detect(false).fd(&settings.output)
+        }
+        JournalStreamBehavior::NonBlockingStdio => {
+            JournalStreams::detect(true).fd(&settings.output)
+        }
+    };
+
+    #[cfg(not(target_os = "linux"))]
+    let journal_fd: Option<()> = None;
+
+    let (async_drain, async_guard) = match (journal_fd, &settings.output, &settings.format) {
+        #[cfg(target_os = "linux")]
+        (Some(fd), _, LogFormat::Text) => {
+            let drain = JournalWriter::drain(fd, |writer| {
+                TextDrain::new(PlainDecorator::new(writer)).build()
+            });
+            build_async_drain(drain, settings, CHANNEL_SIZE)
+        }
+        #[cfg(target_os = "linux")]
+        (Some(fd), _, LogFormat::Json) => {
+            let drain = JournalWriter::drain(fd, build_json_log_drain);
+            build_async_drain(drain, settings, CHANNEL_SIZE)
+        }
+        (_, output @ (LogOutput::Terminal | LogOutput::Stderr), LogFormat::Text) => {
             let decorator = if matches!(output, LogOutput::Terminal) {
                 TermDecorator::new().stdout().build()
             } else {
@@ -101,7 +133,7 @@ pub(crate) fn init(
             let drain = TextDrain::new(decorator).build();
             build_async_drain(drain, settings, CHANNEL_SIZE)
         }
-        (output @ (LogOutput::Terminal | LogOutput::Stderr), LogFormat::Json) => {
+        (_, output @ (LogOutput::Terminal | LogOutput::Stderr), LogFormat::Json) => {
             let writer = if matches!(output, LogOutput::Terminal) {
                 stdout_writer_without_line_buffering()
             } else {
@@ -110,22 +142,22 @@ pub(crate) fn init(
             let drain = build_json_log_drain(writer);
             build_async_drain(drain, settings, CHANNEL_SIZE)
         }
-        (LogOutput::File(file_path), LogFormat::Text) => {
+        (_, LogOutput::File(file_path), LogFormat::Text) => {
             let file = RetryPipeWriter::new(file_path.into())?;
             let drain = TextDrain::new(PlainDecorator::new(file)).build();
             build_async_drain(drain, settings, CHANNEL_SIZE)
         }
-        (LogOutput::File(file_path), LogFormat::Json) => {
+        (_, LogOutput::File(file_path), LogFormat::Json) => {
             let file = RetryPipeWriter::new(file_path.into())?;
             let buf = BufWriter::with_capacity(BUF_SIZE, file);
             let drain = build_json_log_drain(buf);
             build_async_drain(drain, settings, CHANNEL_SIZE)
         }
         #[cfg(feature = "tracing-rs-compat")]
-        (LogOutput::TracingRsCompat, _) => AsyncDrain::new(tracing_slog::TracingSlogDrain {})
+        (_, LogOutput::TracingRsCompat, _) => AsyncDrain::new(tracing_slog::TracingSlogDrain {})
             .chan_size(CHANNEL_SIZE)
             .build_with_guard(),
-        (LogOutput::Custom(drain), _) => AsyncDrain::new(Arc::clone(drain))
+        (_, LogOutput::Custom(drain), _) => AsyncDrain::new(Arc::clone(drain))
             .chan_size(CHANNEL_SIZE)
             .build_with_guard(),
     };
@@ -154,48 +186,72 @@ pub(crate) fn init(
     Ok(Some(async_guard))
 }
 
+/// Writes to stdout or stderr through a [`File`] that never closes them.
+///
+/// The log drain is dropped when the logger shuts down. Closing the descriptor then would
+/// let the next file or socket opened take its number, and later writes to stdout or stderr,
+/// such as a panic message, would go there.
+struct StdioWriter(ManuallyDrop<File>);
+
+impl io::Write for StdioWriter {
+    #[inline]
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.0.write(buf)
+    }
+
+    #[inline]
+    fn write_vectored(&mut self, bufs: &[io::IoSlice<'_>]) -> io::Result<usize> {
+        self.0.write_vectored(bufs)
+    }
+
+    #[inline]
+    fn flush(&mut self) -> io::Result<()> {
+        self.0.flush()
+    }
+}
+
 /// Opens fd 1 directly and wraps with a [`BufWriter`] with [`BUF_SIZE`] capacity.
 ///
 /// [`io::Stdout`] uses a [`io::LineWriter`] which may cause unnecessary flushing.
 #[cfg(not(target_family = "windows"))]
-fn stdout_writer_without_line_buffering() -> BufWriter<File> {
+fn stdout_writer_without_line_buffering() -> BufWriter<StdioWriter> {
     use std::os::fd::{AsRawFd, FromRawFd};
 
     let stdout = std::io::stdout();
     let stdout = unsafe { File::from_raw_fd(stdout.as_raw_fd()) };
-    BufWriter::with_capacity(BUF_SIZE, stdout)
+    BufWriter::with_capacity(BUF_SIZE, StdioWriter(ManuallyDrop::new(stdout)))
 }
 
 /// Opens fd 1 directly and wraps with a [`BufWriter`] with [`BUF_SIZE`] capacity.
 ///
 /// [`io::Stdout`] uses a [`io::LineWriter`] which may cause unnecessary flushing.
 #[cfg(target_family = "windows")]
-fn stdout_writer_without_line_buffering() -> BufWriter<File> {
+fn stdout_writer_without_line_buffering() -> BufWriter<StdioWriter> {
     use std::os::windows::io::{AsRawHandle, FromRawHandle};
 
     let stdout = std::io::stdout();
     let stdout = unsafe { File::from_raw_handle(stdout.as_raw_handle()) };
-    BufWriter::with_capacity(BUF_SIZE, stdout)
+    BufWriter::with_capacity(BUF_SIZE, StdioWriter(ManuallyDrop::new(stdout)))
 }
 
 /// Opens fd 2 directly and wraps with a [`BufWriter`] with [`BUF_SIZE`] capacity.
 #[cfg(not(target_family = "windows"))]
-fn stderr_writer_without_line_buffering() -> BufWriter<File> {
+fn stderr_writer_without_line_buffering() -> BufWriter<StdioWriter> {
     use std::os::fd::{AsRawFd, FromRawFd};
 
     let stderr = std::io::stderr();
     let stderr = unsafe { File::from_raw_fd(stderr.as_raw_fd()) };
-    BufWriter::with_capacity(BUF_SIZE, stderr)
+    BufWriter::with_capacity(BUF_SIZE, StdioWriter(ManuallyDrop::new(stderr)))
 }
 
 /// Opens fd 2 directly and wraps with a [`BufWriter`] with [`BUF_SIZE`] capacity.
 #[cfg(target_family = "windows")]
-fn stderr_writer_without_line_buffering() -> BufWriter<File> {
+fn stderr_writer_without_line_buffering() -> BufWriter<StdioWriter> {
     use std::os::windows::io::{AsRawHandle, FromRawHandle};
 
     let stderr = std::io::stderr();
     let stderr = unsafe { File::from_raw_handle(stderr.as_raw_handle()) };
-    BufWriter::with_capacity(BUF_SIZE, stderr)
+    BufWriter::with_capacity(BUF_SIZE, StdioWriter(ManuallyDrop::new(stderr)))
 }
 
 pub(crate) fn wrap_root_drain<D>(settings: &LoggingSettings, drain: D) -> SharedDrain
