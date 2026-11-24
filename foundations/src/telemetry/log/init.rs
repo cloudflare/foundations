@@ -3,7 +3,7 @@ use super::field_filtering::{FieldFilteringDrain, FilterFactory};
 use super::field_redact::FieldRedactFilterFactory;
 use super::internal::{LoggerWithKvNestingTracking, SharedLog};
 #[cfg(target_os = "linux")]
-use super::journal::{JournalStreams, JournalWriter, stdio_fd};
+use super::journal::{JournalStreams, JournalWriter};
 
 #[cfg(feature = "metrics")]
 use crate::telemetry::log::log_volume::LogVolumeMetricsDrain;
@@ -11,6 +11,8 @@ use crate::telemetry::log::log_volume::LogVolumeMetricsDrain;
 use crate::telemetry::log::rate_limit::RateLimitingDrain;
 use crate::telemetry::log::retry_writer::RetryPipeWriter;
 use crate::telemetry::scope::ScopeStack;
+#[cfg(target_os = "linux")]
+use crate::telemetry::settings::JournalStreamBehavior;
 use crate::telemetry::settings::{LogFormat, LogOutput, LogVerbosity, LoggingSettings};
 use crate::{BootstrapResult, ServiceInfo};
 use crossbeam_utils::CachePadded;
@@ -95,26 +97,33 @@ pub(crate) fn init(
 
     // Before building any drain, so that stderr is covered when logs go elsewhere too.
     #[cfg(target_os = "linux")]
-    let journal = JournalStreams::detect(!settings.allow_blocking_journal_stdio);
+    let journal_fd = match settings.journal_stream_behavior {
+        JournalStreamBehavior::Blocking => None,
+        JournalStreamBehavior::NonBlockingLogger => {
+            JournalStreams::detect(false).fd(&settings.output)
+        }
+        JournalStreamBehavior::NonBlockingStdio => {
+            JournalStreams::detect(true).fd(&settings.output)
+        }
+    };
 
-    let (async_drain, async_guard) = match (&settings.output, &settings.format) {
+    #[cfg(not(target_os = "linux"))]
+    let journal_fd: Option<()> = None;
+
+    let (async_drain, async_guard) = match (journal_fd, &settings.output, &settings.format) {
         #[cfg(target_os = "linux")]
-        (output @ (LogOutput::Terminal | LogOutput::Stderr), LogFormat::Text)
-            if journal.includes(output) =>
-        {
-            let drain = JournalWriter::drain(stdio_fd(output), |writer| {
+        (Some(fd), _, LogFormat::Text) => {
+            let drain = JournalWriter::drain(fd, |writer| {
                 TextDrain::new(PlainDecorator::new(writer)).build()
             });
             build_async_drain(drain, settings, CHANNEL_SIZE)
         }
         #[cfg(target_os = "linux")]
-        (output @ (LogOutput::Terminal | LogOutput::Stderr), LogFormat::Json)
-            if journal.includes(output) =>
-        {
-            let drain = JournalWriter::drain(stdio_fd(output), build_json_log_drain);
+        (Some(fd), _, LogFormat::Json) => {
+            let drain = JournalWriter::drain(fd, build_json_log_drain);
             build_async_drain(drain, settings, CHANNEL_SIZE)
         }
-        (output @ (LogOutput::Terminal | LogOutput::Stderr), LogFormat::Text) => {
+        (_, output @ (LogOutput::Terminal | LogOutput::Stderr), LogFormat::Text) => {
             let decorator = if matches!(output, LogOutput::Terminal) {
                 TermDecorator::new().stdout().build()
             } else {
@@ -124,7 +133,7 @@ pub(crate) fn init(
             let drain = TextDrain::new(decorator).build();
             build_async_drain(drain, settings, CHANNEL_SIZE)
         }
-        (output @ (LogOutput::Terminal | LogOutput::Stderr), LogFormat::Json) => {
+        (_, output @ (LogOutput::Terminal | LogOutput::Stderr), LogFormat::Json) => {
             let writer = if matches!(output, LogOutput::Terminal) {
                 stdout_writer_without_line_buffering()
             } else {
@@ -133,22 +142,22 @@ pub(crate) fn init(
             let drain = build_json_log_drain(writer);
             build_async_drain(drain, settings, CHANNEL_SIZE)
         }
-        (LogOutput::File(file_path), LogFormat::Text) => {
+        (_, LogOutput::File(file_path), LogFormat::Text) => {
             let file = RetryPipeWriter::new(file_path.into())?;
             let drain = TextDrain::new(PlainDecorator::new(file)).build();
             build_async_drain(drain, settings, CHANNEL_SIZE)
         }
-        (LogOutput::File(file_path), LogFormat::Json) => {
+        (_, LogOutput::File(file_path), LogFormat::Json) => {
             let file = RetryPipeWriter::new(file_path.into())?;
             let buf = BufWriter::with_capacity(BUF_SIZE, file);
             let drain = build_json_log_drain(buf);
             build_async_drain(drain, settings, CHANNEL_SIZE)
         }
         #[cfg(feature = "tracing-rs-compat")]
-        (LogOutput::TracingRsCompat, _) => AsyncDrain::new(tracing_slog::TracingSlogDrain {})
+        (_, LogOutput::TracingRsCompat, _) => AsyncDrain::new(tracing_slog::TracingSlogDrain {})
             .chan_size(CHANNEL_SIZE)
             .build_with_guard(),
-        (LogOutput::Custom(drain), _) => AsyncDrain::new(Arc::clone(drain))
+        (_, LogOutput::Custom(drain), _) => AsyncDrain::new(Arc::clone(drain))
             .chan_size(CHANNEL_SIZE)
             .build_with_guard(),
     };
@@ -185,14 +194,17 @@ pub(crate) fn init(
 struct StdioWriter(ManuallyDrop<File>);
 
 impl io::Write for StdioWriter {
+    #[inline]
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         self.0.write(buf)
     }
 
+    #[inline]
     fn write_vectored(&mut self, bufs: &[io::IoSlice<'_>]) -> io::Result<usize> {
         self.0.write_vectored(bufs)
     }
 
+    #[inline]
     fn flush(&mut self) -> io::Result<()> {
         self.0.flush()
     }

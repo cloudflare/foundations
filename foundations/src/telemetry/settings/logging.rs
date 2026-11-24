@@ -53,33 +53,18 @@ pub struct LoggingSettings {
     /// as fatal logging failures. Enabling this setting allows services to keep
     /// running if a log sink returns an error such as [`std::io::ErrorKind::BrokenPipe`].
     ///
-    /// A systemd journal stream with no room for a record isn't an I/O error: the record is
-    /// dropped and counted in the `logging_records_dropped` metric, and logging carries on.
+    /// When [`JournalStreamBehavior::NonBlockingLogger`] or
+    /// [`JournalStreamBehavior::NonBlockingStdio`] is configured, a stalled systemd journal stream
+    /// isn't an I/O error: the record is dropped and counted in the `logging_records_dropped`
+    /// metric, and logging carries on.
     ///
     /// Defaults to `false`.
     pub ignore_io_errors: bool,
 
-    /// Whether to let stdout and stderr block when they are the systemd journal stream.
+    /// How to handle stdout and stderr when they are the systemd journal stream on Linux.
     ///
-    /// On Linux, logs written to the journal stream that systemd names in `JOURNAL_STREAM` never
-    /// wait for journald, whatever this setting is. Records that don't fit in the stream's buffer
-    /// are dropped and counted in the `logging_records_dropped` metric. Other writes to the
-    /// stream can wait, though, and if journald stops reading it for good, they wait for good.
-    /// That includes the default panic hook's message, so a thread that panics never finishes.
-    /// By default, foundations makes them nonblocking to prevent that, whatever the log output is.
-    ///
-    /// Nonblocking mode belongs to the stream, so it applies to every writer in the process and
-    /// in child processes that inherit the stream. When the stream's buffer is full, the default
-    /// panic hook's message can be lost, and `println!` and `eprintln!` panic instead of waiting.
-    /// Enabling this setting leaves the streams as they are; it doesn't make a nonblocking stream
-    /// blocking again. A stream stays nonblocking until the service restarts and systemd gives it
-    /// a new one, including when a process that inherits the stream enables this setting.
-    ///
-    /// If seccomp sandboxing applies to the thread that initializes telemetry, the logging thread
-    /// needs `sendto` to write to the journal stream. `SERVICE_BASICS` doesn't allow it, and
-    /// `NET_SOCKET_API` does. Initialization also needs `fcntl` unless this setting is enabled,
-    /// and `RUST_BASICS` only allows `fcntl` in debug builds.
-    pub allow_blocking_journal_stdio: bool,
+    /// Defaults to `blocking`.
+    pub journal_stream_behavior: JournalStreamBehavior,
 
     /// Settings for rate limiting emission of log events.
     ///
@@ -237,4 +222,55 @@ pub struct LogVolumeMetricSettings {
     ///
     /// Defaults to `false`.
     pub enabled: bool,
+}
+
+/// How foundations handles stdout and stderr when they are the systemd journal stream.
+///
+/// On Linux, systemd connects a service's stdout and stderr to a journald socket and names it in
+/// `JOURNAL_STREAM`. If journald stops reading that socket while keeping it open, the socket's
+/// send buffer fills and blocking writes wait indefinitely.
+#[cfg_attr(feature = "settings", settings(crate_path = "crate"))]
+#[cfg_attr(not(feature = "settings"), derive(Clone, Default, Debug))]
+#[derive(Copy, PartialEq, Eq)]
+pub enum JournalStreamBehavior {
+    /// Leave the systemd journal stream untouched.
+    ///
+    /// Writes to stdout and stderr use the standard blocking writers and no extra syscalls
+    /// (`fstat`, `sendto`, `poll`/`ppoll`, `fcntl`) are issued for journal detection or
+    /// nonblocking I/O.
+    #[default]
+    Blocking,
+
+    /// Never let the foundations logging thread hang indefinitely on a stalled journal stream.
+    ///
+    /// On Linux, when [`LoggingSettings::output`] targets the stream named in `JOURNAL_STREAM`,
+    /// log records are buffered and sent with `MSG_DONTWAIT`. On `EAGAIN`, the logging thread
+    /// waits briefly for journald to drain the socket so normal bursts and records larger than
+    /// the socket buffer aren't dropped or truncated. Once the stream stays full past that wait,
+    /// it is treated as stalled and subsequent records are dropped immediately and counted in
+    /// `logging_records_dropped{reason="journal_full"}` until the stream accepts bytes again.
+    ///
+    /// Descriptor flags (`O_NONBLOCK`) are left unchanged, so `println!`, `eprintln!`, and child
+    /// processes are unaffected.
+    ///
+    /// If seccomp sandboxing applies to the thread that initializes telemetry, the logging thread
+    /// needs `sendto` (`NET_SOCKET_API` allows it; `SERVICE_BASICS` does not) and `poll` (x86_64)
+    /// or `ppoll` (aarch64).
+    NonBlockingLogger,
+
+    /// Same as [`JournalStreamBehavior::NonBlockingLogger`], and also sets `O_NONBLOCK` on
+    /// stdout and stderr during telemetry initialization when they are the journal stream,
+    /// whatever [`LoggingSettings::output`] is.
+    ///
+    /// This also prevents other writers — including Rust's default panic hook writing to stderr —
+    /// from hanging forever on a stalled journal. Because `O_NONBLOCK` belongs to the underlying
+    /// open file description, it applies to every writer in the process and in child processes
+    /// that inherit the stream: when the stream's buffer is full, `println!` and `eprintln!`
+    /// panic instead of waiting, the default panic hook's message can be lost, and child
+    /// processes may receive `EAGAIN`. The flag stays on the stream until the service restarts
+    /// and systemd gives it a new one.
+    ///
+    /// In addition to the syscalls required by [`JournalStreamBehavior::NonBlockingLogger`],
+    /// telemetry initialization needs `fcntl` (`RUST_BASICS` only allows `fcntl` in debug builds).
+    NonBlockingStdio,
 }
