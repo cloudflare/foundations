@@ -205,20 +205,14 @@ impl<W: AsFd> JournalWriter<W> {
                     } else {
                         &record[sent..]
                     };
-                    let (written, err) = write_all_raw(self.out.as_fd(), fallback_buf);
+                    let (written, res) = write_all_raw(self.out.as_fd(), fallback_buf);
                     if let Some(&last) = fallback_buf[..written].last() {
                         self.cut_short = last != b'\n';
                     }
-                    return match err {
-                        None => Ok(()),
-                        Some(err) => Err(err),
-                    };
+                    return res;
                 }
                 Err(err) if err.kind() == io::ErrorKind::Interrupted => {}
-                Err(err) if err.kind() == io::ErrorKind::WouldBlock => {
-                    if self.stalled {
-                        break Err(err);
-                    }
+                Err(err) if err.kind() == io::ErrorKind::WouldBlock && !self.stalled => {
                     let deadline =
                         *wait_deadline.get_or_insert_with(|| Instant::now() + self.stall_timeout);
                     match wait_writable_until(self.out.as_fd(), deadline) {
@@ -278,7 +272,7 @@ fn send_once(fd: BorrowedFd<'_>, buf: &[u8]) -> io::Result<SendOutcome> {
 }
 
 /// Writes `buf` to a non-socket descriptor, returning the number of bytes written and any error.
-fn write_all_raw(fd: BorrowedFd<'_>, buf: &[u8]) -> (usize, Option<io::Error>) {
+fn write_all_raw(fd: BorrowedFd<'_>, buf: &[u8]) -> (usize, io::Result<()>) {
     let mut written = 0;
     while written < buf.len() {
         let slice = &buf[written..];
@@ -287,15 +281,15 @@ fn write_all_raw(fd: BorrowedFd<'_>, buf: &[u8]) -> (usize, Option<io::Error>) {
         if n > 0 {
             written += n as usize;
         } else if n == 0 {
-            return (written, Some(io::ErrorKind::WriteZero.into()));
+            return (written, Err(io::ErrorKind::WriteZero.into()));
         } else {
             let err = io::Error::last_os_error();
             if err.kind() != io::ErrorKind::Interrupted {
-                return (written, Some(err));
+                return (written, Err(err));
             }
         }
     }
-    (written, None)
+    (written, Ok(()))
 }
 
 /// Waits until `deadline` for `fd` to become writable (or hit an error/hangup condition).
