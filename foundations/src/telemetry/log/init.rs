@@ -80,7 +80,7 @@ impl LogHarness {
 
 // Buffer output up to 4KiB. For JSON output, flush will be called for each record,
 // even if the buffer isn't full.
-const BUF_SIZE: usize = 4096;
+pub(super) const BUF_SIZE: usize = 4096;
 
 // NOTE: Does nothing if logging has already been initialized in this process.
 pub(crate) fn init(

@@ -29,8 +29,8 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
-// Matches `BUF_SIZE` in `init.rs` to avoid startup reallocations on the first record.
-const INITIAL_RECORD_CAPACITY: usize = 4096;
+// Avoid startup reallocations on the first record by matching other writer's buffer size.
+const INITIAL_RECORD_CAPACITY: usize = super::init::BUF_SIZE;
 
 // A record buffer larger than this is freed after use, rather than kept for the next record.
 const MAX_RETAINED_RECORD_CAPACITY: usize = 64 * 1024;
