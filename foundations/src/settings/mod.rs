@@ -210,8 +210,41 @@ use std::path::Path;
 ///
 /// # [`Default`] implementation
 ///
-/// The macro provides a [`Default`] implementation that takes in consideration
-/// `#[serde(default = ...)]` attributes:
+/// The macro provides a [`Default`] implementation. Use `#[settings(default = <expression>)]`
+/// to set the default value of a field:
+///
+/// ```
+/// use foundations::settings::settings;
+///
+/// const DEFAULT_PORT: u16 = 8080;
+///
+/// #[settings]
+/// struct ServerSettings {
+///     #[settings(default = "localhost")]
+///     host: String,
+///     #[settings(default = DEFAULT_PORT)]
+///     port: u16,
+///     #[settings(default = vec![1, 2, 3])]
+///     shards: Vec<u32>,
+///     retries: u32,
+/// }
+///
+/// let inst = ServerSettings::default();
+///
+/// assert_eq!(inst.host, "localhost");
+/// assert_eq!(inst.port, 8080);
+/// assert_eq!(inst.shards, [1, 2, 3]);
+/// assert_eq!(inst.retries, 0);
+/// ```
+///
+/// The expression can be any expression of the field type. A string literal is converted with
+/// [`Into`], so it also works for [`String`] fields. Deserialization uses the same value when
+/// the field is missing.
+///
+/// The attribute is only available on structures with named fields. It can't be combined with
+/// `impl_default = false`, or with `#[serde(default)]` on the same field.
+///
+/// The implementation also takes in consideration `#[serde(default = ...)]` attributes:
 ///
 /// ```
 /// use foundations::settings::settings;
