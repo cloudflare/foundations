@@ -196,6 +196,18 @@ struct WithVecOfOptions {
     items: Vec<NamedOption>,
 }
 
+#[settings]
+struct FieldDefaults {
+    #[settings(default = "localhost")]
+    host: String,
+    #[settings(default = Self::BASE_TIMEOUT_MS * 2)]
+    timeout_ms: u64,
+}
+
+impl FieldDefaults {
+    const BASE_TIMEOUT_MS: u64 = 250;
+}
+
 mod foundations_reexport {
     pub(crate) mod nested {
         pub(crate) use foundations::*;
@@ -291,6 +303,15 @@ fn defaults() {
     let struct_with_skip = WithOption::default();
     assert!(struct_with_skip.optional.is_none());
     assert_eq!(struct_with_skip.a, 123);
+}
+
+/// Deserialization fills missing fields with their `#[settings(default = ...)]` values.
+#[test]
+fn field_defaults() {
+    let parsed = from_yaml_str::<FieldDefaults>("{}").unwrap();
+
+    assert_eq!(parsed.host, "localhost");
+    assert_eq!(parsed.timeout_ms, 500);
 }
 
 #[test]

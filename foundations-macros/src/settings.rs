@@ -20,6 +20,20 @@ const ERR_NON_UNIT_OR_NEW_TYPE_VARIANT: &str = "Settings enum variant should eit
 const ERR_TUPLE_STRUCT: &str =
     "Settings with unnamed fields can only be new type structures (e.g. `struct Millimeters(u8)`).";
 
+const ERR_FIELD_ATTR_UNSUPPORTED_ITEM: &str =
+    "`#[settings(...)]` field attributes are only supported in structures with named fields.";
+
+const ERR_UNKNOWN_FIELD_ARG: &str =
+    "Unknown settings field argument. Expected `default = <expression>`.";
+
+const ERR_DUPLICATE_FIELD_DEFAULT: &str = "Duplicate `default` argument.";
+
+const ERR_FIELD_DEFAULT_WITHOUT_IMPL_DEFAULT: &str = "`#[settings(default = ...)]` needs the generated `Default` implementation. \
+    Remove `impl_default = false`, or set the value in your `Default` implementation.";
+
+const ERR_FIELD_DEFAULT_WITH_SERDE_DEFAULT: &str =
+    "`#[settings(default = ...)]` cannot be combined with `#[serde(default)]`.";
+
 #[derive(FromMeta)]
 struct Options {
     #[darling(default = "Options::default_impl_default")]
@@ -127,6 +141,8 @@ fn expand_enum(options: Options, item: &mut ItemEnum) -> Result<proc_macro2::Tok
         if is_struct || is_tuple(&variant.fields) {
             return error(&variant, ERR_NON_UNIT_OR_NEW_TYPE_VARIANT);
         }
+
+        reject_field_attrs(&variant.fields)?;
     }
 
     if options.impl_default {
@@ -156,6 +172,8 @@ fn expand_unnamed_field_struct(
         return error(&item, ERR_TUPLE_STRUCT);
     }
 
+    reject_field_attrs(&item.fields)?;
+
     if options.impl_default {
         item.attrs.push(parse_quote!(#[derive(Default)]));
     }
@@ -173,6 +191,12 @@ fn expand_unnamed_field_struct(
 }
 
 fn expand_struct(options: Options, item: &mut ItemStruct) -> Result<proc_macro2::TokenStream> {
+    let field_defaults = item
+        .fields
+        .iter_mut()
+        .map(take_field_default)
+        .collect::<Result<Vec<_>>>()?;
+
     add_default_attrs(&options, &mut item.attrs);
 
     // Make every field optional.
@@ -181,7 +205,11 @@ fn expand_struct(options: Options, item: &mut ItemStruct) -> Result<proc_macro2:
     let impl_settings = impl_settings_trait(&options, item)?;
 
     let impl_default = if options.impl_default {
-        impl_serde_aware_default(item)?
+        impl_serde_aware_default(item, &field_defaults)?
+    } else if let Some(expr) = field_defaults.iter().flatten().next() {
+        // Serde takes the value of a missing field from `Default`, so the
+        // expression has no effect without the generated implementation.
+        return error(expr, ERR_FIELD_DEFAULT_WITHOUT_IMPL_DEFAULT);
     } else {
         quote!()
     };
@@ -196,6 +224,57 @@ fn expand_struct(options: Options, item: &mut ItemStruct) -> Result<proc_macro2:
 
 fn is_tuple(fields: &Fields) -> bool {
     matches!(fields, Fields::Unnamed(f) if f.unnamed.len() > 1)
+}
+
+/// Fails if a field in `fields` has a `#[settings(...)]` attribute.
+fn reject_field_attrs(fields: &Fields) -> Result<()> {
+    match fields
+        .iter()
+        .flat_map(|f| &f.attrs)
+        .find(|a| a.path().is_ident("settings"))
+    {
+        Some(attr) => error(attr, ERR_FIELD_ATTR_UNSUPPORTED_ITEM),
+        None => Ok(()),
+    }
+}
+
+/// Removes the `#[settings(...)]` attributes from `field` and returns the
+/// expression of `#[settings(default = <expression>)]`, if present.
+fn take_field_default(field: &mut Field) -> Result<Option<Expr>> {
+    let mut default = None;
+
+    for attr in field.attrs.iter().filter(|a| a.path().is_ident("settings")) {
+        attr.parse_nested_meta(|meta| {
+            if !meta.path.is_ident("default") {
+                return Err(meta.error(ERR_UNKNOWN_FIELD_ARG));
+            }
+
+            if default.is_some() {
+                return Err(meta.error(ERR_DUPLICATE_FIELD_DEFAULT));
+            }
+
+            default = Some(meta.value()?.parse()?);
+
+            Ok(())
+        })?;
+    }
+
+    field.attrs.retain(|a| !a.path().is_ident("settings"));
+
+    Ok(default)
+}
+
+/// Returns the tokens that initialize a field with `expr`.
+///
+/// A string literal is converted with [`Into`], so it can initialize a
+/// `String` field.
+fn field_default_value(expr: &Expr) -> proc_macro2::TokenStream {
+    match expr {
+        Expr::Lit(ExprLit {
+            lit: Lit::Str(_), ..
+        }) => quote_spanned! { expr.span()=> ::std::convert::Into::into(#expr) },
+        _ => expr.to_token_stream(),
+    }
 }
 
 fn add_default_attrs(options: &Options, attrs: &mut Vec<Attribute>) {
@@ -399,14 +478,22 @@ fn is_serde_flattened(attrs: &[Attribute]) -> bool {
     )
 }
 
-fn impl_serde_aware_default(item: &ItemStruct) -> Result<proc_macro2::TokenStream> {
+/// Implements `Default` for `item`.
+///
+/// `field_defaults` holds the `#[settings(default = ...)]` expression of each
+/// field of `item`, in declaration order.
+fn impl_serde_aware_default(
+    item: &ItemStruct,
+    field_defaults: &[Option<Expr>],
+) -> Result<proc_macro2::TokenStream> {
     let name = &item.ident;
     let (impl_generics, ty_generics, where_clause) = item.generics.split_for_impl();
 
     let initializers = item
         .fields
         .iter()
-        .map(|field| {
+        .zip(field_defaults)
+        .map(|(field, field_default)| {
             let name = field
                 .ident
                 .as_ref()
@@ -419,11 +506,23 @@ fn impl_serde_aware_default(item: &ItemStruct) -> Result<proc_macro2::TokenStrea
                 .iter()
                 .filter(|attr| attr.path().is_ident("cfg"));
 
-            let function_path = SerdeArgs::parse_from_attrs(&field.attrs)?
-                .and_then(|a| Some(a.default?.explicit()?.into_token_stream()))
-                .unwrap_or_else(|| quote_spanned! { span=> Default::default });
+            let serde_default = SerdeArgs::parse_from_attrs(&field.attrs)?.and_then(|a| a.default);
 
-            Ok(quote_spanned! { span=> #(#cfg_attrs)* #name: #function_path() })
+            let value = match (field_default, serde_default) {
+                (Some(expr), Some(_)) => {
+                    return error(expr, ERR_FIELD_DEFAULT_WITH_SERDE_DEFAULT);
+                }
+                (Some(expr), None) => field_default_value(expr),
+                (None, serde_default) => {
+                    let function_path = serde_default
+                        .and_then(|d| Some(d.explicit()?.into_token_stream()))
+                        .unwrap_or_else(|| quote_spanned! { span=> Default::default });
+
+                    quote_spanned! { span=> #function_path() }
+                }
+            };
+
+            Ok(quote_spanned! { span=> #(#cfg_attrs)* #name: #value })
         })
         .collect::<Result<Vec<_>>>()?;
 
@@ -1161,5 +1260,29 @@ mod tests {
         };
 
         assert_eq!(actual, expected);
+    }
+
+    /// `#[settings(default = ...)]` is rejected where the value would be silently ignored or
+    /// overridden.
+    #[test]
+    fn field_default_conflicts() {
+        let cases: [(Options, Item, &str); 2] = [
+            (
+                parse_attr! { #[settings(impl_default = false)] },
+                parse_quote! { struct S { #[settings(default = 1)] a: u8 } },
+                ERR_FIELD_DEFAULT_WITHOUT_IMPL_DEFAULT,
+            ),
+            (
+                parse_attr! { #[settings] },
+                parse_quote! { struct S { #[settings(default = 1)] #[serde(default)] a: u8 } },
+                ERR_FIELD_DEFAULT_WITH_SERDE_DEFAULT,
+            ),
+        ];
+
+        for (options, src, expected) in cases {
+            let err = expand_from_parsed(options, src).unwrap_err().to_string();
+
+            assert_eq!(err, expected);
+        }
     }
 }
